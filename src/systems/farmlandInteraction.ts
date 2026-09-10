@@ -1,0 +1,88 @@
+import { Farmland } from './farmland';
+import { FarmlandRenderer } from './farmlandRenderer';
+import { InteractionRegistry, Interactable } from './interaction';
+import { Inventory } from './inventory';
+import { Player } from '../entities/Player';
+import { FarmMapData } from '../data/maps/farmMap';
+import { DEFAULT_CROP_ID } from '../data/crops';
+
+/**
+ * Uma célula cultivável, quando interagida: ara se estiver comum, planta se
+ * estiver arada e vazia, rega se estiver crescendo (e não pronta), colhe se
+ * estiver pronta, ou limpa se a plantação tiver morrido. Cada célula decide
+ * sua própria ação a partir do próprio estado — o clique/movimento só chama
+ * `interact()`, sem saber o que é agricultura.
+ *
+ * Arar/plantar/regar/colher tocam a animação de ferramenta correspondente
+ * no personagem antes de aplicar o efeito (a animação é só representação
+ * visual; quem decide o resultado é sempre `Farmland`, nunca a animação).
+ */
+class PlotInteractable implements Interactable {
+  constructor(
+    private readonly farmland: Farmland,
+    private readonly renderer: FarmlandRenderer,
+    private readonly inventory: Inventory,
+    private readonly player: Player,
+    private readonly col: number,
+    private readonly row: number,
+  ) {}
+
+  interact(): void {
+    if (this.player.isBusy()) return;
+
+    const plot = this.farmland.getPlot(this.col, this.row);
+    if (!plot) return;
+
+    if (plot.state === 'untilled') {
+      this.player.performAction('hoe', () => {
+        this.farmland.till(this.col, this.row);
+        this.refresh();
+      });
+    } else if (plot.state === 'tilled') {
+      this.player.performAction('plant', () => {
+        this.farmland.plant(this.col, this.row, DEFAULT_CROP_ID);
+        this.refresh();
+      });
+    } else if (plot.state === 'dead') {
+      // Limpar uma plantação morta é uma ação simples, sem ferramenta própria.
+      this.farmland.clearDead(this.col, this.row);
+      this.refresh();
+    } else if (plot.state === 'growing') {
+      if (this.farmland.isReady(plot)) {
+        this.player.performAction('harvest', () => {
+          const result = this.farmland.harvest(this.col, this.row, this.inventory);
+          if (result) {
+            console.log(
+              `Colheita: +${result.amount} ${result.cropId} (total: ${this.inventory.getCount(result.cropId)})`,
+            );
+          }
+          this.refresh();
+        });
+      } else {
+        this.player.performAction('water', () => {
+          this.farmland.water(this.col, this.row);
+          this.refresh();
+        });
+      }
+    }
+  }
+
+  private refresh(): void {
+    const updated = this.farmland.getPlot(this.col, this.row);
+    if (updated) this.renderer.renderPlot(this.farmland, updated);
+  }
+}
+
+/** Registra um `PlotInteractable` para cada célula cultivável do mapa. */
+export function registerFarmlandInteractables(
+  map: FarmMapData,
+  farmland: Farmland,
+  renderer: FarmlandRenderer,
+  inventory: Inventory,
+  player: Player,
+  registry: InteractionRegistry,
+): void {
+  for (const [col, row] of map.farmlandArea) {
+    registry.set(col, row, new PlotInteractable(farmland, renderer, inventory, player, col, row));
+  }
+}
