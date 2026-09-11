@@ -56,12 +56,18 @@ export class FarmlandRenderer {
       return;
     }
 
-    const crop = CROPS[plot.cropId];
-    const recentlyWatered = !!crop && farmland.timeSinceWatered(plot) < crop.maxTimeWithoutWaterMs / 2;
-    soil.setFrame(recentlyWatered ? SOIL_WET_INDEX : SOIL_DRY_INDEX);
+const crop = CROPS[plot.cropId];
+
+// Só é considerada molhada se a última rega for DIFERENTE do tempo de plantio
+// (ou seja, o jogador regou manualmente após plantar) e ainda não secou.
+const recentlyWatered = !!crop && 
+                        plot.lastWateredAt !== plot.plantedAt && 
+                        farmland.timeSinceWatered(plot) < crop.maxTimeWithoutWaterMs / 2;
+
+soil.setFrame(recentlyWatered ? SOIL_WET_INDEX : SOIL_DRY_INDEX);
   }
 
-  private renderCrop(plot: Plot): void {
+private renderCrop(plot: Plot): void {
     const key = this.key(plot.col, plot.row);
     const crop = plot.cropId ? CROPS[plot.cropId] : null;
 
@@ -73,18 +79,28 @@ export class FarmlandRenderer {
 
     const frame = crop.growthFrames[Math.min(plot.stage, crop.growthFrames.length - 1)];
     let image = this.cropImages.get(key);
+    
     if (!image) {
       image = this.scene.add.image(0, 0, crop.textureKey, frame);
       image.setOrigin(0.5, 1);
       image.setScale(DISPLAY_SCALE);
-      image.setDepth(-0.25); // Acima do solo, abaixo do personagem/árvores.
       image.setPosition(plot.col * this.tilePx + this.tilePx / 2, (plot.row + 1) * this.tilePx);
       this.cropImages.set(key, image);
     }
+    
     image.setFrame(frame);
 
     if (plot.state === 'dead') image.setTint(DEAD_TINT);
     else image.clearTint();
+
+    // ADICIONE ISTO AQUI NO FINAL:
+    // Se for o estágio 0 (semente) ou estiver morta, fica colada no chão (-0.25 fica acima da terra que é -0.5)
+    if (plot.stage === 0 || plot.state === 'dead') {
+      image.setDepth(-0.25);
+    } else {
+      // Se já for uma plantinha crescendo, ganha profundidade para o personagem passar por trás/frente
+      image.setDepth(image.y + 1);
+    }
   }
 
   renderPlot(farmland: Farmland, plot: Plot): void {
@@ -97,4 +113,23 @@ export class FarmlandRenderer {
       this.renderPlot(farmland, plot);
     }
   }
+
+  /** Faz a plantinha balançar (efeito puramente visual) quando o jogador passa por perto. */
+  rustleCrop(col: number, row: number): void {
+    const key = this.key(col, row);
+    const image = this.cropImages.get(key);
+
+    if (!image || this.scene.tweens.isTweening(image)) return;
+
+    this.scene.tweens.add({
+      targets: image,
+      angle: { from: 0, to: 8 },
+      duration: 120,
+      yoyo: true,
+      repeat: 1,
+      ease: 'Sine.easeInOut',
+      onComplete: () => image.setAngle(0),
+    });
+  }
 }
+

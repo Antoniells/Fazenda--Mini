@@ -19,6 +19,9 @@ export class PlayerController {
   private readonly tilePx: number;
   private readonly interactions: InteractionRegistry;
   private pendingInteractionTarget: { col: number; row: number } | null = null;
+  private readonly scene: Phaser.Scene;
+  private lastCol: number;
+  private lastRow: number;
 
   constructor(
     scene: Phaser.Scene,
@@ -27,11 +30,15 @@ export class PlayerController {
     tilePx: number,
     interactions: InteractionRegistry,
   ) {
+    this.scene = scene;
     this.player = player;
     this.grid = grid;
     this.tilePx = tilePx;
     this.interactions = interactions;
     this.cursors = scene.input.keyboard!.createCursorKeys();
+
+    this.lastCol = player.col;
+    this.lastRow = player.row;
 
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.handlePointerDown(pointer.x, pointer.y);
@@ -77,6 +84,12 @@ export class PlayerController {
 
     this.player.update(time, delta);
 
+    if (this.player.col !== this.lastCol || this.player.row !== this.lastRow) {
+      this.lastCol = this.player.col;
+      this.lastRow = this.player.row;
+      // Avisa a cena que o jogador pisou em uma nova célula
+      this.scene.events.emit('player-stepped', this.lastCol, this.lastRow);
+    }
     if (
       !this.player.isBusy() &&
       this.pendingInteractionTarget &&
@@ -90,3 +103,4 @@ export class PlayerController {
     }
   }
 }
+

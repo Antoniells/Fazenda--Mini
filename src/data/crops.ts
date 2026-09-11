@@ -1,8 +1,7 @@
 /**
- * Definições de culturas agrícolas. Apenas uma cultura de teste (cenoura)
- * nesta fase, mas a estrutura permite adicionar outras sem alterar o
- * sistema de agricultura (`systems/farmland.ts`) — basta acrescentar uma
- * entrada em `CROPS`.
+ * Definições de culturas agrícolas. A estrutura permite adicionar outras
+ * sem alterar o sistema de agricultura (`systems/farmland.ts`) — basta
+ * acrescentar uma entrada em `CROPS`.
  */
 export interface CropDefinition {
   id: string;
@@ -18,6 +17,8 @@ export interface CropDefinition {
    * não usamos 1, 6 e 7 aqui.
    */
   growthFrames: number[];
+  /** Frame do item já colhido, usado como ícone (ex.: na barra de sementes). */
+  iconFrame: number;
   /**
    * Tempo total (ms) da semente até "pronta para colher" — baseado só no
    * tempo desde o plantio, independente de quantas vezes (ou se) foi
@@ -41,15 +42,59 @@ export const CARROT: CropDefinition = {
   textureKey: 'crop-carrot',
   texturePath: 'Crops/Spring/Carrot.png',
   growthFrames: [0, 2, 3, 4, 5],
+  iconFrame: 7,
   totalGrowthMs: 16000,
-  maxTimeWithoutWaterMs: 10000,
+  // 20s dá uma janela de 10s entre a terra ficar visivelmente seca (metade
+  // deste valor, ver farmlandRenderer.renderSoil) e a plantação morrer —
+  // tempo suficiente para o jogador perceber e regar de novo a tempo.
+  maxTimeWithoutWaterMs: 20000,
+  yieldAmount: 1,
+  sellValue: 10,
+};
+
+/**
+ * Segue exatamente a mesma convenção da cenoura (0 e 1 = variações de
+ * semente, 2-5 = crescimento, 6 = frame vazio, 7 = ícone do item), conferida
+ * visualmente em `Crops/Spring/Potato.png` antes de usar — nem toda cultura
+ * do pacote segue esse layout (ex.: Parsnip e Cabbage têm outra contagem de
+ * frames), então cada uma precisa ser conferida antes de ser adicionada.
+ */
+export const POTATO: CropDefinition = {
+  id: 'potato',
+  name: 'Batata',
+  textureKey: 'crop-potato',
+  texturePath: 'Crops/Spring/Potato.png',
+  growthFrames: [0, 2, 3, 4, 5],
+  iconFrame: 7,
+  totalGrowthMs: 20000,
+  maxTimeWithoutWaterMs: 25000,
+  yieldAmount: 1,
+  sellValue: 10,
+};
+
+/**
+ * Mesma convenção de frames da cenoura e da batata, conferida visualmente
+ * em `Crops/Spring/Onion.png`. Cresce mais rápido que as outras duas — só
+ * para dar variedade ao testar/alternar entre culturas.
+ */
+export const ONION: CropDefinition = {
+  id: 'onion',
+  name: 'Cebola',
+  textureKey: 'crop-onion',
+  texturePath: 'Crops/Spring/Onion.png',
+  growthFrames: [0, 2, 3, 4, 5],
+  iconFrame: 7,
+  totalGrowthMs: 12000,
+  maxTimeWithoutWaterMs: 16000,
   yieldAmount: 1,
   sellValue: 10,
 };
 
 export const CROPS: Record<string, CropDefinition> = {
   [CARROT.id]: CARROT,
+  [POTATO.id]: POTATO,
+  [ONION.id]: ONION,
 };
 
-/** Cultura usada ao plantar nesta fase de teste (ainda não há seleção de sementes). */
+/** Semente selecionada por padrão no `Inventory` ao iniciar o jogo. */
 export const DEFAULT_CROP_ID = CARROT.id;

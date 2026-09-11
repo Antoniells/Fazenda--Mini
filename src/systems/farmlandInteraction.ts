@@ -4,7 +4,6 @@ import { InteractionRegistry, Interactable } from './interaction';
 import { Inventory } from './inventory';
 import { Player } from '../entities/Player';
 import { FarmMapData } from '../data/maps/farmMap';
-import { DEFAULT_CROP_ID } from '../data/crops';
 
 /**
  * Uma célula cultivável, quando interagida: ara se estiver comum, planta se
@@ -40,7 +39,7 @@ class PlotInteractable implements Interactable {
       });
     } else if (plot.state === 'tilled') {
       this.player.performAction('plant', () => {
-        this.farmland.plant(this.col, this.row, DEFAULT_CROP_ID);
+        this.farmland.plant(this.col, this.row, this.inventory.getSelectedSeedId());
         this.refresh();
       });
     } else if (plot.state === 'dead') {

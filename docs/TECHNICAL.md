@@ -153,16 +153,80 @@ se posicionar numa célula adjacente e virar dinamicamente para o alvo.
 Ajustar isso é um refinamento futuro que vale a pena revisitar quando o
 polimento visual da fazenda for a prioridade.
 
+### Seleção de sementes, debug de tempo e balanceamento
+
+Três ajustes de polimento sobre a base acima:
+
+- **Seleção de sementes**: `Inventory` (`systems/inventory.ts`) guarda não só
+  os itens colhidos, mas também a semente ativa (`selectedSeedId`, com
+  `getSelectedSeedId`/`selectSeed`). `PlotInteractable.interact()` planta a
+  semente selecionada em vez de um `DEFAULT_CROP_ID` fixo. `MainScene` liga
+  as teclas 1/2/3 a `Inventory.selectSeed`, na ordem em que as culturas
+  aparecem em `CROPS` (1 = cenoura, 2 = batata, 3 = cebola) — uma 4ª cultura
+  em `data/crops.ts` já ficaria com dados prontos, mas precisaria de uma 4ª
+  tecla neste código, que só cobre 1-3 por enquanto.
+- **Avanço de tempo para debug**: a tecla T (`MainScene.setupDebugTimeSkip`)
+  chama `Farmland.update()` — o mesmo método usado a cada frame — com um
+  salto de tempo maior (`DEBUG_TIME_SKIP_MS`), e re-renderiza a agricultura
+  na hora. Não é uma mecânica de jogo, é só para não precisar esperar em
+  tempo real durante testes de crescimento/morte por sede.
+- **Janela entre solo seco e morte**: `maxTimeWithoutWaterMs` da cenoura foi
+  ajustado de 10s para 20s. Como o solo já fica visualmente seco na metade
+  desse tempo (`farmlandRenderer.renderSoil`), isso amplia a janela de aviso
+  de 5s para 10s antes da plantação morrer — tempo mais realista para o
+  jogador perceber e regar de novo. A lógica em si não mudou, só o valor de
+  dados em `data/crops.ts`. Batata e cebola seguem a mesma ideia, com seus
+  próprios tempos (ver abaixo).
+
+### Mais culturas: batata e cebola
+
+Além da cenoura, `data/crops.ts` define `POTATO` (`Crops/Spring/Potato.png`)
+e `ONION` (`Crops/Spring/Onion.png`). Antes de adicionar qualquer uma,
+os spritesheets foram conferidos visualmente (recorte/zoom, mesma técnica
+usada para a cenoura) para confirmar que seguem a mesma convenção de 8
+frames (0 e 1 = semente, 2-5 = crescimento, 6 = vazio, 7 = ícone) — nem toda
+cultura do pacote segue esse layout (ex.: Parsnip e Cabbage têm outra
+contagem de frames), então isso precisa ser verificado a cada nova cultura,
+não assumido.
+
+Tempos diferentes por cultura (só para dar variedade ao alternar/testar):
+batata cresce mais devagar (`totalGrowthMs: 20000`, `maxTimeWithoutWaterMs:
+25000`) e cebola mais rápido (`totalGrowthMs: 12000`,
+`maxTimeWithoutWaterMs: 16000`) que a cenoura. Como o resto do sistema
+(crescimento, hidratação, renderização, colheita) já era genérico por
+`cropId`, nenhum código fora de `data/crops.ts` precisou mudar.
+
 ### Visual (`systems/farmlandRenderer.ts`)
 
 Solo (uma imagem por célula, oculta até ser arada) usa
 `Tileset/Tilled Soil and wet soil.png` — seco por padrão, molhado enquanto
 a plantação foi regada recentemente (metade do tempo até o limite sem
 água). A plantação (uma imagem por célula plantada) usa os frames de
-crescimento do spritesheet da cultura (`Crops/Spring/Carrot.png` para a
-cultura de teste); uma plantação morta reaproveita o último frame
-alcançado com um tingimento acastanhado (`setTint`), em vez de um sprite
-novo.
+crescimento do spritesheet da cultura plantada (`crop.textureKey`/
+`crop.growthFrames`, ver `data/crops.ts`); uma plantação morta reaproveita
+o último frame alcançado com um tingimento acastanhado (`setTint`), em vez
+de um sprite novo.
+
+### Barra de sementes (`ui/seedBar.ts`)
+
+HUD fixo (screen-space, `setScrollFactor(0)`) no canto inferior esquerdo,
+um slot por cultura em `CROPS`. Só composição de assets existentes, sem
+nenhuma forma desenhada por código:
+
+- A moldura de cada slot é um recorte de `UI/Inventory/Slots.png`
+  (`data/ui.ts` guarda o retângulo exato, localizado recortando/ampliando o
+  spritesheet pixel a pixel — mesma técnica já usada para `PINE_TREE_FRAME`
+  em `MainScene`).
+- O conteúdo do slot é o próprio frame de ícone da cultura
+  (`CropDefinition.iconFrame`, hoje sempre 7 — o frame do item já colhido).
+- O destaque da semente selecionada é só escala/opacidade/tingimento
+  (`SeedBar.refresh`) sobre esses mesmos assets — a mesma técnica já usada
+  para a plantação morta em `farmlandRenderer.ts` — nunca uma forma nova
+  desenhada por cima (proibido pelas regras de pixel art do projeto).
+
+`SeedBar` é puramente visual: não decide nada, só reflete
+`Inventory.getSelectedSeedId()`. `MainScene` chama `refresh()` sempre que
+uma tecla 1/2/3 muda a seleção.
 
 ### Interação (`systems/interaction.ts` + `systems/farmlandInteraction.ts`)
 
@@ -182,8 +246,9 @@ pertence à Fase 5 (Economia).
 
 ### Próximos pontos (fora do escopo desta fase)
 
-- Culturas adicionais (estrutura em `data/crops.ts` já suporta, só falta
-  adicionar entradas).
+- Culturas além das 3 atuais (cenoura, batata, cebola): a estrutura de
+  dados já suporta, mas a seleção por teclado (`MainScene.setupSeedSelection`)
+  só cobre as teclas 1-3 — uma 4ª cultura precisaria de mais uma tecla ali.
 - Posicionamento adjacente + direção dinâmica nas ações agrícolas (ver
   limitação acima).
 - Indicador visual de "precisa de água" antes da plantação morrer (hoje só

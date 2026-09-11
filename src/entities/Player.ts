@@ -48,8 +48,12 @@ export class Player {
     this.tilePx = tilePx;
 
     const { x, y } = this.cellAnchor(col, row);
-    this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown.start);
+this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown.start);
     this.sprite.setOrigin(0.5, 1);
+    
+    // ADICIONE ISSO: Inicializa a profundidade do jogador
+    this.sprite.setDepth(this.sprite.y);
+
     this.playIdle();
   }
 
@@ -148,7 +152,7 @@ export class Player {
     this.sprite.setFlipX(this.facing === 'side' && this.flipSide);
   }
 
-  update(_time: number, delta: number): void {
+update(_time: number, delta: number): void {
     if (!this.moving) {
       this.receivedInputThisFrame = false;
       return;
@@ -158,6 +162,9 @@ export class Player {
     const t = Math.min(1, this.moveElapsed / PLAYER_MOVE_DURATION_MS);
     this.sprite.x = Phaser.Math.Linear(this.fromX, this.toX, t);
     this.sprite.y = Phaser.Math.Linear(this.fromY, this.toY, t);
+
+    // ADICIONE ISSO: Atualiza o depth dinamicamente acompanhando o novo 'Y'
+    this.sprite.setDepth(this.sprite.y);
 
     if (t >= 1) {
       this.moving = false;
