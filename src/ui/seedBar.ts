@@ -48,9 +48,19 @@ export class SeedBar {
       // Usando setOrigin(0.5) para que o scale e as animações cresçam a partir do centro
       const frame = scene.add.image(x, baseY, INVENTORY_UI_KEY, SLOT_FRAME_NAME);
       frame.setOrigin(0.5, 0.5);
-      frame.setScale(SLOT_SCALE);
+      frame.setScale(0); // Começa em 0 pra "estourar" ao entrar (ver tween logo abaixo)
       frame.setScrollFactor(0);
       frame.setDepth(1000);
+
+      // Entrada elástica, com um pequeno atraso escalonado por slot — dá a
+      // sensação da barra "nascendo" em sequência, não tudo de uma vez.
+      scene.tweens.add({
+        targets: frame,
+        scale: SLOT_SCALE,
+        delay: index * 60,
+        duration: 320,
+        ease: 'Back.easeOut',
+      });
 
       // Clicável: seleciona a semente do slot. `event.stopPropagation()` impede
       // que o mesmo clique também chegue ao listener global do PlayerController
@@ -63,7 +73,7 @@ export class SeedBar {
 
       const icon = scene.add.image(x, baseY, crop.textureKey, crop.iconFrame);
       icon.setOrigin(0.5, 0.5);
-      icon.setScale(SLOT_SCALE);
+      icon.setScale(0); // Idem: começa em 0, o primeiro refresh() (chamado logo após o construtor) já anima até o tamanho certo.
       icon.setScrollFactor(0);
       icon.setDepth(1001);
 

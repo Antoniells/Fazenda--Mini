@@ -39,6 +39,7 @@ class PlotInteractable implements Interactable {
     if (plot.state === 'untilled') {
       this.player.performAction('hoe', () => {
         this.farmland.till(this.col, this.row);
+        this.renderer.spawnHoeDust(this.col, this.row);
         this.refresh();
       });
     } else if (plot.state === 'tilled') {
@@ -62,6 +63,11 @@ class PlotInteractable implements Interactable {
     } else if (plot.state === 'growing') {
       if (this.farmland.isReady(plot)) {
         this.player.performAction('harvest', () => {
+          // O "pulo" precisa acontecer ANTES do refresh() — ele já retira a
+          // imagem do controle do renderer, então o refresh() (que vai
+          // encontrar a célula vazia) não tenta destruí-la de novo por cima
+          // da animação.
+          this.renderer.playHarvestPop(this.col, this.row);
           const result = this.farmland.harvest(this.col, this.row, this.inventory);
           if (result) {
             console.log(
@@ -73,6 +79,7 @@ class PlotInteractable implements Interactable {
       } else {
         this.player.performAction('water', () => {
           this.farmland.water(this.col, this.row);
+          this.renderer.spawnWaterSplash(this.col, this.row);
           this.refresh();
         });
       }

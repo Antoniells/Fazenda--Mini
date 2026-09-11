@@ -70,12 +70,18 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#economia-fase-5).
 
 ## Fase 9 — Polimento
 - [ ] Interface
-- [ ] Efeitos
-- [ ] Sons
+- [x] Efeitos (poeira ao arar, respingo ao regar, pulo elástico ao colher/vender — "Pit Stop de Polimento" antecipado, ver abaixo)
+- [ ] Sons (fora do escopo do pit stop — ainda não implementado)
 - [ ] Animações
-- [ ] Feedback visual
+- [x] Feedback visual (sombras de chão, cursor de seleção nos canteiros, entrada animada da SeedBar/CoinBar — mesmo pit stop)
 - [ ] Balanceamento
 - [ ] Salvamento
+
+> Nota: os itens marcados acima foram adiantados como um "Pit Stop de
+> Polimento" pedido explicitamente entre a Fase 5 e a Fase 6 — não uma
+> Fase 9 completa. Sons e o restante da interface/animações continuam
+> pendentes para quando a Fase 9 for feita de verdade, na ordem do
+> roadmap. Detalhes: ver [TECHNICAL.md](TECHNICAL.md#polimento-visual-pit-stop-antes-da-fase-9).
 
 ## Fase 10 — Desktop
 - [ ] Integração com Electron
@@ -86,4 +92,4 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#economia-fase-5).
 
 ---
 
-**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Fase 6 (Construções e decoração) ainda não iniciada.
+**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Um "Pit Stop de Polimento" visual (sombras, cursor de seleção, efeitos de arar/regar/colher/vender, entrada animada de HUDs) foi adiantado por pedido explícito — sem sons nem ferramentas no inventário, que ficam para quando a Fase 9 for feita por completo. Fase 6 (Construções e decoração) ainda não iniciada.

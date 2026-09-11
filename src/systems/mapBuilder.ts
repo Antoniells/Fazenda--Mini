@@ -16,9 +16,19 @@ import {
   SHIPPING_BIN_FRAME,
   SHOP_STAND_KEY,
 } from '../data/tiles';
+import { createGroundShadow } from './shadow';
 
 /** Escala de exibição: cada tile de 16px é desenhado em 32px na tela. */
 export const DISPLAY_SCALE = 2;
+
+/**
+ * Profundidade fixa das sombras de objetos estáticos (árvores, Caixa de
+ * Remessas, Loja): acima do chão/solo (-1 / -0.5), abaixo de qualquer coisa
+ * ordenada por Y (que começa em 0 pra cima) — sempre "no chão", nunca na
+ * frente de nada. A sombra do personagem é diferente (acompanha o Y dele
+ * dinamicamente, ver `entities/Player.ts`) porque ele se move.
+ */
+const STATIC_SHADOW_DEPTH = -0.4;
 
 /**
  * Constrói a camada de terreno (grid de grama) a partir dos dados do mapa.
@@ -110,12 +120,13 @@ export function buildFarmDecorations(
   const trees: Phaser.GameObjects.Image[] = [];
 
   for (const [col, row] of map.treePositions) {
-    const tree = scene.add.image(
-      col * tile + tile / 2,
-      (row + 1) * tile,
-      PINE_TREE_KEY,
-      PINE_TREE_FRAME_NAME,
-    );
+    const x = col * tile + tile / 2;
+    const y = (row + 1) * tile;
+
+    const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
+    shadow.setDepth(STATIC_SHADOW_DEPTH);
+
+    const tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
     tree.setOrigin(0.5, 1);
     tree.setScale(DISPLAY_SCALE);
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra
@@ -156,7 +167,13 @@ export function buildShippingBin(scene: Phaser.Scene, map: FarmMapData): Phaser.
     );
   }
 
-  const bin = scene.add.image(col * tile + tile / 2, (row + 1) * tile, SHIPPING_BIN_KEY, SHIPPING_BIN_FRAME_NAME);
+  const x = col * tile + tile / 2;
+  const y = (row + 1) * tile;
+
+  const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.0, DISPLAY_SCALE * 0.45);
+  shadow.setDepth(STATIC_SHADOW_DEPTH);
+
+  const bin = scene.add.image(x, y, SHIPPING_BIN_KEY, SHIPPING_BIN_FRAME_NAME);
   bin.setOrigin(0.5, 1);
   bin.setScale(DISPLAY_SCALE);
   bin.setDepth(bin.y);
@@ -175,7 +192,13 @@ export function buildShopStand(scene: Phaser.Scene, map: FarmMapData): Phaser.Ga
   const tile = map.tileSize * DISPLAY_SCALE;
   const [col, row] = map.shopPosition;
 
-  const stand = scene.add.image(col * tile + tile / 2, (row + 1) * tile, SHOP_STAND_KEY);
+  const x = col * tile + tile / 2;
+  const y = (row + 1) * tile;
+
+  const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.8, DISPLAY_SCALE * 0.55);
+  shadow.setDepth(STATIC_SHADOW_DEPTH);
+
+  const stand = scene.add.image(x, y, SHOP_STAND_KEY);
   stand.setOrigin(0.5, 1);
   stand.setScale(DISPLAY_SCALE);
   stand.setDepth(stand.y);

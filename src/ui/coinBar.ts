@@ -62,6 +62,20 @@ export class CoinBar {
     this.text.setOrigin(1, 0.5);
     this.text.setScrollFactor(0);
     this.text.setDepth(1001);
+
+    this.playEntrance();
+  }
+
+  /** Entrada elástica do HUD inteiro ao carregar a cena (Fase 9 antecipada — polimento). */
+  private playEntrance(): void {
+    this.bg.setScale(0);
+    this.coin.setScale(0);
+    this.text.setScale(0);
+
+    const entranceTween = { duration: 320, ease: 'Back.easeOut' as const };
+    this.scene.tweens.add({ targets: this.bg, scale: 1, ...entranceTween });
+    this.scene.tweens.add({ targets: this.coin, scale: SCALE, ...entranceTween });
+    this.scene.tweens.add({ targets: this.text, scale: 1, ...entranceTween });
   }
 
   /** Atualiza o saldo e aplica um efeito visual se o dinheiro aumentar. */

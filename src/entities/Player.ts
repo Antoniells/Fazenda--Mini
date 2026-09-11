@@ -8,6 +8,7 @@ import {
   PlayerActionKey,
 } from '../data/player';
 import { GridPoint } from '../systems/pathfinding';
+import { createGroundShadow } from '../systems/shadow';
 
 type Facing = 'down' | 'up' | 'side';
 
@@ -22,6 +23,7 @@ type Facing = 'down' | 'up' | 'side';
  */
 export class Player {
   readonly sprite: Phaser.GameObjects.Sprite;
+  private readonly shadow: Phaser.GameObjects.Image;
   col: number;
   row: number;
 
@@ -50,9 +52,16 @@ export class Player {
     const { x, y } = this.cellAnchor(col, row);
 this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown.start);
     this.sprite.setOrigin(0.5, 1);
-    
+
     // ADICIONE ISSO: Inicializa a profundidade do jogador
     this.sprite.setDepth(this.sprite.y);
+
+    // Sombra de chão: mesma técnica reaproveitada em objetos estáticos
+    // (árvores, Caixa de Remessas, Loja), só que acompanhando o Y do
+    // personagem a cada frame (ver `update`), já que ele se move.
+    const shadowScale = this.tilePx / 16;
+    this.shadow = createGroundShadow(scene, x, y, shadowScale * 1.1, shadowScale * 0.5);
+    this.shadow.setDepth(y - 0.1);
 
     this.playIdle();
   }
@@ -177,6 +186,11 @@ update(_time: number, delta: number): void {
 
     // ADICIONE ISSO: Atualiza o depth dinamicamente acompanhando o novo 'Y'
     this.sprite.setDepth(this.sprite.y);
+
+    // Sombra acompanha a posição e o Y-sorting do personagem — sempre logo
+    // atrás dele (por isso o "-0.1"), mas ordenada contra o resto do mundo.
+    this.shadow.setPosition(this.sprite.x, this.sprite.y);
+    this.shadow.setDepth(this.sprite.y - 0.1);
 
     if (t >= 1) {
       this.moving = false;

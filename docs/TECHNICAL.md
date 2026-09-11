@@ -426,3 +426,90 @@ tornava impossível interagir com algo sólido sem estar em cima dele. Agora:
   uma fase futura realmente precisar; o jogo não usa nada assim hoje.
 - Persistência (saldo, estoque de sementes e progresso da lavoura resetam
   a cada reload — sem sistema de save ainda, previsto pra Fase 9).
+
+## Polimento visual (Pit Stop antes da Fase 9)
+
+Pedido explícito, adiantando só uma parte da Fase 9 — sem sons e sem
+ferramentas no inventário (ambos ficam para quando a fase for feita por
+completo). Cinco pedaços: cursor de seleção nos canteiros, sombras de
+chão, poeira ao arar, respingo ao regar, e pulo elástico ao colher/vender/
+carregar os HUDs.
+
+### Cursor de seleção (`systems/tileCursor.ts`)
+
+Em vez de desenhar um quadrado por código (proibido pelas regras de pixel
+art do projeto), reaproveita os 4 cantinhos em L de
+`UI/Inventory/Slots.png` que já existiam no asset como "cursor de seleção"
+(`data/ui.ts`, `SELECTION_CORNER_RECTS`) — a mesma peça que eu tinha
+localizado antes, mas não usado, ao construir a `SeedBar`. `TileCursor`
+escuta `pointermove` da cena inteira, calcula a célula do grid sob o
+mouse e só mostra os 4 cantos (um em cada canto da célula) se ela estiver
+em `farmMap.farmlandArea` — sobre grama, cerca ou objetos, nada aparece.
+Não guarda nenhum estado de jogo, só reflete onde o mouse está.
+
+### Sombras de chão (`systems/shadow.ts`)
+
+`createGroundShadow` reaproveita uma única mancha oval de
+`Tileset/Shadow.png` (`data/effects.ts`, `SHADOW_FRAME`) — o spritesheet
+original é uma folha "9-slice" para sombras esticáveis, mas um dos tiles
+já é uma mancha completa e autocontida, então nenhum recorte composto foi
+necessário. A diferença entre "sombra de árvore" e "sombra de personagem"
+é só escala (`scaleX`/`scaleY` passados por quem chama) — tingimento
+escuro + opacidade reduzida, nunca uma forma nova.
+
+- **Objetos estáticos** (árvores, Caixa de Remessas, Loja, em
+  `systems/mapBuilder.ts`): sombra criada uma vez, com profundidade fixa
+  (`STATIC_SHADOW_DEPTH = -0.4`, acima do solo, abaixo de qualquer coisa
+  ordenada por Y) — mesmo raciocínio de "não precisa recalcular o que não
+  se move" já usado nesses objetos.
+- **Personagem** (`entities/Player.ts`): sombra própria, reposicionada e
+  redepthada (`sprite.y - 0.1`, sempre logo atrás dele) a cada frame de
+  movimento, junto com o Y-sorting do próprio sprite — são a mesma
+  atualização, no mesmo lugar do código.
+
+### Poeira ao arar e respingo ao regar (`systems/farmlandRenderer.ts`)
+
+- `spawnHoeDust`: a mesma mancha de `createGroundShadow`, só que tingida
+  de marrom-terra (`DUST_TINT`) em vez de escura, com um tween de "infla e
+  some" (aumenta escala, sobe um pouco, perde opacidade) em vez de ficar
+  parada. Zero sprites novos — só outra combinação de tingimento + tween
+  sobre o mesmo asset.
+- `spawnWaterSplash`: usa `Objects/Props/Sprash.png` (`data/effects.ts`),
+  um respingo já azul de 4 frames — spritesheet em grade simples, ao
+  contrário da Caixa de Remessas ou da Loja, então não precisou de recorte
+  manual. Toca uma vez (`repeat: 0`) e se autodestrói ao terminar.
+- Chamados de dentro de `PlotInteractable` (`systems/farmlandInteraction.ts`),
+  no mesmo callback que já aplicava o efeito real (`Farmland.till`/
+  `Farmland.water`) — a animação da ferramenta decide quando; o efeito
+  visual e o efeito de jogo acontecem juntos, no mesmo instante.
+
+### Pulo elástico ao colher e vender
+
+- **Colher** (`FarmlandRenderer.playHarvestPop` +
+  `detachCropImage`): antes de `Farmland.harvest` mudar o estado da
+  célula, a imagem da plantação é retirada do controle do renderer
+  (`cropImages`) e ganha um tween próprio (cresce, sobe, some). Retirar
+  antes é o que importa: sem isso, o próximo `renderPlot`/`renderAll`
+  (que já vê a célula colhida) tentaria destruir a mesma imagem por cima
+  da animação. Puramente visual — o resultado da colheita já foi decidido
+  por `Farmland.harvest`, antes disso.
+- **Vender** (`ShippingBinInteractable.popBin`): a própria caixa achata e
+  estica rapidamente (`yoyo`) ao vender — igual a "recebeu uma entrega".
+  Guarda a escala original uma vez no construtor para sempre voltar a ela,
+  mesmo se o jogador vender de novo enquanto a animação anterior ainda
+  está rodando (`killTweensOf` antes de reiniciar).
+
+### Entrada animada dos HUDs (`ui/seedBar.ts`, `ui/coinBar.ts`)
+
+- `SeedBar`: cada slot nasce com escala 0 e "estoura" (`Back.easeOut`) até
+  o tamanho final, com um pequeno atraso escalonado por índice — a barra
+  parece nascer em sequência, não tudo de uma vez. O ícone nem precisou de
+  uma animação de entrada própria: como `MainScene` já chama
+  `seedBar.refresh()` logo após construir a barra, e `refresh()` já anima
+  o ícone selecionado até o tamanho certo, bastou o ícone também começar
+  em escala 0 para essa mesma animação servir de entrada.
+- `CoinBar`: fundo, moeda e texto começam em escala 0 e entram juntos com
+  o mesmo `Back.easeOut`.
+- `ShopMenu` não ganhou entrada animada — fica oculto até `open()`, e abrir
+  já é a própria "entrada" (não faz sentido animar algo que começa
+  invisível e só aparece sob demanda).

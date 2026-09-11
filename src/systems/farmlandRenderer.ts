@@ -2,11 +2,15 @@ import Phaser from 'phaser';
 import { Farmland, Plot } from './farmland';
 import { CROPS } from '../data/crops';
 import { SOIL_TILESET_KEY, SOIL_DRY_INDEX, SOIL_WET_INDEX } from '../data/tiles';
+import { SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
 import { DISPLAY_SCALE } from './mapBuilder';
+import { createGroundShadow } from './shadow';
 import { FarmMapData } from '../data/maps/farmMap';
 
 /** Tingimento aplicado à plantação morta — reaproveita o frame existente, sem novo sprite. */
 const DEAD_TINT = 0x8a6d4a;
+/** Tingimento marrom-terra aplicado à mancha de sombra para virar "poeira" ao arar — mesmo asset, só a cor muda. */
+const DUST_TINT = 0x8a5a2e;
 
 /**
  * Visual da agricultura: uma imagem de solo por célula cultivável (oculta
@@ -129,6 +133,87 @@ private renderCrop(plot: Plot): void {
       repeat: 1,
       ease: 'Sine.easeInOut',
       onComplete: () => image.setAngle(0),
+    });
+  }
+
+  /**
+   * Poeira temporária ao arar: reaproveita a mesma mancha de
+   * `systems/shadow.ts`, só que tingida de marrom e com um "pulo e some"
+   * em vez de ficar parada — nenhum sprite novo, só transformações sobre o
+   * já existente.
+   */
+  spawnHoeDust(col: number, row: number): void {
+    const x = col * this.tilePx + this.tilePx / 2;
+    const y = (row + 1) * this.tilePx;
+
+    const dust = createGroundShadow(this.scene, x, y, DISPLAY_SCALE * 0.85, DISPLAY_SCALE * 0.45);
+    dust.setTint(DUST_TINT);
+    dust.setAlpha(0.55);
+    dust.setDepth(y + 0.5);
+
+    this.scene.tweens.add({
+      targets: dust,
+      scaleX: dust.scaleX * 1.7,
+      scaleY: dust.scaleY * 1.7,
+      y: y - 6,
+      alpha: 0,
+      duration: 350,
+      ease: 'Cubic.easeOut',
+      onComplete: () => dust.destroy(),
+    });
+  }
+
+  private ensureSplashAnim(): void {
+    if (this.scene.anims.exists(SPLASH_ANIM_KEY)) return;
+    this.scene.anims.create({
+      key: SPLASH_ANIM_KEY,
+      frames: this.scene.anims.generateFrameNumbers(SPLASH_KEY, SPLASH_FRAMES),
+      frameRate: 12,
+      repeat: 0,
+    });
+  }
+
+  /** Respingo d'água temporário ao regar (`Objects/Props/Sprash.png`, já azul — sem precisar de tingimento). */
+  spawnWaterSplash(col: number, row: number): void {
+    this.ensureSplashAnim();
+
+    const x = col * this.tilePx + this.tilePx / 2;
+    const y = (row + 1) * this.tilePx - this.tilePx / 2;
+
+    const splash = this.scene.add.sprite(x, y, SPLASH_KEY, 0);
+    splash.setScale(DISPLAY_SCALE);
+    splash.setDepth(y + 0.5);
+    splash.play(SPLASH_ANIM_KEY);
+    splash.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => splash.destroy());
+  }
+
+  /** Retira a imagem da plantação do controle do renderer (pra poder animá-la sozinha) e devolve, se houver. */
+  private detachCropImage(col: number, row: number): Phaser.GameObjects.Image | undefined {
+    const key = this.key(col, row);
+    const image = this.cropImages.get(key);
+    this.cropImages.delete(key);
+    return image;
+  }
+
+  /**
+   * Pulo elástico + desaparecimento da plantação ao colher. Chamar antes
+   * de `renderPlot`/`renderAll` re-desenhar a célula (já vazia) — como a
+   * imagem já foi retirada do controle do renderer, ele não tenta destruí-
+   * la de novo por cima da animação. Puramente visual: o resultado da
+   * colheita já foi decidido antes disso, por `Farmland.harvest`.
+   */
+  playHarvestPop(col: number, row: number): void {
+    const image = this.detachCropImage(col, row);
+    if (!image) return;
+
+    this.scene.tweens.add({
+      targets: image,
+      scale: image.scale * 1.4,
+      y: image.y - 12,
+      alpha: 0,
+      duration: 280,
+      ease: 'Back.easeOut',
+      onComplete: () => image.destroy(),
     });
   }
 }

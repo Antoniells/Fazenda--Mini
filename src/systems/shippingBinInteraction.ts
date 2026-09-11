@@ -17,17 +17,31 @@ import { Player } from '../entities/Player';
  * o `PlayerController`, não esta classe. Daqui, a interação é idêntica
  * estando o jogador do lado que estiver.
  *
- * Ainda não vende sementes nem tem loja de compra — só o lado de venda do
- * ciclo (plantar → colher → vender), que é o escopo deste passo da Fase 5.
+ * Ao vender, dá um pulo elástico na própria caixa (`popBin`) além do texto
+ * flutuante de moedas ganhas — feedback visual (Fase 9 antecipada), não
+ * afeta o resultado da venda, que já foi decidido antes.
  */
 export class ShippingBinInteractable implements Interactable {
+  private readonly binBaseScaleX: number;
+  private readonly binBaseScaleY: number;
+
   constructor(
     private readonly scene: Phaser.Scene,
+    private readonly bin: Phaser.GameObjects.Image,
     private readonly inventory: Inventory,
     private readonly player: Player,
-    private readonly anchorX: number,
-    private readonly anchorY: number,
-  ) {}
+  ) {
+    this.binBaseScaleX = bin.scaleX;
+    this.binBaseScaleY = bin.scaleY;
+  }
+
+  private get anchorX(): number {
+    return this.bin.x;
+  }
+
+  private get anchorY(): number {
+    return this.bin.y;
+  }
 
   interact(): void {
     if (this.player.isBusy()) return;
@@ -52,6 +66,22 @@ export class ShippingBinInteractable implements Interactable {
       `Vendido: ${totalItems} ite${totalItems === 1 ? 'm' : 'ns'} por ${totalCoins} moedas (saldo: ${this.inventory.getCoins()}).`,
     );
     this.showFloatingGain(totalCoins);
+    this.popBin();
+  }
+
+  /** Pulo elástico (achata e estica) na própria caixa — feedback de "recebeu a entrega" ao vender. */
+  private popBin(): void {
+    this.scene.tweens.killTweensOf(this.bin);
+    this.bin.setScale(this.binBaseScaleX, this.binBaseScaleY);
+
+    this.scene.tweens.add({
+      targets: this.bin,
+      scaleX: this.binBaseScaleX * 1.15,
+      scaleY: this.binBaseScaleY * 0.85,
+      duration: 110,
+      yoyo: true,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   /** Texto flutuante temporário (sobe e desaparece) só para dar feedback visual imediato da venda — não guarda estado nem afeta nada além de si mesmo. */
@@ -88,5 +118,5 @@ export function registerShippingBinInteractable(
   player: Player,
   registry: InteractionRegistry,
 ): void {
-  registry.set(col, row, new ShippingBinInteractable(scene, inventory, player, bin.x, bin.y));
+  registry.set(col, row, new ShippingBinInteractable(scene, bin, inventory, player));
 }

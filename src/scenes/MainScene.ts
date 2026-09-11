@@ -28,6 +28,7 @@ import {
 } from '../data/player';
 import { CROPS } from '../data/crops';
 import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE } from '../data/ui';
+import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
 import { buildFarmGround, buildFarmFence, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildWalkableGrid } from '../systems/grid';
 import { updateTreeOverlap } from '../systems/treeOverlap';
@@ -40,6 +41,7 @@ import { InteractionRegistry } from '../systems/interaction';
 import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
 import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
 import { registerShopInteractable } from '../systems/shopInteraction';
+import { TileCursor } from '../systems/tileCursor';
 import { SeedBar } from '../ui/seedBar';
 import { CoinBar } from '../ui/coinBar';
 import { ShopMenu } from '../ui/shopMenu';
@@ -111,6 +113,12 @@ export class MainScene extends Phaser.Scene {
 
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
     this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
+
+    this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
+    this.load.spritesheet(SPLASH_KEY, encodeURI(`/${SPLASH_PATH}`), {
+      frameWidth: SPLASH_FRAME_SIZE,
+      frameHeight: SPLASH_FRAME_SIZE,
+    });
   }
 
   create(): void {
@@ -155,6 +163,10 @@ export class MainScene extends Phaser.Scene {
 
     this.shopMenu = new ShopMenu(this, Object.values(CROPS), (cropId) => this.buySeed(cropId));
     registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
+
+    // Fica registrado nos listeners de input da própria cena — não precisa
+    // ser guardado como campo, só criado uma vez.
+    new TileCursor(this, farmMap, tilePx);
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
 
