@@ -4,6 +4,7 @@ import { InteractionRegistry, Interactable } from './interaction';
 import { Inventory } from './inventory';
 import { Player } from '../entities/Player';
 import { FarmMapData } from '../data/maps/farmMap';
+import { CROPS } from '../data/crops';
 
 /**
  * Uma célula cultivável, quando interagida: ara se estiver comum, planta se
@@ -15,6 +16,9 @@ import { FarmMapData } from '../data/maps/farmMap';
  * Arar/plantar/regar/colher tocam a animação de ferramenta correspondente
  * no personagem antes de aplicar o efeito (a animação é só representação
  * visual; quem decide o resultado é sempre `Farmland`, nunca a animação).
+ *
+ * Plantar consome 1 semente do estoque da cultura selecionada
+ * (`Inventory.useSeed`, Fase 5) — sem estoque, não planta (compre na Loja).
  */
 class PlotInteractable implements Interactable {
   constructor(
@@ -38,8 +42,17 @@ class PlotInteractable implements Interactable {
         this.refresh();
       });
     } else if (plot.state === 'tilled') {
+      const seedId = this.inventory.getSelectedSeedId();
+      if (this.inventory.getSeedCount(seedId) <= 0) {
+        // Sem sementes no estoque — nada a plantar. Sem animação, já que a
+        // ação não teria efeito nenhum (mesmo espírito de "clique sem
+        // efeito" usado em qualquer obstáculo/célula sem interação).
+        console.log(`Sem sementes de ${CROPS[seedId]?.name ?? seedId} — compre na loja.`);
+        return;
+      }
       this.player.performAction('plant', () => {
-        this.farmland.plant(this.col, this.row, this.inventory.getSelectedSeedId());
+        this.inventory.useSeed(seedId);
+        this.farmland.plant(this.col, this.row, seedId);
         this.refresh();
       });
     } else if (plot.state === 'dead') {

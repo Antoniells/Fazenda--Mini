@@ -11,6 +11,10 @@ import {
   FENCE_EDGE_V_INDEX,
   PINE_TREE_KEY,
   PINE_TREE_FRAME_NAME,
+  SHIPPING_BIN_KEY,
+  SHIPPING_BIN_FRAME_NAME,
+  SHIPPING_BIN_FRAME,
+  SHOP_STAND_KEY,
 } from '../data/tiles';
 
 /** Escala de exibição: cada tile de 16px é desenhado em 32px na tela. */
@@ -121,4 +125,60 @@ export function buildFarmDecorations(
   }
 
   return trees;
+}
+
+/**
+ * Desenha a Caixa de Remessas (ponto de venda da Fase 5) na posição
+ * definida em `farmMap.shippingBinPosition`. É um objeto sólido e estático
+ * (sem animação — só o frame fechado de `shipping box.png`, ver
+ * `data/tiles.ts`); a célula correspondente é bloqueada em
+ * `systems/grid.ts`, então o jogador não pisa nela, só interage encostado
+ * (ver `PlayerController`).
+ *
+ * Profundidade fixa pelo Y da base, mesma técnica das árvores
+ * (`buildFarmDecorations`): como a caixa nunca muda de posição, o resultado
+ * é idêntico a recalcular a cada frame, sem o custo de fazer isso
+ * 60x/segundo para algo que não se move.
+ */
+export function buildShippingBin(scene: Phaser.Scene, map: FarmMapData): Phaser.GameObjects.Image {
+  const tile = map.tileSize * DISPLAY_SCALE;
+  const [col, row] = map.shippingBinPosition;
+
+  const texture = scene.textures.get(SHIPPING_BIN_KEY);
+  if (!texture.has(SHIPPING_BIN_FRAME_NAME)) {
+    texture.add(
+      SHIPPING_BIN_FRAME_NAME,
+      0,
+      SHIPPING_BIN_FRAME.x,
+      SHIPPING_BIN_FRAME.y,
+      SHIPPING_BIN_FRAME.width,
+      SHIPPING_BIN_FRAME.height,
+    );
+  }
+
+  const bin = scene.add.image(col * tile + tile / 2, (row + 1) * tile, SHIPPING_BIN_KEY, SHIPPING_BIN_FRAME_NAME);
+  bin.setOrigin(0.5, 1);
+  bin.setScale(DISPLAY_SCALE);
+  bin.setDepth(bin.y);
+
+  return bin;
+}
+
+/**
+ * Desenha a banca da Loja (Fase 5) na posição definida em
+ * `farmMap.shopPosition`. `Newsstand.png` já é uma única imagem completa
+ * (sem frames para recortar, ao contrário da Caixa de Remessas). Mesma
+ * técnica de profundidade fixa das árvores e da Caixa de Remessas — objeto
+ * estático, não precisa recalcular a cada frame.
+ */
+export function buildShopStand(scene: Phaser.Scene, map: FarmMapData): Phaser.GameObjects.Image {
+  const tile = map.tileSize * DISPLAY_SCALE;
+  const [col, row] = map.shopPosition;
+
+  const stand = scene.add.image(col * tile + tile / 2, (row + 1) * tile, SHOP_STAND_KEY);
+  stand.setOrigin(0.5, 1);
+  stand.setScale(DISPLAY_SCALE);
+  stand.setDepth(stand.y);
+
+  return stand;
 }

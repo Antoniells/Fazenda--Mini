@@ -13,6 +13,13 @@
  * - Os índices de solo arado (seco/molhado) foram encontrados pela mesma
  *   varredura de tiles 100% uniformes em "Tilled Soil and wet soil.png"
  *   (metade de cima = seco, metade de baixo = molhado/regado).
+ * - SHIPPING_BIN_FRAME foi obtido recortando "shipping box.png" (48x64):
+ *   o spritesheet tem estados fechado/aberto em tiles de 16x16, mas só o
+ *   frame fechado (linha 2, coluna 1) é uma imagem completa e autocontida
+ *   dentro de um único tile — o estado aberto precisa de 2 tiles empilhados
+ *   (topo com a tampa + base com o interior) para caber. Como a caixa é só
+ *   um objeto estático (sem animação de abrir/fechar nesta fase), o frame
+ *   fechado sozinho já é suficiente.
  */
 
 export const TILE_SIZE = 16;
@@ -51,3 +58,19 @@ export const SOIL_TILESET_PATH = 'Tileset/Tilled Soil and wet soil.png';
 export const SOIL_DRY_INDEX = 57;
 /** Solo arado molhado/regado, tile sólido (linha 6, coluna 9). */
 export const SOIL_WET_INDEX = 153;
+
+export const SHIPPING_BIN_KEY = 'shipping-bin';
+export const SHIPPING_BIN_PATH = 'Objects/Exterior/shipping box.png';
+export const SHIPPING_BIN_FRAME_NAME = 'shipping-bin-closed';
+export const SHIPPING_BIN_FRAME = { x: 0, y: 16, width: 16, height: 16 };
+
+/**
+ * Banca da Loja (Fase 5): `Newsstand.png` (32x48) é uma única imagem
+ * completa (uma bancada com mercadorias nas prateleiras), sem estados nem
+ * frames — ao contrário da Caixa de Remessas, não precisa de recorte.
+ * Ocupa 2 tiles de largura visualmente, mas só a célula central (base) é
+ * bloqueada no grid — mesma simplificação já usada nas árvores (também
+ * mais largas que 1 tile e bloqueadas só numa célula).
+ */
+export const SHOP_STAND_KEY = 'shop-stand';
+export const SHOP_STAND_PATH = 'Objects/Exterior/Newsstand.png';

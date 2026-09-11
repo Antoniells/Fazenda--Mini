@@ -38,11 +38,13 @@
 Detalhes de como o sistema funciona, arquivos envolvidos e limitações atuais: ver [TECHNICAL.md](TECHNICAL.md#agricultura-fase-4).
 
 ## Fase 5 — Economia
-- [ ] Moedas
-- [ ] Inventário
-- [ ] Venda
-- [ ] Compra
-- [ ] Loja
+- [x] Moedas (saldo no `Inventory`, HUD no canto superior direito)
+- [x] Inventário (colheita e estoque de sementes por cultura, separados; não é um inventário genérico de itens/slots — não era necessário para o escopo do jogo)
+- [x] Venda (Caixa de Remessas sólida, com interação adjacente, compra toda a colheita do inventário por `sellPrice`)
+- [x] Compra (sementes, pelo `seedPrice` de cada cultura, pagas com `spendCoins`)
+- [x] Loja (banca sólida com interação adjacente e painel de compra)
+
+Detalhes: ver [TECHNICAL.md](TECHNICAL.md#economia-fase-5).
 
 ## Fase 6 — Construções e decoração
 - [ ] Construções
@@ -84,4 +86,4 @@ Detalhes de como o sistema funciona, arquivos envolvidos e limitações atuais: 
 
 ---
 
-**Status atual:** Fases 1-4 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding e agricultura). Fase 5 (Economia) ainda não iniciada.
+**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Fase 6 (Construções e decoração) ainda não iniciada.

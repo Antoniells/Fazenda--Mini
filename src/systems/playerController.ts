@@ -1,8 +1,24 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { WalkableGrid } from './grid';
-import { findPath } from './pathfinding';
+import { findPath, GridPoint } from './pathfinding';
 import { InteractionRegistry } from './interaction';
+
+/**
+ * Alvo pendente de interação: `standCol/standRow` é a célula andável para
+ * onde o personagem está indo, `targetCol/targetRow` é a célula onde a
+ * interação de fato está registrada. Para uma célula andável e interativa
+ * (ex.: um canteiro), as duas são a mesma célula — o jogador para em cima
+ * dela. Para uma célula sólida (ex.: a Caixa de Remessas), `standCol/Row`
+ * é a célula andável mais próxima do alvo, e o jogador vira de frente para
+ * `targetCol/Row` ao chegar, antes de interagir (ver `handleBlockedClick`).
+ */
+interface PendingInteraction {
+  standCol: number;
+  standRow: number;
+  targetCol: number;
+  targetRow: number;
+}
 
 /**
  * Liga o input do jogador (teclado e clique no mapa) à entidade `Player`.
@@ -11,6 +27,12 @@ import { InteractionRegistry } from './interaction';
  * muda). Se a célula clicada tiver algo registrado em `InteractionRegistry`
  * (terreno, plantação, etc.), a interação é disparada assim que o
  * personagem chegar lá — ou imediatamente, se ele já estiver na célula.
+ *
+ * Células sólidas (não andáveis, ex.: a Caixa de Remessas) também podem ter
+ * uma interação: nesse caso o personagem não pode pisar nelas, então o
+ * clique leva até a célula andável mais próxima entre as 4 vizinhas da
+ * célula clicada, e a interação só dispara depois que ele chega lá e vira
+ * de frente para o alvo (ver `handleBlockedClick`).
  */
 export class PlayerController {
   private readonly player: Player;
@@ -18,7 +40,7 @@ export class PlayerController {
   private readonly cursors: Phaser.Types.Input.Keyboard.CursorKeys;
   private readonly tilePx: number;
   private readonly interactions: InteractionRegistry;
-  private pendingInteractionTarget: { col: number; row: number } | null = null;
+  private pendingInteraction: PendingInteraction | null = null;
   private readonly scene: Phaser.Scene;
   private lastCol: number;
   private lastRow: number;
@@ -51,10 +73,13 @@ export class PlayerController {
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
 
-    if (!this.grid.isWalkable(col, row)) return;
+    if (!this.grid.isWalkable(col, row)) {
+      this.handleBlockedClick(col, row);
+      return;
+    }
 
     if (this.player.col === col && this.player.row === row) {
-      this.pendingInteractionTarget = null;
+      this.pendingInteraction = null;
       this.interactions.get(col, row)?.interact();
       return;
     }
@@ -62,8 +87,67 @@ export class PlayerController {
     const path = findPath(this.grid, { col: this.player.col, row: this.player.row }, { col, row });
     if (!path || path.length === 0) return;
 
-    this.pendingInteractionTarget = this.interactions.get(col, row) ? { col, row } : null;
+    this.pendingInteraction = this.interactions.get(col, row)
+      ? { standCol: col, standRow: row, targetCol: col, targetRow: row }
+      : null;
     this.player.setPath(path);
+  }
+
+  /**
+   * Clique numa célula sólida (não andável): só faz algo se houver uma
+   * interação registrada ali (ex.: a Caixa de Remessas) — do contrário é só
+   * um obstáculo comum (árvore, cerca) e o clique não tem efeito, igual a
+   * antes. Havendo interação, encontra a célula andável mais próxima do
+   * jogador entre as 4 vizinhas da célula clicada e vai até lá; virar de
+   * frente para o alvo e disparar `interact()` acontece na chegada (`update`).
+   */
+  private handleBlockedClick(col: number, row: number): void {
+    const interactable = this.interactions.get(col, row);
+    if (!interactable) return;
+
+    const stand = this.findNearestWalkableNeighbor(col, row);
+    if (!stand) return;
+
+    if (this.player.col === stand.col && this.player.row === stand.row) {
+      this.pendingInteraction = null;
+      this.player.faceDirection(col - stand.col, row - stand.row);
+      interactable.interact();
+      return;
+    }
+
+    const path = findPath(this.grid, { col: this.player.col, row: this.player.row }, stand);
+    if (!path || path.length === 0) return;
+
+    this.pendingInteraction = { standCol: stand.col, standRow: stand.row, targetCol: col, targetRow: row };
+    this.player.setPath(path);
+  }
+
+  /**
+   * Entre as células andáveis ao lado, em cima ou embaixo de (`col`, `row`),
+   * devolve a mais próxima do jogador pela distância real de rota (não só
+   * Manhattan) — o mapa é pequeno, então rodar o A* até 4 vezes aqui não
+   * pesa (mesma lógica de "não precisa de estrutura otimizada" já usada em
+   * `pathfinding.ts`). `null` se nenhuma vizinha for andável ou alcançável.
+   */
+  private findNearestWalkableNeighbor(col: number, row: number): GridPoint | null {
+    const candidates: GridPoint[] = [
+      { col, row: row - 1 },
+      { col, row: row + 1 },
+      { col: col - 1, row },
+      { col: col + 1, row },
+    ].filter((candidate) => this.grid.isWalkable(candidate.col, candidate.row));
+
+    let best: GridPoint | null = null;
+    let bestLength = Infinity;
+    for (const candidate of candidates) {
+      const path = findPath(this.grid, { col: this.player.col, row: this.player.row }, candidate);
+      if (!path) continue;
+      if (path.length < bestLength) {
+        bestLength = path.length;
+        best = candidate;
+      }
+    }
+    return best;
   }
 
   update(time: number, delta: number): void {
@@ -74,7 +158,7 @@ export class PlayerController {
       if (dCol !== 0 || dRow !== 0) {
         if (!this.player.isMoving()) {
           this.player.clearPath();
-          this.pendingInteractionTarget = null;
+          this.pendingInteraction = null;
           // Prioriza um eixo por vez (sem diagonais): vertical antes de horizontal.
           if (dRow !== 0) this.player.tryStep(0, dRow, this.grid.isWalkable.bind(this.grid));
           else this.player.tryStep(dCol, 0, this.grid.isWalkable.bind(this.grid));
@@ -92,14 +176,21 @@ export class PlayerController {
     }
     if (
       !this.player.isBusy() &&
-      this.pendingInteractionTarget &&
+      this.pendingInteraction &&
       !this.player.isMoving() &&
-      this.player.col === this.pendingInteractionTarget.col &&
-      this.player.row === this.pendingInteractionTarget.row
+      this.player.col === this.pendingInteraction.standCol &&
+      this.player.row === this.pendingInteraction.standRow
     ) {
-      const { col, row } = this.pendingInteractionTarget;
-      this.pendingInteractionTarget = null;
-      this.interactions.get(col, row)?.interact();
+      const { standCol, standRow, targetCol, targetRow } = this.pendingInteraction;
+      this.pendingInteraction = null;
+      // Se o alvo é uma célula diferente de onde o jogador parou (caso da
+      // célula sólida), vira de frente para ele antes de interagir. Quando
+      // são a mesma célula (caso andável, ex.: canteiro), não há nada a
+      // virar — mantém o comportamento de sempre.
+      if (targetCol !== standCol || targetRow !== standRow) {
+        this.player.faceDirection(targetCol - standCol, targetRow - standRow);
+      }
+      this.interactions.get(targetCol, targetRow)?.interact();
     }
   }
 }

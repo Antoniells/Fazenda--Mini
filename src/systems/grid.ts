@@ -9,10 +9,11 @@ export interface WalkableGrid {
 
 /**
  * Constrói a grade de caminhabilidade a partir dos dados do mapa: o anel da
- * borda (onde a cerca é desenhada) e as células das árvores são bloqueados.
- * Fonte única de obstáculos — nenhuma posição é redefinida aqui, tudo vem de
- * `farmMap`. Para adicionar um novo tipo de obstáculo no futuro, basta
- * marcar mais células como bloqueadas aqui, sem alterar quem consome o grid.
+ * borda (onde a cerca é desenhada), as células das árvores, a Caixa de
+ * Remessas e a Loja são bloqueados. Fonte única de obstáculos — nenhuma
+ * posição é redefinida aqui, tudo vem de `farmMap`. Para adicionar um novo
+ * tipo de obstáculo no futuro, basta marcar mais células como bloqueadas
+ * aqui, sem alterar quem consome o grid.
  */
 export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   const blocked = new Set<string>();
@@ -30,6 +31,9 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   for (const [col, row] of map.treePositions) {
     blocked.add(key(col, row));
   }
+
+  blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
+  blocked.add(key(map.shopPosition[0], map.shopPosition[1]));
 
   const inBounds = (col: number, row: number): boolean =>
     col >= 0 && row >= 0 && col < map.cols && row < map.rows;

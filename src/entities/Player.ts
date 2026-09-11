@@ -126,6 +126,18 @@ this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDow
     });
   }
 
+  /**
+   * Vira o personagem para encarar uma direção sem se mover (usado ao
+   * chegar perto de um objeto sólido, ex.: a Caixa de Remessas, para
+   * interagir de frente em vez de na direção em que o último passo
+   * aconteceu por acaso). Reaproveita a mesma lógica de direção/flip do
+   * movimento — não há orientação especial só para isso.
+   */
+  faceDirection(dCol: number, dRow: number): void {
+    this.updateFacing(dCol, dRow);
+    this.playIdle();
+  }
+
   private beginStep(col: number, row: number, dCol: number, dRow: number): void {
     const from = this.cellAnchor(this.col, this.row);
     const to = this.cellAnchor(col, row);

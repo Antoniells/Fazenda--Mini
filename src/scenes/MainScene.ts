@@ -12,6 +12,10 @@ import {
   PINE_TREE_FRAME,
   SOIL_TILESET_KEY,
   SOIL_TILESET_PATH,
+  SHIPPING_BIN_KEY,
+  SHIPPING_BIN_PATH,
+  SHOP_STAND_KEY,
+  SHOP_STAND_PATH,
 } from '../data/tiles';
 import {
   PLAYER_IDLE_KEY,
@@ -23,8 +27,8 @@ import {
   PLAYER_ACTIONS,
 } from '../data/player';
 import { CROPS } from '../data/crops';
-import { INVENTORY_UI_KEY, INVENTORY_UI_PATH } from '../data/ui';
-import { buildFarmGround, buildFarmFence, buildFarmDecorations, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE } from '../data/ui';
+import { buildFarmGround, buildFarmFence, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildWalkableGrid } from '../systems/grid';
 import { updateTreeOverlap } from '../systems/treeOverlap';
 import { Player } from '../entities/Player';
@@ -34,12 +38,18 @@ import { FarmlandRenderer } from '../systems/farmlandRenderer';
 import { Inventory } from '../systems/inventory';
 import { InteractionRegistry } from '../systems/interaction';
 import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
+import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
+import { registerShopInteractable } from '../systems/shopInteraction';
 import { SeedBar } from '../ui/seedBar';
+import { CoinBar } from '../ui/coinBar';
+import { ShopMenu } from '../ui/shopMenu';
 
 /**
  * Cena principal: monta a propriedade da fazenda (Fase 2), o personagem
- * jogável com movimentação/clique/pathfinding (Fase 3) e a agricultura —
- * terrenos cultiváveis, arar, plantar, crescimento, regar e colher (Fase 4).
+ * jogável com movimentação/clique/pathfinding (Fase 3), a agricultura —
+ * terrenos cultiváveis, arar, plantar, crescimento, regar e colher (Fase 4)
+ * — e a economia: moedas, venda na Caixa de Remessas e compra de sementes
+ * na Loja (Fase 5).
  */
 /** Avanço de relógio (ms) aplicado pela tecla de debug T — só para acelerar testes de crescimento/morte por sede, não é mecânica de jogo. */
 const DEBUG_TIME_SKIP_MS = 5000;
@@ -52,6 +62,8 @@ export class MainScene extends Phaser.Scene {
   private farmlandRenderer!: FarmlandRenderer;
   private inventory!: Inventory;
   private seedBar!: SeedBar;
+  private coinBar!: CoinBar;
+  private shopMenu!: ShopMenu;
 
   constructor() {
     super('MainScene');
@@ -92,6 +104,13 @@ export class MainScene extends Phaser.Scene {
     }
 
     this.load.image(INVENTORY_UI_KEY, encodeURI(`/${INVENTORY_UI_PATH}`));
+    this.load.spritesheet(COIN_ICON_KEY, encodeURI(`/${COIN_ICON_PATH}`), {
+      frameWidth: COIN_ICON_FRAME_SIZE,
+      frameHeight: COIN_ICON_FRAME_SIZE,
+    });
+
+    this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
+    this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
   }
 
   create(): void {
@@ -109,6 +128,8 @@ export class MainScene extends Phaser.Scene {
     buildFarmGround(this, farmMap);
     buildFarmFence(this, farmMap);
     this.trees = buildFarmDecorations(this, farmMap);
+    const shippingBin = buildShippingBin(this, farmMap);
+    buildShopStand(this, farmMap);
 
     const grid = buildWalkableGrid(farmMap);
     const tilePx = farmMap.tileSize * DISPLAY_SCALE;
@@ -122,19 +143,61 @@ export class MainScene extends Phaser.Scene {
     this.inventory = new Inventory();
     const interactions = new InteractionRegistry();
     registerFarmlandInteractables(farmMap, this.farmland, this.farmlandRenderer, this.inventory, this.player, interactions);
+    registerShippingBinInteractable(
+      this,
+      shippingBin,
+      farmMap.shippingBinPosition[0],
+      farmMap.shippingBinPosition[1],
+      this.inventory,
+      this.player,
+      interactions,
+    );
+
+    this.shopMenu = new ShopMenu(this, Object.values(CROPS), (cropId) => this.buySeed(cropId));
+    registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
 
     this.events.on('player-stepped', (col: number, row: number) => {
       // Sempre que o player pisar em uma nova célula, tenta animar a plantinha
       this.farmlandRenderer.rustleCrop(col, row);
+      // Andar embora fecha a loja, igual a afastar-se de um balcão — evita
+      // deixar o painel aberto "preso" na tela enquanto o jogador vagueia.
+      if (this.shopMenu.isOpen()) this.shopMenu.close();
     });
 
-    this.seedBar = new SeedBar(this, Object.values(CROPS));
+    this.seedBar = new SeedBar(this, Object.values(CROPS), (cropId) => this.selectSeed(cropId));
     this.seedBar.refresh(this.inventory.getSelectedSeedId());
+    this.seedBar.refreshStock((cropId) => this.inventory.getSeedCount(cropId));
+
+    this.coinBar = new CoinBar(this);
+    this.coinBar.refresh(this.inventory.getCoins());
 
     this.setupSeedSelection();
     this.setupDebugTimeSkip();
+  }
+
+  /** Tenta comprar 1 semente da cultura (chamado ao clicar num slot da Loja). */
+  private buySeed(cropId: string): void {
+    const crop = CROPS[cropId];
+    if (!crop) return;
+
+    if (this.inventory.spendCoins(crop.seedPrice)) {
+      this.inventory.addSeeds(cropId, 1);
+      console.log(`Comprado: 1 semente de ${crop.name} por ${crop.seedPrice} moedas (saldo: ${this.inventory.getCoins()}).`);
+    } else {
+      console.log(`Moedas insuficientes para comprar semente de ${crop.name} (precisa de ${crop.seedPrice}).`);
+    }
+
+    this.shopMenu.refresh(this.inventory.getCoins());
+  }
+
+  /** Troca a semente ativa (chamado pelas teclas 1/2/3 e pelo clique na barra de sementes). */
+  private selectSeed(cropId: string): void {
+    if (this.inventory.selectSeed(cropId)) {
+      console.log(`Semente selecionada: ${CROPS[cropId].name}`);
+      this.seedBar.refresh(cropId);
+    }
   }
 
   /** Teclas 1/2/3 trocam a semente ativa no inventário, na ordem em que aparecem em `CROPS`. */
@@ -148,10 +211,7 @@ export class MainScene extends Phaser.Scene {
     for (const [event, index] of keys) {
       this.input.keyboard!.on(event, () => {
         const cropId = seedIds[index];
-        if (cropId && this.inventory.selectSeed(cropId)) {
-          console.log(`Semente selecionada: ${CROPS[cropId].name}`);
-          this.seedBar.refresh(cropId);
-        }
+        if (cropId) this.selectSeed(cropId);
       });
     }
   }
@@ -170,6 +230,18 @@ export class MainScene extends Phaser.Scene {
 
     this.farmland.update(delta);
     this.farmlandRenderer.renderAll(this.farmland);
+
+    // Atualiza a cada frame em vez de só onde `coins`/estoque de sementes
+    // mudam (venda na Caixa de Remessas, compra na Loja, plantio) — evita
+    // depender de lembrar de sincronizar a UI em cada lugar que mexer
+    // nesses valores. Barato: CoinBar e SeedBar só redesenham texto quando
+    // o valor muda de fato.
+    this.coinBar.refresh(this.inventory.getCoins());
+    this.seedBar.refreshStock((cropId) => this.inventory.getSeedCount(cropId));
+
+    // A Loja só precisa refletir o saldo enquanto está aberta (o jogador
+    // não pode estar em dois lugares ao mesmo tempo, então nada muda o
+    // saldo enquanto ela está fechada).
+    if (this.shopMenu.isOpen()) this.shopMenu.refresh(this.inventory.getCoins());
   }
-  
 }

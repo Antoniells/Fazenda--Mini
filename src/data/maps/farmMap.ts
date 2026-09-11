@@ -8,6 +8,18 @@ export interface FarmMapData {
   treePositions: Array<[number, number]>;
   /** Células (col, row) que podem ser cultivadas (aradas, plantadas). */
   farmlandArea: Array<[number, number]>;
+  /**
+   * Célula (col, row) onde a Caixa de Remessas (ponto de venda, Fase 5)
+   * fica — um objeto sólido, bloqueado no grid (`systems/grid.ts`), não
+   * uma célula andável. O jogador interage encostado nela, não em cima.
+   */
+  shippingBinPosition: [number, number];
+  /**
+   * Célula (col, row) onde a banca da Loja fica — também um objeto sólido,
+   * bloqueado no grid, com interação adjacente (mesmo mecanismo da Caixa
+   * de Remessas).
+   */
+  shopPosition: [number, number];
 }
 
 /**
@@ -29,6 +41,15 @@ export const farmMap: FarmMapData = {
     [21, 14],
   ],
   farmlandArea: buildRectangle(8, 11, 4, 3),
+  // Encostada na cerca lateral direita (coluna 24 é a borda, bloqueada),
+  // na mesma altura da lavoura — fácil de alcançar depois de colher, sem
+  // ficar solta no meio do campo. Só 3 dos 4 vizinhos ficam andáveis (o do
+  // lado da cerca não), o que já é o suficiente para a interação adjacente.
+  shippingBinPosition: [23, 12],
+  // Logo acima da lavoura (farmlandArea começa na linha 11) — de frente
+  // para o campo, fácil de visitar tanto para plantar quanto para comprar
+  // mais sementes na sequência.
+  shopPosition: [9, 10],
 };
 
 /** Gera a lista de células (col, row) de um retângulo de `w` x `h` a partir de (`col0`, `row0`). */

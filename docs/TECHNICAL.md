@@ -209,9 +209,9 @@ de um sprite novo.
 
 ### Barra de sementes (`ui/seedBar.ts`)
 
-HUD fixo (screen-space, `setScrollFactor(0)`) no canto inferior esquerdo,
-um slot por cultura em `CROPS`. Só composição de assets existentes, sem
-nenhuma forma desenhada por código:
+HUD fixo (screen-space, `setScrollFactor(0)`), centralizado na base da
+tela, um slot por cultura em `CROPS`. Só composição de assets existentes,
+sem nenhuma forma desenhada por código:
 
 - A moldura de cada slot é um recorte de `UI/Inventory/Slots.png`
   (`data/ui.ts` guarda o retângulo exato, localizado recortando/ampliando o
@@ -219,14 +219,19 @@ nenhuma forma desenhada por código:
   em `MainScene`).
 - O conteúdo do slot é o próprio frame de ícone da cultura
   (`CropDefinition.iconFrame`, hoje sempre 7 — o frame do item já colhido).
-- O destaque da semente selecionada é só escala/opacidade/tingimento
-  (`SeedBar.refresh`) sobre esses mesmos assets — a mesma técnica já usada
-  para a plantação morta em `farmlandRenderer.ts` — nunca uma forma nova
-  desenhada por cima (proibido pelas regras de pixel art do projeto).
+- O destaque da semente selecionada é escala/opacidade/tingimento com
+  tweens (`SeedBar.refresh`) sobre esses mesmos assets — a mesma técnica já
+  usada para a plantação morta em `farmlandRenderer.ts` — nunca uma forma
+  nova desenhada por cima (proibido pelas regras de pixel art do projeto).
 
-`SeedBar` é puramente visual: não decide nada, só reflete
-`Inventory.getSelectedSeedId()`. `MainScene` chama `refresh()` sempre que
-uma tecla 1/2/3 muda a seleção.
+`SeedBar` não decide nada sozinha: `MainScene.selectSeed()` é o único
+lugar que chama `Inventory.selectSeed()` e depois `SeedBar.refresh()` — ela
+é acionada tanto pelas teclas 1/2/3 quanto pelo clique num slot. Cada slot
+é interativo (`frame.setInteractive()` + `onSelect` passado no construtor);
+o handler de clique chama `event.stopPropagation()` para o clique não
+"vazar" para o listener global do `PlayerController` (que trataria o
+mesmo clique como mover o personagem/interagir com o terreno embaixo do
+HUD).
 
 ### Interação (`systems/interaction.ts` + `systems/farmlandInteraction.ts`)
 
@@ -240,9 +245,11 @@ rega se crescendo, colhe se pronta, ou limpa se morta.
 
 ### Resultado da colheita
 
-`systems/inventory.ts` é uma estrutura mínima (soma por id de item) só para
-a agricultura ter um destino testável — não é o inventário completo, que
-pertence à Fase 5 (Economia).
+`systems/inventory.ts` guarda o resultado de colheitas por id de item, a
+semente selecionada e as moedas do jogador — ver
+[Economia (Fase 5)](#economia-fase-5--fundação) para o que foi adicionado
+nessa fase. Ainda não é um inventário completo (sem slots/pesos/itens além
+de sementes e colheita).
 
 ### Próximos pontos (fora do escopo desta fase)
 
@@ -253,4 +260,169 @@ pertence à Fase 5 (Economia).
   limitação acima).
 - Indicador visual de "precisa de água" antes da plantação morrer (hoje só
   o solo seco/molhado sinaliza isso).
-- Inventário/economia reais (Fase 5).
+
+## Economia (Fase 5)
+
+Fase concluída: fundação (preços, saldo de moedas, HUD), venda (Caixa de
+Remessas), a interação com objetos sólidos que isso exigiu no
+`PlayerController`, estoque de sementes e compra (Loja). O ciclo completo
+— plantar (com sementes do estoque) → colher → vender → comprar mais
+sementes — funciona de ponta a ponta.
+
+### Preços (`data/crops.ts`)
+
+Cada `CropDefinition` ganhou `seedPrice` (custo da semente) e `sellPrice`
+(venda da colheita, sempre maior que `seedPrice` — a diferença é o lucro).
+Substituiu o campo antigo `sellValue`, que não era usado por nada ainda.
+Valores coerentes com o ritmo de cada cultura (já documentado antes):
+batata (mais lenta) é a mais cara dos dois lados; cebola (mais rápida) é a
+mais barata.
+
+### Moedas (`systems/inventory.ts`)
+
+`Inventory` ganhou um saldo (`coins`, começa em 50) com `getCoins`,
+`addCoins` e `spendCoins` — este último recusa (retorna `false`, sem alterar
+o saldo) se não houver moedas suficientes. Continua sem depender do Phaser,
+como o resto do `Inventory` — a UI é quem lê o saldo, não o contrário.
+
+### Estoque de sementes (`systems/inventory.ts`)
+
+`Inventory` ganhou um segundo Map, `seeds` (quantidade por `cropId`),
+deliberadamente separado de `items` (colheita, usado para vender) — mesmo
+indexados pelo mesmo `cropId`, misturar os dois um dia criaria um bug onde
+vender esvaziaria também o estoque de plantio. `getSeedCount`, `addSeeds`
+(compra na Loja) e `useSeed` (consumido ao plantar; recusa se não houver).
+
+O jogador começa com 3 sementes da cultura padrão (cenoura) — o suficiente
+para jogar sem precisar visitar a Loja antes de plantar pela primeira vez;
+as outras culturas começam em 0 e precisam ser compradas.
+
+`PlotInteractable` (`systems/farmlandInteraction.ts`) agora checa
+`getSeedCount` antes de plantar: sem estoque da semente selecionada, o
+clique não faz nada (só um log — mesmo espírito de "clique sem efeito" já
+usado para obstáculos sem interação), sem tocar a animação de plantar à
+toa. Com estoque, `useSeed` é chamado dentro do `performAction`, junto com
+`Farmland.plant` — a mesma barreira "efeito só depois da animação, nunca
+antes" que já vale para as outras ações agrícolas.
+
+### HUD de moedas (`ui/coinBar.ts`)
+
+HUD fixo (screen-space) no canto superior direito: um fundo semitransparente,
+a moeda girando de `UI/Money.png` (6 frames, animação própria) como ícone, e
+o saldo em texto. O número em si usa `scene.add.text` — não existe fonte em
+pixel art no pacote de assets, e a quantidade de moedas é um valor livre que
+não cabe num sprite fixo. O fundo se redimensiona conforme o texto cresce
+(saldo com mais dígitos), e a moeda dá um pequeno "pulo" (tween de escala)
+sempre que o saldo aumenta — feedback de "ganhou dinheiro" sem precisar de
+sprite novo.
+
+`CoinBar.refresh()` só faz algo quando o valor realmente muda (compara com o
+último saldo visto). `MainScene` chama `refresh()` a cada frame em vez de só
+nos pontos que mudam `coins` (hoje: a venda na Caixa de Remessas) — evita
+depender de lembrar de sincronizar a UI em cada novo lugar que mexer em
+moedas no futuro (ex.: a loja de compra). É diferente da `SeedBar`, que só
+atualiza sob demanda porque seu `refresh()` dispara tweens que não podem
+reiniciar 60x/segundo — para um texto simples que só redesenha quando muda
+de fato, isso não é um problema.
+
+### Caixa de Remessas e venda (`systems/shippingBinInteraction.ts`)
+
+Ponto de venda do jogador: um objeto sólido e estático
+(`Objects/Exterior/shipping box.png`) que vende toda a colheita do
+inventário de uma vez. Antes disso era um NPC Banqueiro andável — trocado
+por uma caixa de remessas sólida porque um NPC sem colisão, em cima do qual
+o jogador precisava pisar para interagir, quebrava a imersão do estilo
+Stardew Valley que o jogo busca.
+
+- **Asset** (`data/tiles.ts`, `SHIPPING_BIN_FRAME`): `shipping box.png`
+  (48x64) tem estados fechado/aberto em tiles de 16x16, conferidos por
+  recorte/zoom antes de usar. Só o frame fechado (linha 2, coluna 1) é uma
+  imagem completa dentro de um único tile — o estado aberto precisa de 2
+  tiles empilhados (tampa + base) para caber, e como a caixa não anima
+  nesta fase (sem efeito de abrir ao vender), só o frame fechado é usado,
+  como imagem estática (não um spritesheet/animação).
+- **Posição** (`data/maps/farmMap.ts`, `shippingBinPosition`): mesma fonte
+  única de verdade das árvores e da lavoura. Encostada na cerca lateral
+  direita, na mesma altura da lavoura — fácil de alcançar depois de
+  colher, com a coluna da cerca como um dos 4 vizinhos já naturalmente
+  bloqueado.
+- **Desenho** (`systems/mapBuilder.ts`, `buildShippingBin`): mesmo padrão
+  de `buildFarmDecorations` (árvores) — profundidade fixa pelo Y da base,
+  calculada uma vez na criação, já que o objeto nunca muda de posição.
+- **Colisão** (`systems/grid.ts`): a célula é bloqueada, igual às árvores e
+  à borda do mapa — o jogador não pisa nela. É isso que torna necessária a
+  interação adjacente abaixo.
+- **Interação** (`ShippingBinInteractable`, mesmo padrão do
+  `PlotInteractable`): percorre todas as culturas em `CROPS`, tira do
+  inventário tudo que houver de cada uma (`Inventory.takeAll`), soma pelo
+  `sellPrice` de cada uma e credita de uma vez com `addCoins`. Sem nada
+  para vender, não faz nada (só um log). Mostra um texto flutuante
+  temporário (`+N`, sobe e desaparece) como feedback imediato — visual
+  isolado, não guarda estado nem decide nada. Do ponto de vista desta
+  classe, a interação é idêntica não importa de que lado o jogador chegou.
+
+### Loja e compra (`ui/shopMenu.ts`, `systems/shopInteraction.ts`)
+
+Uma banca sólida (`Objects/Exterior/Newsstand.png`, já uma imagem completa
+— sem frames para recortar) perto da lavoura, com o mesmo mecanismo de
+objeto sólido + interação adjacente da Caixa de Remessas.
+
+- **`ShopInteractable`** (mesmo padrão do `PlotInteractable`/
+  `ShippingBinInteractable`): `interact()` só alterna (`toggle()`) o painel
+  `ShopMenu` — não decide preços nem processa compra, isso é do `Inventory`
+  e do próprio `ShopMenu`.
+- **`ShopMenu`**: painel oculto por padrão, mesma linguagem visual da
+  `SeedBar`/`CoinBar` (moldura de `UI/Inventory/Slots.png`, ícone = frame
+  colhido da cultura, preço em texto — mesma justificativa da `CoinBar`
+  para não haver fonte em pixel art). Fica centralizado na tela enquanto
+  aberto; cada slot é clicável (mesma técnica de `event.stopPropagation()`
+  da `SeedBar`, para o clique não vazar para o `PlayerController`) e chama
+  o callback `onBuy(cropId)` passado por `MainScene`. `refresh(coins)`
+  escurece os slots que o jogador não pode pagar no momento — só afeta a
+  aparência, nunca decide se a compra é permitida (isso é sempre
+  `Inventory.spendCoins`).
+- **`MainScene.buySeed(cropId)`**: tenta `inventory.spendCoins(crop.seedPrice)`;
+  se conseguir, `inventory.addSeeds(cropId, 1)`. Sem saldo, não faz nada
+  (só um log) — o painel continua aberto, então o jogador pode tentar outra
+  compra sem precisar reabrir a Loja.
+- **Fechar**: interagir de novo com a banca alterna fechado (`toggle`), e
+  qualquer passo do jogador (`'player-stepped'`) também fecha — evita
+  deixar o painel "preso" na tela enquanto ele anda pela fazenda.
+- **Preço no ícone da `SeedBar`**: a barra de sementes (base da tela) ganhou
+  um número pequeno em cada slot (`SeedBar.refreshStock`) mostrando quantas
+  sementes daquela cultura o jogador tem — sem isso, não haveria como saber
+  por que plantar parou de funcionar ao esgotar o estoque. `MainScene`
+  atualiza isso a cada frame, mesma lógica de "barato, só redesenha quando
+  muda" da `CoinBar`.
+
+### Interação com objetos sólidos (`systems/playerController.ts`)
+
+Antes, `PlayerController.handlePointerDown` descartava qualquer clique numa
+célula não-andável antes mesmo de consultar o `InteractionRegistry` — o que
+tornava impossível interagir com algo sólido sem estar em cima dele. Agora:
+
+- Clique numa célula bloqueada com uma interação registrada
+  (`handleBlockedClick`): acha a célula andável mais próxima do jogador
+  entre as 4 vizinhas da célula clicada (`findNearestWalkableNeighbor`,
+  comparando o comprimento real da rota do A* — não só distância Manhattan
+  — já que o mapa é pequeno o bastante para isso não pesar), e leva o
+  personagem até lá. Sem nenhuma vizinha andável e alcançável, ou sem
+  interação registrada ali (caso comum: árvore, cerca), o clique não tem
+  efeito algum — igual a antes.
+- Ao chegar, se a célula onde parou for diferente da célula-alvo (caso das
+  células sólidas), `Player.faceDirection()` vira o personagem de frente
+  para o alvo antes de `interact()` disparar — sem isso, a direção seria só
+  "qual foi o último passo dado para chegar", que não necessariamente
+  aponta para o alvo. Para uma célula andável e interativa (ex.: um
+  canteiro), a célula onde o jogador para já É a célula-alvo, então esse
+  passo é pulado — comportamento idêntico ao de antes desta mudança.
+- `Player.faceDirection(dCol, dRow)` (novo, em `entities/Player.ts`)
+  reaproveita a mesma lógica de direção/flip já usada pelo movimento — não
+  há orientação especial só para "virar parado".
+
+### Próximos pontos
+
+- Inventário genérico (itens/slots além de colheita e sementes) — só se
+  uma fase futura realmente precisar; o jogo não usa nada assim hoje.
+- Persistência (saldo, estoque de sementes e progresso da lavoura resetam
+  a cada reload — sem sistema de save ainda, previsto pra Fase 9).

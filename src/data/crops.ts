@@ -32,8 +32,10 @@ export interface CropDefinition {
   maxTimeWithoutWaterMs: number;
   /** Quantidade devolvida ao jogador por colheita. */
   yieldAmount: number;
-  /** Valor de venda futuro (não usado nesta fase — sem economia ainda). */
-  sellValue: number;
+  /** Preço (moedas) para comprar uma semente desta cultura. */
+  seedPrice: number;
+  /** Preço (moedas) de venda de uma unidade colhida. Sempre maior que `seedPrice` — a diferença é a margem de lucro do jogador. */
+  sellPrice: number;
 }
 
 export const CARROT: CropDefinition = {
@@ -49,7 +51,8 @@ export const CARROT: CropDefinition = {
   // tempo suficiente para o jogador perceber e regar de novo a tempo.
   maxTimeWithoutWaterMs: 20000,
   yieldAmount: 1,
-  sellValue: 10,
+  seedPrice: 5,
+  sellPrice: 12,
 };
 
 /**
@@ -69,7 +72,10 @@ export const POTATO: CropDefinition = {
   totalGrowthMs: 20000,
   maxTimeWithoutWaterMs: 25000,
   yieldAmount: 1,
-  sellValue: 10,
+  // Cresce mais devagar que as outras duas — preço mais alto para compensar
+  // o ciclo mais longo (mesma lógica de risco/recompensa das demais).
+  seedPrice: 8,
+  sellPrice: 18,
 };
 
 /**
@@ -87,7 +93,9 @@ export const ONION: CropDefinition = {
   totalGrowthMs: 12000,
   maxTimeWithoutWaterMs: 16000,
   yieldAmount: 1,
-  sellValue: 10,
+  // Cresce mais rápido — preço mais baixo, ciclos mais curtos.
+  seedPrice: 4,
+  sellPrice: 9,
 };
 
 export const CROPS: Record<string, CropDefinition> = {

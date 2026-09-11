@@ -2,34 +2,26 @@ import Phaser from 'phaser';
 import { CropDefinition } from '../data/crops';
 import { INVENTORY_UI_KEY, SLOT_FRAME_NAME, SLOT_FRAME_RECT } from '../data/ui';
 
-const SLOT_SCALE = 2;
-const SLOT_GAP = 8;
-const MARGIN = 16;
-const SELECTED_TINT = 0xfff3b0;
-const SELECTED_ICON_SCALE = SLOT_SCALE * 1.25;
+// Parâmetros ajustados para um visual mais limpo e "juicy"
+const SLOT_SCALE = 1.8; // Um pouco maior para melhor visibilidade
+const SLOT_GAP = 5; // Mais respiro entre os slots
+const MARGIN_BOTTOM = 24; // Descola mais do fundo da tela
 
 interface Slot {
   cropId: string;
   frame: Phaser.GameObjects.Image;
   icon: Phaser.GameObjects.Image;
+  stockText: Phaser.GameObjects.Text;
+  baseY: number; // Guardamos o Y original para a animação de pulo
 }
 
-/**
- * HUD simples com um slot por semente disponível: a moldura vem de
- * `UI/Inventory/Slots.png` (um slot individual recortado do spritesheet) e
- * o conteúdo é o próprio frame de ícone de cada cultura
- * (`CropDefinition.iconFrame`) — nenhum desenho programático, só
- * composição de assets já existentes. Destaque da semente selecionada é só
- * escala/opacidade/tingimento (mesma técnica já usada para a plantação
- * morta em `farmlandRenderer.ts`), não uma forma nova desenhada por cima.
- *
- * Puramente visual: não decide nada, só reflete o que `Inventory` já diz
- * via `refresh()`.
- */
 export class SeedBar {
   private readonly slots: Slot[] = [];
+  private readonly scene: Phaser.Scene;
 
-  constructor(scene: Phaser.Scene, crops: CropDefinition[]) {
+  constructor(scene: Phaser.Scene, crops: CropDefinition[], onSelect: (cropId: string) => void) {
+    this.scene = scene;
+
     const texture = scene.textures.get(INVENTORY_UI_KEY);
     if (!texture.has(SLOT_FRAME_NAME)) {
       texture.add(
@@ -44,33 +36,108 @@ export class SeedBar {
 
     const slotWidth = SLOT_FRAME_RECT.width * SLOT_SCALE;
     const slotHeight = SLOT_FRAME_RECT.height * SLOT_SCALE;
-    const baseY = scene.scale.height - MARGIN - slotHeight;
+
+    // Calcula a largura total para centralizar a barra perfeitamente no meio da tela (estilo Stardew Valley)
+    const totalWidth = crops.length * slotWidth + (crops.length - 1) * SLOT_GAP;
+    const startX = (scene.scale.width - totalWidth) / 2 + slotWidth / 2;
+    const baseY = scene.scale.height - MARGIN_BOTTOM - slotHeight / 2;
 
     crops.forEach((crop, index) => {
-      const x = MARGIN + index * (slotWidth + SLOT_GAP);
+      const x = startX + index * (slotWidth + SLOT_GAP);
 
+      // Usando setOrigin(0.5) para que o scale e as animações cresçam a partir do centro
       const frame = scene.add.image(x, baseY, INVENTORY_UI_KEY, SLOT_FRAME_NAME);
-      frame.setOrigin(0, 0);
+      frame.setOrigin(0.5, 0.5);
       frame.setScale(SLOT_SCALE);
       frame.setScrollFactor(0);
       frame.setDepth(1000);
 
-      const icon = scene.add.image(x + slotWidth / 2, baseY + slotHeight / 2, crop.textureKey, crop.iconFrame);
+      // Clicável: seleciona a semente do slot. `event.stopPropagation()` impede
+      // que o mesmo clique também chegue ao listener global do PlayerController
+      // (que trataria o clique como "mover até aqui"/"interagir com o terreno").
+      frame.setInteractive({ useHandCursor: true });
+      frame.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        onSelect(crop.id);
+      });
+
+      const icon = scene.add.image(x, baseY, crop.textureKey, crop.iconFrame);
+      icon.setOrigin(0.5, 0.5);
       icon.setScale(SLOT_SCALE);
       icon.setScrollFactor(0);
       icon.setDepth(1001);
 
-      this.slots.push({ cropId: crop.id, frame, icon });
+      // Quantas sementes dessa cultura o jogador tem — sem isso não haveria
+      // como perceber por que plantar parou de funcionar ao esgotar o estoque.
+      const stockText = scene.add.text(x + slotWidth / 2 - 2, baseY + slotHeight / 2 - 2, '0', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#ffffff',
+        stroke: '#2b1d0e',
+        strokeThickness: 3,
+      });
+      stockText.setOrigin(1, 1);
+      stockText.setScrollFactor(0);
+      stockText.setDepth(1002);
+
+      this.slots.push({ cropId: crop.id, frame, icon, stockText, baseY });
     });
   }
 
-  /** Atualiza o destaque visual para refletir a semente atualmente selecionada em `Inventory`. */
+  /** Atualiza só o número de sementes em estoque de cada slot (chamado sempre que o estoque pode ter mudado — comprar ou plantar). */
+  refreshStock(getStock: (cropId: string) => number): void {
+    for (const slot of this.slots) {
+      slot.stockText.setText(String(getStock(slot.cropId)));
+    }
+  }
+
+  /** Atualiza o destaque visual com animações suaves e elásticas. */
   refresh(selectedCropId: string): void {
     for (const slot of this.slots) {
-      const selected = slot.cropId === selectedCropId;
-      slot.frame.setTint(selected ? SELECTED_TINT : 0xffffff);
-      slot.icon.setScale(selected ? SELECTED_ICON_SCALE : SLOT_SCALE);
-      slot.icon.setAlpha(selected ? 1 : 0.6);
+      const isSelected = slot.cropId === selectedCropId;
+
+      // Contraste: Escurece e deixa transparente se não estiver selecionada
+      slot.frame.setTint(isSelected ? 0xffffff : 0x777777);
+      slot.frame.setAlpha(isSelected ? 1 : 0.8);
+
+      const targetScale = isSelected ? SLOT_SCALE * 1.3 : SLOT_SCALE * 0.9;
+      const targetAlpha = isSelected ? 1 : 0.5;
+      const targetY = isSelected ? slot.baseY - 12 : slot.baseY; // O slot selecionado levanta um pouco
+
+      // Cancela animações anteriores para evitar conflitos se o jogador trocar muito rápido
+      this.scene.tweens.killTweensOf(slot.icon);
+      this.scene.tweens.killTweensOf(slot.frame);
+
+      // Anima a caixa (frame) subindo ou descendo
+      this.scene.tweens.add({
+        targets: slot.frame,
+        y: targetY,
+        duration: 150,
+        ease: 'Power2'
+      });
+
+      if (isSelected) {
+        // Animação "Juicy" (com bounce/elástico) para o ícone selecionado
+        this.scene.tweens.add({
+          targets: slot.icon,
+          scale: targetScale,
+          alpha: targetAlpha,
+          y: targetY,
+          duration: 250,
+          ease: 'Back.easeOut', 
+        });
+      } else {
+        // Retorno suave quando perde a seleção
+        this.scene.tweens.add({
+          targets: slot.icon,
+          scale: targetScale,
+          alpha: targetAlpha,
+          y: targetY,
+          duration: 150,
+          ease: 'Power2',
+        });
+      }
     }
   }
 }
