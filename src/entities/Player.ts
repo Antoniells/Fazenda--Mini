@@ -130,9 +130,19 @@ tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => bo
     this.sprite.setFlipX(false);
     this.busy = true;
 
-    const key = `${PLAYER_ACTIONS[action].key}-${this.facing}`;
+    const spec = PLAYER_ACTIONS[action];
+    // Algumas folhas de animação têm mais margem vazia abaixo do
+    // personagem que o padrão (`Idle.png`) — como a origem é o canto
+    // inferior do frame, não os pés de verdade, isso faz o personagem
+    // "flutuar" acima do chão. `yOffset` compensa deslocando o sprite pra
+    // baixo enquanto ela toca (ver doc de `ActionAnimSpec.yOffset`).
+    const yOffset = spec.yOffset ?? 0;
+    this.sprite.y += yOffset;
+
+    const key = `${spec.key}-${this.facing}`;
     this.sprite.play(key);
     this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      this.sprite.y -= yOffset;
       onApply();
       this.busy = false;
       this.playIdle();

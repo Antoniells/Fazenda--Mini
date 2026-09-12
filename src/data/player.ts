@@ -57,6 +57,17 @@ interface ActionAnimSpec {
   frameRate: number;
   /** Tamanho do frame nesta folha específica — a maioria usa `PLAYER_FRAME_SIZE` (32), mas nem toda folha do pacote segue esse tamanho (ver `well`, 64px). */
   frameSize: number;
+  /**
+   * Deslocamento (px, já na escala de exibição) pra baixo durante a
+   * animação, aplicado por `Player.performAction` e desfeito ao terminar.
+   * Necessário quando a folha tem mais espaço vazio abaixo do personagem
+   * do que o padrão (`Idle.png`, referência): como o personagem usa
+   * `origin(0.5, 1)` (ancorado no canto inferior do frame, não nos pés de
+   * verdade), uma folha com mais margem embaixo faz o personagem "flutuar"
+   * acima do chão enquanto ela toca. 0 (padrão) se a folha já alinha igual
+   * às outras.
+   */
+  yOffset?: number;
   down: { start: number; end: number };
   up: { start: number; end: number };
   side: { start: number; end: number };
@@ -115,6 +126,11 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Pick Up itens/pick up.png',
     frameRate: 8,
     frameSize: 64,
+    // Pés (frame de baixo) acabam em y=41 de um frame de 64px (22px de
+    // margem embaixo) contra y=25 de um frame de 32px do `Idle.png` (6px
+    // de margem) — ambos escaneados pixel a pixel. Diferença: 16px nativos
+    // = 32px na escala de exibição (DISPLAY_SCALE = 2).
+    yOffset: 32,
     down: { start: 0, end: 3 },
     up: { start: 4, end: 7 },
     side: { start: 8, end: 11 },

@@ -669,6 +669,20 @@ o mesmo para todas as animações, `ActionAnimSpec` ganhou um campo
 explicitamente) e o preload em `MainScene` passou a usar `spec.frameSize`
 em vez do tamanho fixo global.
 
+**Personagem "flutuando" durante a animação**: `Player` usa `origin(0.5, 1)`
+— ancorado no canto inferior do *frame*, não nos pés de verdade do
+personagem. Como a folha de 64x64 tem bem mais margem vazia abaixo do
+personagem que `Idle.png` (referência), o personagem renderizava acima do
+chão enquanto essa animação tocava. Medido pixel a pixel: pés a y=41 de um
+frame de 64px (22px de margem) contra y=25 de um frame de 32px do
+`Idle.png` (6px de margem) — 16px nativos de diferença, 32px já na escala
+de exibição (`DISPLAY_SCALE = 2`). Corrigido com `ActionAnimSpec.yOffset`
+(opcional, 0 por padrão): `Player.performAction` desloca o sprite pra baixo
+nesse valor ao iniciar a animação e desfaz ao terminar
+(`ANIMATION_COMPLETE`), então só essa ação "cai" um pouco mais fundo,
+compensando a margem extra — as outras animações (`yOffset` ausente,
+equivalente a 0) continuam com o comportamento de sempre.
+
 ### Personagem não encobre a decoração ao se aproximar (`systems/decorationPlacement.ts`, `systems/treeOverlap.ts`)
 
 O Poço é visualmente mais alto que 1 tile (76px de altura de exibição contra
