@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DecorationDefinition, WELL } from '../data/decorations';
+import { DecorationDefinition } from '../data/decorations';
 import { FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
@@ -16,16 +16,14 @@ const GHOST_INVALID_TINT = 0xff8a8a;
 const GHOST_ALPHA = 0.6;
 const GHOST_DEPTH = 950; // Acima do mundo, abaixo dos HUDs (1000+) — mesma faixa do TileCursor.
 const PLACED_SHADOW_DEPTH = -0.4; // Mesma faixa das sombras estáticas de mapBuilder.ts.
-/** Opacidade mínima do personagem quando está totalmente na frente de uma decoração, escondendo-a por completo. */
-const MIN_PLAYER_ALPHA = 0.4;
 
 /**
  * Uma decoração já posicionada, quando clicada: por padrão remove-se e
  * devolve 1 unidade ao estoque — mesmo padrão dos outros `Interactable`
  * (Caixa de Remessas, Loja), objeto sólido com interação adjacente já
  * cuidada pelo `PlayerController`. O Poço é a exceção: tem uma utilidade
- * própria (encher o regador, ver `DecorationPlacementSystem.useWell`), então
- * clicar nele usa em vez de remover.
+ * própria (encher o regador, ver `DecorationPlacementSystem.refillWateringCan`),
+ * então clicar nele usa em vez de remover.
  */
 class PlacedDecorationInteractable implements Interactable {
   constructor(
@@ -33,13 +31,22 @@ class PlacedDecorationInteractable implements Interactable {
     private readonly player: Player,
     private readonly col: number,
     private readonly row: number,
-    private readonly decorationId: string,
+    private readonly decorationId: string // <-- ADICIONADO AQUI
   ) {}
 
   interact(): void {
     if (this.player.isBusy()) return;
-    if (this.decorationId === WELL.id) this.system.useWell(this.col, this.row);
-    else this.system.removeAt(this.col, this.row);
+
+    // Se o objeto clicado for o poço, toca a animação de buscar água (própria, ver PLAYER_ACTIONS.well) e NÃO remove!
+    if (this.decorationId === 'well') {
+      this.player.performAction('well', () => {
+        this.system.refillWateringCan(this.col, this.row);
+      });
+      return; // <-- O return impede que o poço seja destruído
+    }
+
+    // Se for outra decoração qualquer, ela é removida e volta pro estoque
+    this.system.removeAt(this.col, this.row);
   }
 }
 
@@ -179,20 +186,16 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
   }
 
   /**
-   * Usa o Poço posicionado: toca a mesma animação de regar já usada na
-   * lavoura (`Player.performAction('water', ...)`) e, ao terminar, o mesmo
-   * respingo d'água (`FarmlandRenderer.spawnWaterSplash`) — sem sprite novo,
-   * só reaproveitando o efeito que já existe. O jogo ainda não controla
-   * "cargas" de água no regador (regar hoje não tem custo nenhum, ver
-   * `Farmland.water`), então não há um estado de "regador cheio/vazio" para
-   * de fato mudar aqui — o Poço dá o feedback de reabastecer mesmo assim,
-   * pra deixar de ser só um objeto decorativo sem função.
+   * Enche o regador de volta ao máximo (Fase 7 — barra de água) e toca o
+   * mesmo respingo d'água já usado ao regar a lavoura
+   * (`FarmlandRenderer.spawnWaterSplash`) — sem sprite novo. Chamado por
+   * `PlacedDecorationInteractable` quando o Poço é interagido, já dentro da
+   * animação de regar (`Player.performAction('water', ...)`).
    */
-  useWell(col: number, row: number): void {
-    this.player.performAction('water', () => {
-      this.farmlandRenderer.spawnWaterSplash(col, row);
-      console.log('Regador reabastecido no Poço.');
-    });
+  refillWateringCan(col: number, row: number): void {
+    this.inventory.refillWateringCan();
+    this.farmlandRenderer.spawnWaterSplash(col, row);
+    console.log(`Regador reabastecido no Poço (cargas: ${this.inventory.getWateringCanCharges()}).`);
   }
 
   /**
@@ -207,23 +210,20 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
    * semitransparente — a decoração precisa continuar visível, não o
    * contrário. Chamado a cada frame por `MainScene.update`.
    */
-  updateOcclusion(): void {
+updateOcclusion(): void {
     const sprite = this.player.sprite;
     const playerBounds = sprite.getBounds();
 
-    let maxCoverage = 0;
     for (const { image } of this.placed.values()) {
-      if (sprite.depth <= image.depth) continue; // Decoração já na frente — nada a revelar aqui.
-      const coverage = coverageRatio(image.getBounds(), playerBounds);
-      if (coverage > maxCoverage) maxCoverage = coverage;
+      // Verifica se a decoração está na frente do personagem
+      const decInFront = image.depth > sprite.depth;
+      const coverage = decInFront ? coverageRatio(playerBounds, image.getBounds()) : 0;
+      
+      // Agora é a IMAGEM (poço) que fica transparente (até 50%), e não o personagem
+      image.setAlpha(Phaser.Math.Linear(1, 0.5, coverage));
     }
-
-    // A decoração é mais alta que a célula que ocupa, então mesmo encostado
-    // nela (o mais perto que dá, já que a célula é sólida) a sobreposição
-    // real nunca chega perto de 1 — um fator empírico amplia esse valor
-    // para o efeito ficar perceptível assim que o personagem encosta, sem
-    // esperar uma cobertura "completa" que nunca acontece de fato.
-    const boostedCoverage = Phaser.Math.Clamp(maxCoverage * 2, 0, 1);
-    sprite.setAlpha(Phaser.Math.Linear(1, MIN_PLAYER_ALPHA, boostedCoverage));
+    
+    // Garante que o personagem sempre fique totalmente opaco
+    sprite.setAlpha(1);
   }
 }

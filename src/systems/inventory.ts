@@ -4,12 +4,20 @@ import { CROPS, DEFAULT_CROP_ID } from '../data/crops';
 const STARTING_COINS = 50;
 /** O jogador começa com algumas sementes da cultura padrão, para poder plantar sem precisar visitar a loja primeiro. */
 const STARTING_SEEDS = 3;
+/**
+ * Quantas regadas o regador aguenta antes de precisar ser reabastecido no
+ * Poço (Fase 6). Cerca de uma rodada completa da lavoura atual (12
+ * canteiros) com alguma folga — encher de novo vira parte do ritmo do
+ * jogador sem precisar de viagens constantes ao Poço.
+ */
+export const WATERING_CAN_CAPACITY = 10;
 
 /**
  * Estrutura mínima para guardar o resultado de colheitas, o estoque de
  * sementes (compradas na Loja, consumidas ao plantar), o estoque de
  * decorações/construções (compradas na Loja, consumidas ao posicionar,
- * Fase 6), qual semente o jogador tem selecionada, e as moedas do
+ * Fase 6), as cargas do regador (consumidas ao regar, reabastecidas no
+ * Poço, Fase 7), qual semente o jogador tem selecionada, e as moedas do
  * jogador. Não é o inventário completo — item de estoque por tipo, sem
  * espaços/pesos/empilhamento — mas já é a base real da economia.
  *
@@ -27,6 +35,8 @@ export class Inventory {
   private readonly decorations = new Map<string, number>();
   private selectedSeedId: string = DEFAULT_CROP_ID;
   private coins = STARTING_COINS;
+  /** Cargas restantes do regador (Fase 7) — começa cheio. */
+  private wateringCanCharges = WATERING_CAN_CAPACITY;
 
   add(itemId: string, amount: number): void {
     this.items.set(itemId, this.getCount(itemId) + amount);
@@ -89,6 +99,23 @@ export class Inventory {
     if (count <= 0) return false;
     this.decorations.set(decorationId, count - 1);
     return true;
+  }
+
+  /** Cargas restantes do regador. */
+  getWateringCanCharges(): number {
+    return this.wateringCanCharges;
+  }
+
+  /** Consome 1 carga do regador, se houver. Retorna `false` (sem consumir nada) se estiver vazio. */
+  useWaterCharge(): boolean {
+    if (this.wateringCanCharges <= 0) return false;
+    this.wateringCanCharges -= 1;
+    return true;
+  }
+
+  /** Enche o regador de volta ao máximo (ex.: interagir com o Poço). */
+  refillWateringCan(): void {
+    this.wateringCanCharges = WATERING_CAN_CAPACITY;
   }
 
   getCoins(): number {

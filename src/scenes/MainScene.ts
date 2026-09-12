@@ -30,7 +30,7 @@ import {
 } from '../data/player';
 import { CROPS } from '../data/crops';
 import { DECORATIONS, WELL } from '../data/decorations';
-import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE, CLOCK_ICON_KEY, CLOCK_ICON_PATH } from '../data/ui';
+import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE, CLOCK_ICON_KEY, CLOCK_ICON_PATH, WATERING_CAN_ICON_KEY, WATERING_CAN_ICON_PATH, WATERING_CAN_ICON_FRAME_SIZE } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
 import { buildFarmGround, buildFenceCorners, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildWalkableGrid } from '../systems/grid';
@@ -42,7 +42,7 @@ import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
 import { Farmland } from '../systems/farmland';
 import { FarmlandRenderer } from '../systems/farmlandRenderer';
-import { Inventory } from '../systems/inventory';
+import { Inventory, WATERING_CAN_CAPACITY } from '../systems/inventory';
 import { InteractionRegistry } from '../systems/interaction';
 import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
 import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
@@ -52,6 +52,7 @@ import { DecorationPlacementSystem } from '../systems/decorationPlacement';
 import { SeedBar } from '../ui/seedBar';
 import { CoinBar } from '../ui/coinBar';
 import { ClockBar } from '../ui/clockBar';
+import { WaterBar } from '../ui/waterBar';
 import { ShopMenu, ShopItem } from '../ui/shopMenu';
 
 /**
@@ -82,6 +83,7 @@ export class MainScene extends Phaser.Scene {
   private gameClock!: GameClock;
   private dayNightOverlay!: DayNightOverlay;
   private clockBar!: ClockBar;
+  private waterBar!: WaterBar;
 
   constructor() {
     super('MainScene');
@@ -109,8 +111,8 @@ export class MainScene extends Phaser.Scene {
     });
     for (const spec of Object.values(PLAYER_ACTIONS)) {
       this.load.spritesheet(spec.key, encodeURI(`/${spec.path}`), {
-        frameWidth: PLAYER_FRAME_SIZE,
-        frameHeight: PLAYER_FRAME_SIZE,
+        frameWidth: spec.frameSize,
+        frameHeight: spec.frameSize,
       });
     }
 
@@ -127,6 +129,10 @@ export class MainScene extends Phaser.Scene {
       frameHeight: COIN_ICON_FRAME_SIZE,
     });
     this.load.image(CLOCK_ICON_KEY, encodeURI(`/${CLOCK_ICON_PATH}`));
+    this.load.spritesheet(WATERING_CAN_ICON_KEY, encodeURI(`/${WATERING_CAN_ICON_PATH}`), {
+      frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
+      frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
+    });
 
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
     this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
@@ -285,6 +291,9 @@ export class MainScene extends Phaser.Scene {
     this.coinBar = new CoinBar(this);
     this.coinBar.refresh(this.inventory.getCoins());
 
+    this.waterBar = new WaterBar(this, WATERING_CAN_CAPACITY);
+    this.waterBar.refresh(this.inventory.getWateringCanCharges(), WATERING_CAN_CAPACITY);
+
     this.gameClock = new GameClock();
     this.dayNightOverlay = new DayNightOverlay(this);
     this.clockBar = new ClockBar(this);
@@ -400,6 +409,7 @@ export class MainScene extends Phaser.Scene {
     // o valor muda de fato.
     this.coinBar.refresh(this.inventory.getCoins());
     this.seedBar.refreshStock((cropId) => this.inventory.getSeedCount(cropId));
+    this.waterBar.refresh(this.inventory.getWateringCanCharges(), WATERING_CAN_CAPACITY);
 
     // A Loja só precisa refletir o saldo enquanto está aberta (o jogador
     // não pode estar em dois lugares ao mesmo tempo, então nada muda o

@@ -48,13 +48,15 @@ export const PLAYER_START = { col: 12, row: 9 };
 /** Tempo (ms) para se mover de uma célula do grid para a adjacente. */
 export const PLAYER_MOVE_DURATION_MS = 260;
 
-/** Ações agrícolas com animação própria (Fase 4). */
-export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest';
+/** Ações agrícolas com animação própria (Fase 4) + buscar água no Poço (Fase 7). */
+export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well';
 
 interface ActionAnimSpec {
   key: string;
   path: string;
   frameRate: number;
+  /** Tamanho do frame nesta folha específica — a maioria usa `PLAYER_FRAME_SIZE` (32), mas nem toda folha do pacote segue esse tamanho (ver `well`, 64px). */
+  frameSize: number;
   down: { start: number; end: number };
   up: { start: number; end: number };
   side: { start: number; end: number };
@@ -65,6 +67,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     key: 'player-alex-hoe',
     path: 'Character/Character/Pre-made/Alex/Hoe.png',
     frameRate: 10,
+    frameSize: PLAYER_FRAME_SIZE,
     down: { start: 0, end: 5 },
     up: { start: 6, end: 11 },
     side: { start: 12, end: 17 },
@@ -73,6 +76,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     key: 'player-alex-shovel',
     path: 'Character/Character/Pre-made/Alex/Shovel.png',
     frameRate: 10,
+    frameSize: PLAYER_FRAME_SIZE,
     down: { start: 0, end: 4 },
     up: { start: 5, end: 9 },
     side: { start: 10, end: 14 },
@@ -81,6 +85,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     key: 'player-alex-watering',
     path: 'Character/Character/Pre-made/Alex/Watering.png',
     frameRate: 10,
+    frameSize: PLAYER_FRAME_SIZE,
     down: { start: 0, end: 7 },
     up: { start: 8, end: 15 },
     side: { start: 16, end: 23 },
@@ -89,8 +94,29 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     key: 'player-alex-sickle',
     path: 'Character/Character/Pre-made/Alex/Sickle.png',
     frameRate: 10,
+    frameSize: PLAYER_FRAME_SIZE,
     down: { start: 0, end: 5 },
     up: { start: 6, end: 11 },
     side: { start: 12, end: 17 },
+  },
+  /**
+   * Buscar água no Poço (Fase 7) — diferente da animação de regar a
+   * lavoura (`water`, usa o regador já erguido), essa mostra o personagem
+   * se abaixando e levantando algo, mais parecida com "pegar água" do que
+   * "regar uma planta". Não existe uma animação dedicada de "poço" no
+   * pacote de assets — `Pick Up itens/pick up.png` (abaixar e levantar) foi
+   * a mais próxima disponível, sem precisar de arte nova. Essa folha usa
+   * frames de 64x64 (o dobro das outras), confirmado recortando/ampliando
+   * pixel a pixel — tentar carregá-la como 32x32 (padrão das outras)
+   * cortaria cada frame ao meio.
+   */
+  well: {
+    key: 'player-alex-pickup',
+    path: 'Character/Character/Pre-made/Alex/Pick Up itens/pick up.png',
+    frameRate: 8,
+    frameSize: 64,
+    down: { start: 0, end: 3 },
+    up: { start: 4, end: 7 },
+    side: { start: 8, end: 11 },
   },
 };

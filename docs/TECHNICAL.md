@@ -612,31 +612,62 @@ corretos) → tecla B → preview segue o mouse e reage a local válido/inválid
 Poço posicionado (ver abaixo — deixou de remover) — sem erros no console em
 nenhum passo.
 
-### Utilidade do Poço: encher o regador (`systems/decorationPlacement.ts`)
+### Utilidade do Poço: cargas do regador (`systems/inventory.ts`, `systems/farmlandInteraction.ts`, `systems/decorationPlacement.ts`, `ui/waterBar.ts`)
 
 `PlacedDecorationInteractable.interact()` por padrão remove a decoração
 (devolve ao estoque) — mas o Poço é a exceção: interagir com ele (clique
 adjacente, mesmo mecanismo de sempre) chama
-`DecorationPlacementSystem.useWell` em vez de `removeAt`, então o Poço
-colocado **deixou de ser removível por um clique simples** — essa era a
-única "utilidade" que ele tinha antes, e passou a ter uma de verdade.
+`DecorationPlacementSystem.refillWateringCan` em vez de `removeAt`, então o
+Poço colocado **deixou de ser removível por um clique simples** — essa era
+a única "utilidade" que ele tinha antes, e passou a ter uma de verdade.
 
-`useWell` reaproveita, sem nenhum sprite/asset novo, exatamente o que já
-existe para regar uma plantação (`systems/farmlandInteraction.ts`):
-`Player.performAction('water', ...)` (mesma animação de regar) e, ao
-terminar, `FarmlandRenderer.spawnWaterSplash` (mesmo respingo). Por isso
-`DecorationPlacementSystem` passou a receber `FarmlandRenderer` no
-construtor (`MainScene` já tinha a instância pronta antes de criar o
-sistema de decorações).
+Ao contrário da primeira versão deste recurso (só feedback visual, sem
+mecânica por trás), o regador agora tem cargas reais:
 
-O jogo ainda não tem "cargas" de água no regador — regar uma plantação hoje
-não tem custo nenhum (`Farmland.water` só atualiza `lastWateredAt`, sem
-checar nem gastar nada) — então não existe um estado real de
-"regador cheio/vazio" para o Poço mudar de fato. Por pedido explícito, ele
-dá o feedback de reabastecer (animação + respingo + log no console) mesmo
-sem uma mecânica de carga por trás; implementar isso de verdade (limite de
-regadas antes de precisar voltar ao Poço) ficou fora do escopo deste passo
-— consideração deliberada para não alterar a agricultura já funcionando.
+- `Inventory` ganhou `wateringCanCharges` (começa cheio,
+  `WATERING_CAN_CAPACITY = 10`, exportada para quem precisar do máximo) com
+  `getWateringCanCharges`/`useWaterCharge` (recusa e devolve `false` se
+  vazio, mesmo padrão de `useSeed`/`useDecoration`)/`refillWateringCan`.
+- `PlotInteractable` (`systems/farmlandInteraction.ts`) checa
+  `getWateringCanCharges() <= 0` **antes** de tocar a animação de regar —
+  sem carga, não rega, só um log ("Regador vazio — encha no Poço."), mesmo
+  espírito de "clique sem efeito" já usado para sementes em falta. A carga
+  em si só é consumida dentro do `performAction('water', ...)`, depois que
+  a animação termina — mesmo timing de quando `useSeed` é chamado ao
+  plantar.
+- `DecorationPlacementSystem.refillWateringCan` enche de volta ao máximo e
+  toca o mesmo respingo d'água já usado ao regar
+  (`FarmlandRenderer.spawnWaterSplash`) — por isso `DecorationPlacementSystem`
+  recebe `FarmlandRenderer` no construtor (`MainScene` já tinha a instância
+  pronta antes de criar o sistema de decorações).
+- `ui/waterBar.ts`: HUD no canto inferior esquerdo — mesma linguagem visual
+  da `CoinBar`/`ClockBar` (fundo semitransparente, ícone fixo — aqui o
+  `Watering can.png` do pacote de ícones RPG), mas com uma barra de
+  preenchimento em vez de texto (dois retângulos sólidos, trilho +
+  preenchimento, mesma técnica de cor+alpha já usada no fundo da `CoinBar`
+  e no véu de dia/noite). Fica azul acima de 25% de carga e vermelha abaixo
+  disso, como aviso de que uma viagem ao Poço está próxima.
+
+### Animação dedicada de buscar água (`data/player.ts`, `Character/.../Pick Up itens/pick up.png`)
+
+Interagir com o Poço tocava a mesma animação de regar a lavoura
+(`PLAYER_ACTIONS.water`) — visualmente estranho, já que mostra o
+personagem erguendo o regador já cheio, não "pegando" água nenhuma. Não
+existe uma animação dedicada de "poço" no pacote de assets; `Pick Up
+itens/pick up.png` (abaixar e levantar algo, 4 frames por direção) foi a
+mais próxima disponível, sem precisar de arte nova — nova entrada
+`PLAYER_ACTIONS.well`, disparada só na interação com o Poço
+(`DecorationPlacementSystem`, via `performAction('well', ...)`).
+
+Essa folha usa frames de **64x64**, o dobro das outras (`Hoe`/`Shovel`/
+`Watering`/`Sickle`, todas 32x32) — confirmado exportando frames
+individuais com fundo magenta e comparando 32 vs 64px (a 32px, cada "frame"
+cortava o personagem ao meio; a 64px, cada um continha a pose inteira,
+com margem transparente ao redor). Como o tamanho de frame já não era mais
+o mesmo para todas as animações, `ActionAnimSpec` ganhou um campo
+`frameSize` (as 4 animações antigas continuam declarando `PLAYER_FRAME_SIZE`
+explicitamente) e o preload em `MainScene` passou a usar `spec.frameSize`
+em vez do tamanho fixo global.
 
 ### Personagem não encobre a decoração ao se aproximar (`systems/decorationPlacement.ts`, `systems/treeOverlap.ts`)
 

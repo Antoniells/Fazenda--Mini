@@ -77,7 +77,14 @@ class PlotInteractable implements Interactable {
           this.refresh();
         });
       } else {
+        // Sem água no regador — nada a fazer (mesmo espírito de "clique sem
+        // efeito" já usado para sementes em falta). Encher de novo no Poço.
+        if (this.inventory.getWateringCanCharges() <= 0) {
+          console.log('Regador vazio — encha no Poço.');
+          return;
+        }
         this.player.performAction('water', () => {
+          this.inventory.useWaterCharge();
           this.farmland.water(this.col, this.row);
           this.renderer.spawnWaterSplash(this.col, this.row);
           this.refresh();

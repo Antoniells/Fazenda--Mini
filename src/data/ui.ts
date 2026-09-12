@@ -55,3 +55,12 @@ export const COIN_SPIN_FRAMES = { start: 0, end: 5 };
 /** `UI/Clock/Clock.png`: ícone único (32x32, sol/lua num mostrador), sem frames. Usado na `ClockBar` (Fase 7 — Sistema de Tempo). */
 export const CLOCK_ICON_KEY = 'ui-clock';
 export const CLOCK_ICON_PATH = 'UI/Clock/Clock.png';
+
+/**
+ * `Icons/RPG icons/Weapons and Armor/1. Wood/Watering can.png`: 32x16, dois
+ * frames idênticos de 16x16 (conferido pixel a pixel) — só o primeiro é
+ * usado. Ícone da `WaterBar` (barra de água do regador).
+ */
+export const WATERING_CAN_ICON_KEY = 'ui-watering-can';
+export const WATERING_CAN_ICON_PATH = 'Icons/RPG icons/Weapons and Armor/1. Wood/Watering can.png';
+export const WATERING_CAN_ICON_FRAME_SIZE = 16;
