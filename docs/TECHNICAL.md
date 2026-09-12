@@ -514,15 +514,14 @@ escuro + opacidade reduzida, nunca uma forma nova.
   já é a própria "entrada" (não faz sentido animar algo que começa
   invisível e só aparece sob demanda).
 
-## Construções e decoração (Fase 6)
+## Construções, Decoração e Expansão (Fase 6)
 
 Primeiro passo da fase: um sistema **genérico** de posicionamento livre —
 comprar na Loja, posicionar em qualquer grama livre com preview e checagem
 de colisão, remover depois — usando o Poço (`WELL`) como primeiro objeto.
 A arquitetura não é específica do Poço: qualquer construção ou decoração
 futura reaproveita as mesmas peças, só precisando de uma nova
-`DecorationDefinition`. "Expansão da propriedade" (o último item da fase)
-não foi implementada — fora do escopo deste passo.
+`DecorationDefinition`.
 
 ### Dados de decoração (`data/decorations.ts`)
 
@@ -609,9 +608,35 @@ toda a lógica da Fase 6:
 
 Testado de ponta a ponta: comprar o Poço na Loja (moedas e estoque
 corretos) → tecla B → preview segue o mouse e reage a local válido/inválido
-→ clique posiciona (estoque zera, grid bloqueia a célula) → clicar no Poço
-posicionado remove (estoque volta, grid libera a célula) — sem erros no
-console em nenhum passo.
+→ clique posiciona (estoque zera, grid bloqueia a célula) → interagir com o
+Poço posicionado (ver abaixo — deixou de remover) — sem erros no console em
+nenhum passo.
+
+### Utilidade do Poço: encher o regador (`systems/decorationPlacement.ts`)
+
+`PlacedDecorationInteractable.interact()` por padrão remove a decoração
+(devolve ao estoque) — mas o Poço é a exceção: interagir com ele (clique
+adjacente, mesmo mecanismo de sempre) chama
+`DecorationPlacementSystem.useWell` em vez de `removeAt`, então o Poço
+colocado **deixou de ser removível por um clique simples** — essa era a
+única "utilidade" que ele tinha antes, e passou a ter uma de verdade.
+
+`useWell` reaproveita, sem nenhum sprite/asset novo, exatamente o que já
+existe para regar uma plantação (`systems/farmlandInteraction.ts`):
+`Player.performAction('water', ...)` (mesma animação de regar) e, ao
+terminar, `FarmlandRenderer.spawnWaterSplash` (mesmo respingo). Por isso
+`DecorationPlacementSystem` passou a receber `FarmlandRenderer` no
+construtor (`MainScene` já tinha a instância pronta antes de criar o
+sistema de decorações).
+
+O jogo ainda não tem "cargas" de água no regador — regar uma plantação hoje
+não tem custo nenhum (`Farmland.water` só atualiza `lastWateredAt`, sem
+checar nem gastar nada) — então não existe um estado real de
+"regador cheio/vazio" para o Poço mudar de fato. Por pedido explícito, ele
+dá o feedback de reabastecer (animação + respingo + log no console) mesmo
+sem uma mecânica de carga por trás; implementar isso de verdade (limite de
+regadas antes de precisar voltar ao Poço) ficou fora do escopo deste passo
+— consideração deliberada para não alterar a agricultura já funcionando.
 
 ### Personagem não encobre a decoração ao se aproximar (`systems/decorationPlacement.ts`, `systems/treeOverlap.ts`)
 
@@ -645,9 +670,65 @@ que nunca acontece geometricamente. Testado: personagem encostado embaixo
 do Poço colocado cai para ~0.49 de opacidade (medido via `sprite.alpha`) e
 volta a 1 assim que se afasta.
 
+### Expansão de propriedade (`data/maps/farmMap.ts`, `systems/propertyExpansion.ts`, `systems/mapBuilder.ts`, `systems/grid.ts`)
+
+Estilo Forager, não um menu de loja: 4 trechos de terra ao redor do núcleo
+original (`farmMap.cols` x `farmMap.rows`, 25x18 — não muda), um por
+direção (norte/sul/leste/oeste), cada um com preço e posição de placa
+próprios (`farmMap.expansions: ExpansionChunk[]`). Cada trecho é comprado
+individualmente, andando até a placa física na parede daquele lado e
+interagindo — sem painel abstrato envolvido.
+
+- **O mundo já nasce com os 4 trechos** (`PropertyExpansionSystem`, no
+  `create` da cena): grama (`buildGroundChunk`, uma camada de tilemap por
+  trecho, reaproveitando a mesma função que desenha o núcleo) e o
+  perímetro externo **definitivo** de cada um (`buildExpansionChunkFence`
+  — os 3 lados que não fazem fronteira com o núcleo; esse lado fica aberto,
+  unindo trecho e núcleo assim que a parede for removida). Isso já existia
+  antes da compra — só fica inacessível, não invisível.
+- **Coordenadas negativas**: trechos a norte/oeste ficam em colunas/linhas
+  negativas (ex.: oeste em `col0: -8`). `WalkableGrid.inBounds` deixou de
+  assumir `0..cols/rows` e passou a cobrir o retângulo total (núcleo + todos
+  os trechos, calculado a partir de `farmMap.expansions`); a câmera
+  (`MainScene.create`) também tem seus limites calculados assim, no lugar
+  de só `farmMap.cols/rows`.
+- **A cerca do núcleo virou 4 peças independentes**: os 4 cantos do núcleo
+  (`buildFenceCorners`) são permanentes — nunca somem, mesmo depois dos 2
+  lados que se encontram ali serem comprados; evita a complexidade de
+  fundir cantos quando as 2 paredes adjacentes são compradas em momentos
+  diferentes. Cada lado reto entre os cantos (`buildFenceSide`) é composto
+  e removível independentemente — é a "cerca temporária" daquele trecho,
+  some (visual + `grid.unblock`) quando comprado.
+- **Cantos diagonais**: como os trechos são só "em cruz" (um por lado, sem
+  trecho nos 4 cantos diagonais entre um horizontal e um vertical), e os
+  limites da câmera cobrem o retângulo total, a câmera conseguia rolar até
+  esses cantos e revelar um buraco preto (sem tilemap nenhum ali). Corrigido
+  preenchendo esses 4 cantos só com grama (`PropertyExpansionSystem.fillDiagonalGaps`)
+  — sem cerca nem bloqueio extra no grid, porque esses cantos já são
+  inalcançáveis a pé (cercados pelas paredes dos 2 trechos vizinhos).
+  Limitação conhecida: onde a cerca permanente de um trecho vertical
+  encontra a de um horizontal (ex.: canto noroeste com norte E oeste
+  comprados), as duas peças não se fundem num canto único — ficam como 2
+  segmentos retos que só quase se tocam, uma pequena imperfeição visual
+  num canto que já não dá pra visitar.
+- **Placa de obra** (`buildConstructionSign`, `Objects/Exterior/Construction area.png`
+  — caixa de ferramentas + capacete, o objeto mais próximo de uma "placa"
+  no pacote de assets): um `Interactable` por trecho
+  (`ExpansionSignInteractable`), bloqueado no grid, com a mesma interação
+  adjacente da Loja/Caixa de Remessas — sem menu, interagir já tenta
+  comprar (`PropertyExpansionSystem.tryBuy`). Sem moedas suficientes, só um
+  log (mesmo espírito de "clique sem efeito"). Comprado: paga
+  `chunk.price`, destrói a placa e a parede daquele lado, libera as células
+  correspondentes no grid — o trecho passa a fazer parte da propriedade.
+- Testado (via chamada direta de `interact()` + inspeção do grid, os 4
+  lados): leste e oeste (preço 120) e norte e sul (preço 100) — cada compra
+  paga o preço certo, remove a placa e a parede, e libera exatamente as
+  células daquele lado (os 4 cantos do núcleo continuam bloqueados).
+
 ### Próximos pontos (fora do escopo deste passo)
 
-- "Expansão da propriedade" (último item da Fase 6).
+- Fundir os cantos diagonais da cerca quando os 2 trechos adjacentes são
+  comprados (ver limitação conhecida acima).
 - Mais tipos de decoração/construção além do Poço (a arquitetura já
   suporta, só falta cadastrar novas `DecorationDefinition`).
 - Algum indicador visual de que a tecla B existe (hoje é descoberta só

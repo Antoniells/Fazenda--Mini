@@ -1,9 +1,34 @@
 import { TILE_SIZE } from '../tiles';
 
-export interface FarmMapData {
-  tileSize: number;
+export type ExpansionDirection = 'north' | 'south' | 'east' | 'west';
+
+/**
+ * Um trecho de terra bloqueado ao redor da propriedade original (o
+ * "núcleo", `cols` x `rows`), comprável individualmente — inspirado no
+ * Forager: vários trechos ao redor, cada um com sua própria placa física,
+ * em vez de uma única expansão genérica. `col0/row0/cols/rows` são
+ * absolutos (podem ser negativos, para norte/oeste) — a grama e a câmera já
+ * alcançam esse retângulo desde o início (ver `MainScene.create`), mas ele
+ * fica isolado pela parede do núcleo nesse lado até a compra.
+ */
+export interface ExpansionChunk {
+  direction: ExpansionDirection;
+  col0: number;
+  row0: number;
   cols: number;
   rows: number;
+  price: number;
+  /** Célula (col, row) DENTRO do núcleo, encostada na parede desse lado — onde fica a placa de compra. */
+  signPosition: [number, number];
+}
+
+export interface FarmMapData {
+  tileSize: number;
+  /** Dimensões do núcleo original da propriedade — não mudam com expansões. */
+  cols: number;
+  rows: number;
+  /** Trechos de terra ao redor do núcleo, um por direção, compráveis independentemente. */
+  expansions: ExpansionChunk[];
   /** Posições (col, row) da base das árvores decorativas. */
   treePositions: Array<[number, number]>;
   /** Células (col, row) que podem ser cultivadas (aradas, plantadas). */
@@ -34,6 +59,16 @@ export const farmMap: FarmMapData = {
   tileSize: TILE_SIZE,
   cols: 25,
   rows: 18,
+  // Um trecho por lado do núcleo (25x18) — leste/oeste com a mesma altura do
+  // núcleo, norte/sul com a mesma largura, sem cantos diagonais (formato
+  // "cruz", igual ao Forager: você vê a terra travada ao redor da ilha
+  // atual, mas cada trecho só se conecta a UM lado do que já é seu).
+  expansions: [
+    { direction: 'east', col0: 25, row0: 0, cols: 8, rows: 18, price: 120, signPosition: [23, 9] },
+    { direction: 'west', col0: -8, row0: 0, cols: 8, rows: 18, price: 120, signPosition: [1, 9] },
+    { direction: 'north', col0: 0, row0: -6, cols: 25, rows: 6, price: 100, signPosition: [12, 1] },
+    { direction: 'south', col0: 0, row0: 18, cols: 25, rows: 6, price: 100, signPosition: [12, 16] },
+  ],
   treePositions: [
     [3, 3],
     [21, 3],

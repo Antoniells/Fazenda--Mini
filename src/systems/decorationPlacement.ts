@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DecorationDefinition } from '../data/decorations';
+import { DecorationDefinition, WELL } from '../data/decorations';
 import { FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
@@ -9,6 +9,7 @@ import { PointerInputInterceptor } from './playerController';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
 import { coverageRatio } from './treeOverlap';
+import { FarmlandRenderer } from './farmlandRenderer';
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
@@ -19,10 +20,12 @@ const PLACED_SHADOW_DEPTH = -0.4; // Mesma faixa das sombras estáticas de mapBu
 const MIN_PLAYER_ALPHA = 0.4;
 
 /**
- * Uma decoração já posicionada, quando clicada: remove-se e devolve 1
- * unidade ao estoque. Mesmo padrão dos outros `Interactable` (Caixa de
- * Remessas, Loja) — objeto sólido, interação adjacente já cuidada pelo
- * `PlayerController` sem precisar de nada especial aqui.
+ * Uma decoração já posicionada, quando clicada: por padrão remove-se e
+ * devolve 1 unidade ao estoque — mesmo padrão dos outros `Interactable`
+ * (Caixa de Remessas, Loja), objeto sólido com interação adjacente já
+ * cuidada pelo `PlayerController`. O Poço é a exceção: tem uma utilidade
+ * própria (encher o regador, ver `DecorationPlacementSystem.useWell`), então
+ * clicar nele usa em vez de remover.
  */
 class PlacedDecorationInteractable implements Interactable {
   constructor(
@@ -30,11 +33,13 @@ class PlacedDecorationInteractable implements Interactable {
     private readonly player: Player,
     private readonly col: number,
     private readonly row: number,
+    private readonly decorationId: string,
   ) {}
 
   interact(): void {
     if (this.player.isBusy()) return;
-    this.system.removeAt(this.col, this.row);
+    if (this.decorationId === WELL.id) this.system.useWell(this.col, this.row);
+    else this.system.removeAt(this.col, this.row);
   }
 }
 
@@ -67,6 +72,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     private readonly inventory: Inventory,
     private readonly interactions: InteractionRegistry,
     private readonly player: Player,
+    private readonly farmlandRenderer: FarmlandRenderer,
     firstDecoration: DecorationDefinition,
   ) {
     this.farmlandCells = new Set(map.farmlandArea.map(([col, row]) => `${col},${row}`));
@@ -78,7 +84,9 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     this.ghost.setAlpha(GHOST_ALPHA);
     this.ghost.setVisible(false);
 
-    scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.handlePointerMove(pointer.x, pointer.y));
+    // worldX/worldY — com a câmera podendo rolar (Fase 6, Expansão), x/y
+    // são coordenadas de tela, não do mundo.
+    scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.handlePointerMove(pointer.worldX, pointer.worldY));
   }
 
   isActive(): boolean {
@@ -151,7 +159,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     image.setDepth(y);
 
     this.grid.block(col, row);
-    this.interactions.set(col, row, new PlacedDecorationInteractable(this, this.player, col, row));
+    this.interactions.set(col, row, new PlacedDecorationInteractable(this, this.player, col, row, decoration.id));
     this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id });
   }
 
@@ -168,6 +176,23 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     this.interactions.remove(col, row);
     this.inventory.addDecorations(entry.decorationId, 1);
     console.log(`Removido: 1 ${entry.decorationId} (estoque: ${this.inventory.getDecorationCount(entry.decorationId)}).`);
+  }
+
+  /**
+   * Usa o Poço posicionado: toca a mesma animação de regar já usada na
+   * lavoura (`Player.performAction('water', ...)`) e, ao terminar, o mesmo
+   * respingo d'água (`FarmlandRenderer.spawnWaterSplash`) — sem sprite novo,
+   * só reaproveitando o efeito que já existe. O jogo ainda não controla
+   * "cargas" de água no regador (regar hoje não tem custo nenhum, ver
+   * `Farmland.water`), então não há um estado de "regador cheio/vazio" para
+   * de fato mudar aqui — o Poço dá o feedback de reabastecer mesmo assim,
+   * pra deixar de ser só um objeto decorativo sem função.
+   */
+  useWell(col: number, row: number): void {
+    this.player.performAction('water', () => {
+      this.farmlandRenderer.spawnWaterSplash(col, row);
+      console.log('Regador reabastecido no Poço.');
+    });
   }
 
   /**

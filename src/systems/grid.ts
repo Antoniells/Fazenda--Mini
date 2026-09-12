@@ -1,4 +1,4 @@
-import { FarmMapData } from '../data/maps/farmMap';
+import { ExpansionChunk, FarmMapData } from '../data/maps/farmMap';
 
 export interface WalkableGrid {
   cols: number;
@@ -11,13 +11,42 @@ export interface WalkableGrid {
   unblock(col: number, row: number): void;
 }
 
+/** Bloqueia o perímetro externo PERMANENTE de um trecho de expansão — mesmas 3 bordas desenhadas por `buildExpansionChunkFence` (o lado que faz fronteira com o núcleo fica aberto). */
+function blockExpansionChunkPerimeter(blocked: Set<string>, key: (col: number, row: number) => string, chunk: ExpansionChunk): void {
+  const { direction, col0, row0, cols, rows } = chunk;
+  const colEnd = col0 + cols - 1;
+  const rowEnd = row0 + rows - 1;
+
+  if (direction === 'east') {
+    for (let col = col0; col <= colEnd; col++) blocked.add(key(col, row0));
+    for (let col = col0; col <= colEnd; col++) blocked.add(key(col, rowEnd));
+    for (let row = row0; row <= rowEnd; row++) blocked.add(key(colEnd, row));
+  } else if (direction === 'west') {
+    for (let col = col0; col <= colEnd; col++) blocked.add(key(col, row0));
+    for (let col = col0; col <= colEnd; col++) blocked.add(key(col, rowEnd));
+    for (let row = row0; row <= rowEnd; row++) blocked.add(key(col0, row));
+  } else if (direction === 'north') {
+    for (let col = col0; col <= colEnd; col++) blocked.add(key(col, row0));
+    for (let row = row0; row <= rowEnd; row++) blocked.add(key(col0, row));
+    for (let row = row0; row <= rowEnd; row++) blocked.add(key(colEnd, row));
+  } else {
+    for (let col = col0; col <= colEnd; col++) blocked.add(key(col, rowEnd));
+    for (let row = row0; row <= rowEnd; row++) blocked.add(key(col0, row));
+    for (let row = row0; row <= rowEnd; row++) blocked.add(key(colEnd, row));
+  }
+}
+
 /**
  * Constrói a grade de caminhabilidade a partir dos dados do mapa: o anel da
- * borda (onde a cerca é desenhada), as células das árvores, a Caixa de
- * Remessas e a Loja são bloqueados. Fonte única de obstáculos — nenhuma
- * posição é redefinida aqui, tudo vem de `farmMap`. Para adicionar um novo
- * tipo de obstáculo no futuro, basta marcar mais células como bloqueadas
- * aqui, sem alterar quem consome o grid.
+ * borda do núcleo (onde a cerca é desenhada), as células das árvores, a
+ * Caixa de Remessas e a Loja são bloqueados. Fonte única de obstáculos —
+ * nenhuma posição é redefinida aqui, tudo vem de `farmMap`. Para adicionar
+ * um novo tipo de obstáculo no futuro, basta marcar mais células como
+ * bloqueadas aqui, sem alterar quem consome o grid.
+ *
+ * Desde a Fase 6 (Expansão), o mundo pode ter coordenadas negativas (trechos
+ * a norte/oeste do núcleo) — `inBounds` cobre o retângulo total (núcleo +
+ * todos os `farmMap.expansions`), não só `0..cols/rows`.
  */
 export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   const blocked = new Set<string>();
@@ -39,8 +68,24 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
   blocked.add(key(map.shopPosition[0], map.shopPosition[1]-1));
 
+  // Trechos de expansão (Fase 6): perímetro externo permanente de cada um
+  // (a área interna já nasce andável — só a parede do núcleo, bloqueada
+  // acima, isola o trecho até `MainScene.buyExpansion` remover essa
+  // parede específica).
+  let minCol = 0;
+  let minRow = 0;
+  let maxCol = map.cols - 1;
+  let maxRow = map.rows - 1;
+  for (const chunk of map.expansions) {
+    blockExpansionChunkPerimeter(blocked, key, chunk);
+    minCol = Math.min(minCol, chunk.col0);
+    minRow = Math.min(minRow, chunk.row0);
+    maxCol = Math.max(maxCol, chunk.col0 + chunk.cols - 1);
+    maxRow = Math.max(maxRow, chunk.row0 + chunk.rows - 1);
+  }
+
   const inBounds = (col: number, row: number): boolean =>
-    col >= 0 && row >= 0 && col < map.cols && row < map.rows;
+    col >= minCol && row >= minRow && col <= maxCol && row <= maxRow;
 
   const isWalkable = (col: number, row: number): boolean =>
     inBounds(col, row) && !blocked.has(key(col, row));

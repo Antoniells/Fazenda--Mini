@@ -4,24 +4,20 @@
 
 ## Conceito
 
-Mini Fazenda é um jogo 2D de fazenda, inspirado na **experiência** do jogo Mini Fazenda do Orkut. A referência é de conceito e sensação de jogo — não uma cópia. O projeto deve construir identidade visual e de regras próprias, e pode evoluir livremente durante o desenvolvimento.
+Mini Fazenda é um jogo 2D de fazenda, inspirado na **experiência** da Mini Fazenda original (Orkut), mas trazendo a **progressão modular de expansão** vista em jogos como *Forager*. A referência é de conceito e sensação de jogo — não uma cópia. O projeto deve construir identidade visual e de regras próprias.
 
-O jogador possui uma propriedade e a administra: planta, colhe, cuida de animais, compra objetos, constrói, decora e expande sua fazenda ao longo do tempo.
+O jogador possui uma propriedade e a administra: planta, colhe, cuida de animais, compra objetos, constrói, decora e **expande sua fazenda bloco a bloco** ao longo do tempo. O jogador não planta apenas para enriquecer, ele planta para gerar os recursos necessários para desbloquear mais do mundo.
 
-## Pilares da experiência, inspirados na Mini Fazenda do Orkut
+## Pilares da experiência
 
 - Possuir uma propriedade.
-- Plantar.
-- Colher.
+- Plantar e Colher.
 - Cuidar de animais.
-- Comprar objetos.
-- Construir.
-- Decorar.
-- Expandir a fazenda.
-- Administrar recursos.
+- Comprar objetos e Construir.
+- Administrar recursos (Dinheiro, Madeira, Pedra).
+- **Expandir a fazenda (Estilo Forager):** Comprar acesso a novas áreas de terra.
 - Ganhar e gastar moedas.
-- Desbloquear novos conteúdos.
-- Evoluir progressivamente a propriedade.
+- Desbloquear novos conteúdos progressivamente.
 
 ## Visão de jogabilidade
 
@@ -38,6 +34,13 @@ Quando o jogador clica em um elemento interativo do mapa, o personagem deve:
 
 Esse loop é a espinha dorsal da jogabilidade: praticamente toda ação do jogador passa por ele.
 
+### O Macro Loop (A Motivação)
+
+1. **Produzir:** Plantar sementes, regar, colher e vender.
+2. **Coletar:** Cortar árvores e quebrar pedras nos espaços disponíveis.
+3. **Expandir:** Usar moedas e materiais (madeira/pedra) para consertar pontes quebradas ou comprar placas que desbloqueiam blocos de terreno adjacentes.
+4. **Descobrir:** Cada nova área desbloqueada traz algo novo (um NPC, novos recursos, áreas de pesca ou pastos).
+
 ## Sistemas futuros (exemplos, não definitivos)
 
 O projeto poderá, ao longo do desenvolvimento, incorporar:
@@ -45,8 +48,9 @@ O projeto poderá, ao longo do desenvolvimento, incorporar:
 - **Agricultura** — arar, plantar, regar e colher, com plantações passando por estágios de crescimento.
 - **Economia** — moedas, inventário, compra e venda, loja.
 - **Construções e decoração** — estruturas e objetos decorativos posicionáveis na propriedade.
+- **Tempo e Ciclo** — relógio interno que controla a passagem dos dias, essencial para o crescimento de árvores, respawn de recursos e produção animal.
 - **Animais e recursos** — criação de animais, árvores, pedras e outros recursos coletáveis.
-- **Progressão** — experiência, níveis, missões e desbloqueio de novos terrenos/itens.
+- **Progressão e Expansão** — experiência, níveis, desbloqueio de novos terrenos "chunk by chunk" e liberação de novos itens.
 
 ## Princípios de gameplay
 

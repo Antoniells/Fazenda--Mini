@@ -46,38 +46,36 @@ Detalhes de como o sistema funciona, arquivos envolvidos e limitações atuais: 
 
 Detalhes: ver [TECHNICAL.md](TECHNICAL.md#economia-fase-5).
 
-## Fase 6 — Construções e decoração
-- [x] Construções (sistema genérico de posicionamento livre, reaproveitável para qualquer construção/decoração futura)
+## Fase 6 — Construções, Decoração e Expansão
+- [x] Construções (sistema genérico de posicionamento livre)
 - [x] Objetos decorativos (Poço, primeiro item comprável e posicionável)
-- [x] Posicionamento (preview fantasma seguindo o mouse, com checagem de colisão em tempo real)
-- [x] Remoção (clique no objeto posicionado, mesma interação adjacente já usada na Loja/Caixa de Remessas)
-- [ ] Expansão da propriedade
+- [x] Posicionamento (preview fantasma seguindo o mouse, checagem de colisão)
+- [x] Remoção (clique no objeto posicionado)
+- [x] Expansão da propriedade (Estilo Forager: 4 trechos ao redor do núcleo — norte/sul/leste/oeste —, cada um com sua própria placa física comprável, sem menu envolvido)
 
-Detalhes: ver [TECHNICAL.md](TECHNICAL.md#construções-e-decoração-fase-6).
+Detalhes: ver [TECHNICAL.md](TECHNICAL.md#construções-decoração-e-expansão-fase-6).
 
-## Fase 7 — Animais e recursos
-- [ ] Animais
-- [ ] Produção
-- [ ] Árvores
-- [ ] Pedras
-- [ ] Recursos coletáveis
+## Fase 7 — Tempo, Animais e Recursos
+- [ ] Sistema de Tempo (Relógio interno, ciclo dia/noite e transição de dias)
+- [ ] Árvores (corte com machado, drop de madeira, renascimento com o tempo)
+- [ ] Pedras e Minérios (quebrar com picareta, drop de pedra/minério)
+- [ ] Animais (compra e posicionamento no pasto)
+- [ ] Produção Animal (coleta diária de ovos, leite, etc.)
 
-## Fase 8 — Progressão
-- [ ] Níveis
-- [ ] Experiência
-- [ ] Desbloqueios
-- [ ] Missões
-- [ ] Novos terrenos
-- [ ] Novos itens
+## Fase 8 — Progressão e NPCs
+- [ ] Níveis e Experiência (XP ganho por colher/cortar/minerar)
+- [ ] Upgrade de Ferramentas (melhorar ferramentas usando minérios coletados)
+- [ ] Desbloqueios e Novos Itens (lojas que vendem sementes/itens melhores à medida que novas áreas são expandidas)
+- [ ] Missões/Pedidos (entregar itens específicos para ganhar recompensas)
 
-## Fase 9 — Polimento
-- [ ] Interface
-- [x] Efeitos (poeira ao arar, respingo ao regar, pulo elástico ao colher/vender — "Pit Stop de Polimento" antecipado, ver abaixo)
-- [ ] Sons (fora do escopo do pit stop — ainda não implementado)
-- [ ] Animações
-- [x] Feedback visual (sombras de chão, cursor de seleção nos canteiros, entrada animada da SeedBar/CoinBar — mesmo pit stop)
-- [ ] Balanceamento
-- [ ] Salvamento
+## Fase 9 — Polimento Final
+- [ ] Interface (Refinamento final de menus, relógio/calendário HUD)
+- [x] Efeitos (poeira, respingo, pulo elástico — "Pit Stop de Polimento")
+- [x] Feedback visual (sombras, cursor, SeedBar/CoinBar animadas — "Pit Stop de Polimento")
+- [ ] Sons e Música (SFX para ferramentas, passos e BGM do mundo)
+- [ ] Animações (vento nas árvores, água animada)
+- [ ] Balanceamento (ajuste de preços da loja e custo das pontes de expansão)
+- [ ] Salvamento (Sistema de Save/Load guardando o progresso do dia, grid e inventário)
 
 > Nota: os itens marcados acima foram adiantados como um "Pit Stop de
 > Polimento" pedido explicitamente entre a Fase 5 e a Fase 6 — não uma
@@ -94,4 +92,4 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#construções-e-decoração-fase-6).
 
 ---
 
-**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Um "Pit Stop de Polimento" visual (sombras, cursor de seleção, efeitos de arar/regar/colher/vender, entrada animada de HUDs) foi adiantado por pedido explícito — sem sons nem ferramentas no inventário, que ficam para quando a Fase 9 for feita por completo. Fase 6 (Construções e decoração) com o sistema de posicionamento livre implementado e testado (comprar → posicionar → remover), usando o Poço como primeiro objeto; falta apenas "Expansão da propriedade".
+**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Um "Pit Stop de Polimento" visual (sombras, cursor de seleção, efeitos de arar/regar/colher/vender, entrada animada de HUDs) foi adiantado por pedido explícito — sem sons nem ferramentas no inventário, que ficam para quando a Fase 9 for feita por completo. Fase 6 (Construções, Decoração e Expansão) 100% concluída: sistema de posicionamento livre (comprar → posicionar → remover, usando o Poço como primeiro objeto) e expansão de propriedade estilo Forager (4 trechos ao redor do núcleo, cada um com sua própria placa física comprável).

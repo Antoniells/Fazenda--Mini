@@ -78,7 +78,9 @@ export class PlayerController {
     this.lastRow = player.row;
 
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.handlePointerDown(pointer.x, pointer.y);
+      // worldX/worldY (não x/y) — com a câmera podendo rolar (Fase 6,
+      // Expansão), x/y são coordenadas de TELA, não do mundo.
+      this.handlePointerDown(pointer.worldX, pointer.worldY);
     });
   }
 

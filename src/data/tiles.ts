@@ -90,3 +90,11 @@ export const SHIPPING_BIN_FRAME = { x: 0, y: 16, width: 16, height: 16 };
  */
 export const SHOP_STAND_KEY = 'shop-stand';
 export const SHOP_STAND_PATH = 'Objects/Exterior/Newsstand.png';
+
+/**
+ * Placa de "obra em andamento" (Fase 6 — Expansão): marca cada trecho de
+ * terra comprável ao redor da propriedade (`farmMap.expansions`). Imagem
+ * única e completa (caixa de ferramentas + capacete), sem frames a recortar.
+ */
+export const CONSTRUCTION_SIGN_KEY = 'construction-sign';
+export const CONSTRUCTION_SIGN_PATH = 'Objects/Exterior/Construction area.png';

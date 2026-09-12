@@ -54,7 +54,9 @@ export class TileCursor {
     };
 
     scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      this.handlePointerMove(pointer.x, pointer.y);
+      // worldX/worldY — com a câmera podendo rolar (Fase 6, Expansão), x/y
+      // são coordenadas de tela, não do mundo.
+      this.handlePointerMove(pointer.worldX, pointer.worldY);
     });
   }
 

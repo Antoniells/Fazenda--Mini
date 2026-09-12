@@ -16,6 +16,8 @@ import {
   SHIPPING_BIN_PATH,
   SHOP_STAND_KEY,
   SHOP_STAND_PATH,
+  CONSTRUCTION_SIGN_KEY,
+  CONSTRUCTION_SIGN_PATH,
 } from '../data/tiles';
 import {
   PLAYER_IDLE_KEY,
@@ -30,8 +32,9 @@ import { CROPS } from '../data/crops';
 import { DECORATIONS, WELL } from '../data/decorations';
 import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
-import { buildFarmGround, buildFarmFence, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { buildFarmGround, buildFenceCorners, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildWalkableGrid } from '../systems/grid';
+import { PropertyExpansionSystem } from '../systems/propertyExpansion';
 import { updateTreeOverlap } from '../systems/treeOverlap';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
@@ -57,6 +60,8 @@ import { ShopMenu, ShopItem } from '../ui/shopMenu';
  */
 /** Avanço de relógio (ms) aplicado pela tecla de debug T — só para acelerar testes de crescimento/morte por sede, não é mecânica de jogo. */
 const DEBUG_TIME_SKIP_MS = 5000;
+/** Moedas adicionadas pela tecla de debug + — só para testar compras sem precisar vender a colheita inteira, não é mecânica de jogo. */
+const DEBUG_ADD_COINS_AMOUNT = 1000;
 
 export class MainScene extends Phaser.Scene {
   private player!: Player;
@@ -116,6 +121,7 @@ export class MainScene extends Phaser.Scene {
 
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
     this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
+    this.load.image(CONSTRUCTION_SIGN_KEY, encodeURI(`/${CONSTRUCTION_SIGN_PATH}`));
 
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
     this.load.spritesheet(SPLASH_KEY, encodeURI(`/${SPLASH_PATH}`), {
@@ -155,7 +161,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     buildFarmGround(this, farmMap);
-    buildFarmFence(this, farmMap);
+    buildFenceCorners(this, farmMap);
     this.trees = buildFarmDecorations(this, farmMap);
     const shippingBin = buildShippingBin(this, farmMap);
     buildShopStand(this, farmMap);
@@ -166,6 +172,29 @@ export class MainScene extends Phaser.Scene {
     Player.createAnimations(this);
     this.player = new Player(this, PLAYER_START.col, PLAYER_START.row, tilePx);
     this.player.sprite.setScale(DISPLAY_SCALE);
+
+    // Câmera (Fase 6 — Expansão): o mundo pode ser maior que a janela
+    // (`gameConfig.ts`) — cada trecho ao redor do núcleo
+    // (`farmMap.expansions`) já existe (grama e perímetro definitivo
+    // desenhados) desde o início, mesmo antes de comprado, então os limites
+    // da câmera cobrem o retângulo total (núcleo + todos os trechos), não
+    // só o núcleo — ela já pode rolar até lá, mesmo cercada.
+    const worldBounds = farmMap.expansions.reduce(
+      (bounds, chunk) => ({
+        minCol: Math.min(bounds.minCol, chunk.col0),
+        minRow: Math.min(bounds.minRow, chunk.row0),
+        maxCol: Math.max(bounds.maxCol, chunk.col0 + chunk.cols - 1),
+        maxRow: Math.max(bounds.maxRow, chunk.row0 + chunk.rows - 1),
+      }),
+      { minCol: 0, minRow: 0, maxCol: farmMap.cols - 1, maxRow: farmMap.rows - 1 },
+    );
+    this.cameras.main.setBounds(
+      worldBounds.minCol * tilePx,
+      worldBounds.minRow * tilePx,
+      (worldBounds.maxCol - worldBounds.minCol + 1) * tilePx,
+      (worldBounds.maxRow - worldBounds.minRow + 1) * tilePx,
+    );
+    this.cameras.main.startFollow(this.player.sprite, true, 0.15, 0.15);
 
     this.farmland = new Farmland(farmMap.farmlandArea);
     this.farmlandRenderer = new FarmlandRenderer(this, farmMap);
@@ -202,6 +231,11 @@ export class MainScene extends Phaser.Scene {
     this.shopMenu = new ShopMenu(this, shopItems, (itemId) => this.buyShopItem(itemId));
     registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
 
+    // Expansão de propriedade (Fase 6, inspirada no Forager): cada trecho
+    // ao redor do núcleo tem sua própria placa física — sem menu envolvido,
+    // ver `systems/propertyExpansion.ts`.
+    new PropertyExpansionSystem(this, farmMap, grid, this.inventory, interactions);
+
     this.decorationPlacement = new DecorationPlacementSystem(
       this,
       farmMap,
@@ -210,6 +244,7 @@ export class MainScene extends Phaser.Scene {
       this.inventory,
       interactions,
       this.player,
+      this.farmlandRenderer,
       WELL,
     );
 
@@ -243,6 +278,7 @@ export class MainScene extends Phaser.Scene {
 
     this.setupSeedSelection();
     this.setupDebugTimeSkip();
+    this.setupDebugAddCoins();
   }
 
   /**
@@ -316,6 +352,17 @@ export class MainScene extends Phaser.Scene {
       this.farmland.update(DEBUG_TIME_SKIP_MS);
       this.farmlandRenderer.renderAll(this.farmland);
     });
+  }
+
+  /** Tecla + (debug): adiciona moedas para testar compras (ex.: a expansão de propriedade) sem precisar vender a colheita inteira — não é mecânica de jogo. */
+  private setupDebugAddCoins(): void {
+    const addDebugCoins = (): void => {
+      this.inventory.addCoins(DEBUG_ADD_COINS_AMOUNT);
+      console.log(`[debug] +${DEBUG_ADD_COINS_AMOUNT} moedas (saldo: ${this.inventory.getCoins()}).`);
+    };
+    // PLUS cobre o "=/+" do teclado principal; NUMPAD_ADD, o "+" do numérico.
+    this.input.keyboard!.on('keydown-PLUS', addDebugCoins);
+    this.input.keyboard!.on('keydown-NUMPAD_ADD', addDebugCoins);
   }
 
   update(time: number, delta: number): void {
