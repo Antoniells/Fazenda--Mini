@@ -51,3 +51,7 @@ export const COIN_ICON_PATH = 'UI/Money.png';
 export const COIN_ICON_FRAME_SIZE = 16;
 export const COIN_SPIN_ANIM_KEY = 'ui-coin-spin';
 export const COIN_SPIN_FRAMES = { start: 0, end: 5 };
+
+/** `UI/Clock/Clock.png`: ícone único (32x32, sol/lua num mostrador), sem frames. Usado na `ClockBar` (Fase 7 — Sistema de Tempo). */
+export const CLOCK_ICON_KEY = 'ui-clock';
+export const CLOCK_ICON_PATH = 'UI/Clock/Clock.png';

@@ -753,3 +753,75 @@ mesma leva de trabalho:
   aplicar, sem nenhuma emenda visível.
 - **Velocidade de movimento** (`data/player.ts`, `PLAYER_MOVE_DURATION_MS`):
   180ms → 260ms por célula (personagem andando mais devagar).
+
+## Sistema de Tempo (Fase 7)
+
+Primeiro item da fase: um relógio interno com ciclo dia/noite e contador de
+dias — puramente aditivo, sem efeito em nenhuma mecânica existente.
+
+### Por que um relógio novo, e não o que já existe em `Farmland`
+
+`Farmland` já tem seu próprio `clockMs` (avança em tempo real, sem limite,
+usado só para crescimento/hidratação das culturas). Esse relógio e o do
+dia/noite são conceitos deliberadamente separados — um é "hora do dia", o
+outro é "temporizador de crescimento" — ligar um ao outro mudaria como a
+agricultura já funciona, o que não foi pedido. `GameClock`
+(`systems/gameClock.ts`) roda em paralelo, sem nenhuma referência a
+`Farmland` nem o contrário.
+
+### Ritmo do dia (`systems/gameClock.ts`)
+
+Um dia inteiro (24h) dura `DAY_LENGTH_MS` = 90 segundos reais — bem mais
+curto que o ritmo "realista" de outros jogos do gênero (Stardew Valley:
+~13min reais por dia). As culturas daqui crescem em 12-20s (`data/crops.ts`),
+então um dia longo deixaria o relógio desconectado do resto do ritmo já
+estabelecido; 90s dá uns 5-7 ciclos de plantio por dia. Ajustável mudando
+uma única constante.
+
+`GameClock.update(deltaMs)` acumula o tempo e devolve `true` só no frame em
+que um novo dia começa (pra quem quiser reagir, hoje só um log em
+`MainScene`). `getHours()` devolve a hora atual (0-24, fracionária).
+
+### Véu de dia/noite (`systems/dayNightOverlay.ts`)
+
+Um retângulo semitransparente cobrindo a tela inteira (mesma técnica já
+usada no fundo da `CoinBar`/`ClockBar` — cor sólida com alpha, não um
+asset; aqui a cor É o efeito, não uma peça de UI). Fica em
+`scrollFactor(0)` (acompanha a câmera, que desde a Fase 6 pode rolar) e
+depth 999 — abaixo da HUD (1000+), acima do mundo.
+
+Pegadinha do Phaser encontrada testando: `scene.add.rectangle(x,y,w,h,cor,alpha)`
+define o **alpha do preenchimento** (canal alpha da cor), uma propriedade
+diferente do `alpha` do game object (`setAlpha`). Criar o retângulo com
+`fillAlpha: 0` e depois só chamar `setAlpha(dinâmico)` deixava o alpha
+final sempre 0 (fillAlpha × alpha do objeto) — o véu nunca aparecia, sem
+erro nenhum no console. Corrigido criando com `fillAlpha: 1` (opaco) e
+controlando a visibilidade só via `setAlpha`.
+
+`GameClock.getNightAlpha()` calcula a opacidade (0 a 0.55 — nunca total,
+pra não esconder o jogo) a partir da hora: dia cheio das 7h às 17h,
+noite cheia das 19h às 5h, com transição linear suave nas janelas
+5h-7h (amanhecer) e 17h-19h (anoitecer) — sem cortes abruptos.
+
+### HUD do relógio (`ui/clockBar.ts`, `data/ui.ts`)
+
+Espelha a `CoinBar` (moedas, canto superior direito) no canto superior
+esquerdo: mesmo fundo semitransparente, mesma entrada animada
+(`Back.easeOut`), mesmo motivo para texto (`scene.add.text` — não há fonte
+em pixel art no pacote para "Dia N" / hora livre). O ícone
+(`UI/Clock/Clock.png`, um mostrador sol/lua) é uma imagem única, sem frames
+— ao contrário da moeda, não tem animação de giro.
+
+### Debug
+
+Tecla T (já usada para adiantar o relógio da agricultura) agora também
+adianta `GameClock`, pelo mesmo `DEBUG_TIME_SKIP_MS` — um só atalho avança
+os dois relógios paralelos ao testar.
+
+### Próximos pontos (fora do escopo deste passo)
+
+- Nenhuma mecânica ainda depende da hora/do dia (ex.: lojas fechando à
+  noite, plantação parar de crescer, personagem mais lento no escuro) —
+  intencional, escopo deste passo era só o relógio em si.
+- Árvores, Pedras/Minérios, Animais e Produção Animal (demais itens da
+  Fase 7).

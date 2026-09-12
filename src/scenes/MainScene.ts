@@ -30,12 +30,14 @@ import {
 } from '../data/player';
 import { CROPS } from '../data/crops';
 import { DECORATIONS, WELL } from '../data/decorations';
-import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE } from '../data/ui';
+import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE, CLOCK_ICON_KEY, CLOCK_ICON_PATH } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
 import { buildFarmGround, buildFenceCorners, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildWalkableGrid } from '../systems/grid';
 import { PropertyExpansionSystem } from '../systems/propertyExpansion';
 import { updateTreeOverlap } from '../systems/treeOverlap';
+import { GameClock } from '../systems/gameClock';
+import { DayNightOverlay } from '../systems/dayNightOverlay';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
 import { Farmland } from '../systems/farmland';
@@ -49,6 +51,7 @@ import { TileCursor } from '../systems/tileCursor';
 import { DecorationPlacementSystem } from '../systems/decorationPlacement';
 import { SeedBar } from '../ui/seedBar';
 import { CoinBar } from '../ui/coinBar';
+import { ClockBar } from '../ui/clockBar';
 import { ShopMenu, ShopItem } from '../ui/shopMenu';
 
 /**
@@ -56,7 +59,9 @@ import { ShopMenu, ShopItem } from '../ui/shopMenu';
  * jogável com movimentação/clique/pathfinding (Fase 3), a agricultura —
  * terrenos cultiváveis, arar, plantar, crescimento, regar e colher (Fase 4)
  * — a economia: moedas, venda na Caixa de Remessas e compra na Loja (Fase
- * 5) — e construções/decoração posicionáveis livremente (Fase 6).
+ * 5) — construções/decoração posicionáveis livremente e expansão de
+ * propriedade (Fase 6) — e o relógio interno com ciclo dia/noite (Fase 7,
+ * primeiro item — "Sistema de Tempo").
  */
 /** Avanço de relógio (ms) aplicado pela tecla de debug T — só para acelerar testes de crescimento/morte por sede, não é mecânica de jogo. */
 const DEBUG_TIME_SKIP_MS = 5000;
@@ -74,6 +79,9 @@ export class MainScene extends Phaser.Scene {
   private coinBar!: CoinBar;
   private shopMenu!: ShopMenu;
   private decorationPlacement!: DecorationPlacementSystem;
+  private gameClock!: GameClock;
+  private dayNightOverlay!: DayNightOverlay;
+  private clockBar!: ClockBar;
 
   constructor() {
     super('MainScene');
@@ -118,6 +126,7 @@ export class MainScene extends Phaser.Scene {
       frameWidth: COIN_ICON_FRAME_SIZE,
       frameHeight: COIN_ICON_FRAME_SIZE,
     });
+    this.load.image(CLOCK_ICON_KEY, encodeURI(`/${CLOCK_ICON_PATH}`));
 
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
     this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
@@ -276,6 +285,11 @@ export class MainScene extends Phaser.Scene {
     this.coinBar = new CoinBar(this);
     this.coinBar.refresh(this.inventory.getCoins());
 
+    this.gameClock = new GameClock();
+    this.dayNightOverlay = new DayNightOverlay(this);
+    this.clockBar = new ClockBar(this);
+    this.clockBar.refresh(this.gameClock.getDay(), this.gameClock.getHours());
+
     this.setupSeedSelection();
     this.setupDebugTimeSkip();
     this.setupDebugAddCoins();
@@ -346,11 +360,12 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /** Tecla T (debug): adianta o relógio da agricultura para acelerar testes — não é mecânica de jogo. */
+  /** Tecla T (debug): adianta o relógio da agricultura E o relógio do dia/noite para acelerar testes — não é mecânica de jogo. */
   private setupDebugTimeSkip(): void {
     this.input.keyboard!.on('keydown-T', () => {
       this.farmland.update(DEBUG_TIME_SKIP_MS);
       this.farmlandRenderer.renderAll(this.farmland);
+      this.gameClock.update(DEBUG_TIME_SKIP_MS);
     });
   }
 
@@ -372,6 +387,11 @@ export class MainScene extends Phaser.Scene {
 
     this.farmland.update(delta);
     this.farmlandRenderer.renderAll(this.farmland);
+
+    const newDay = this.gameClock.update(delta);
+    if (newDay) console.log(`Dia ${this.gameClock.getDay()} começou.`);
+    this.dayNightOverlay.setNightAlpha(this.gameClock.getNightAlpha());
+    this.clockBar.refresh(this.gameClock.getDay(), this.gameClock.getHours());
 
     // Atualiza a cada frame em vez de só onde `coins`/estoque de sementes
     // mudam (venda na Caixa de Remessas, compra na Loja, plantio) — evita
