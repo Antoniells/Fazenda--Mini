@@ -97,17 +97,21 @@ this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDow
   }
 
   /** Tenta mover uma célula na direção informada, se não estiver em movimento nem ocupado com uma ação. */
-  tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => boolean): void {
+tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => boolean): void {
     if (this.busy) return;
+    
     this.receivedInputThisFrame = true;
     this.lastDCol = dCol;
     this.lastDRow = dRow;
     this.lastIsWalkable = isWalkable;
+    
+    // ESTA É A TRAVA DE SEGURANÇA! Ela impede o teletransporte.
+    if (this.moving) return; 
 
-    if (this.moving) return;
     const col = this.col + dCol;
     const row = this.row + dRow;
     if (!isWalkable(col, row)) return;
+    
     this.beginStep(col, row, dCol, dRow);
   }
 
@@ -181,34 +185,34 @@ update(_time: number, delta: number): void {
 
     this.moveElapsed += delta;
     const t = Math.min(1, this.moveElapsed / PLAYER_MOVE_DURATION_MS);
+
     this.sprite.x = Phaser.Math.Linear(this.fromX, this.toX, t);
     this.sprite.y = Phaser.Math.Linear(this.fromY, this.toY, t);
-
-    // ADICIONE ISSO: Atualiza o depth dinamicamente acompanhando o novo 'Y'
+    
     this.sprite.setDepth(this.sprite.y);
-
-    // Sombra acompanha a posição e o Y-sorting do personagem — sempre logo
-    // atrás dele (por isso o "-0.1"), mas ordenada contra o resto do mundo.
-    this.shadow.setPosition(this.sprite.x, this.sprite.y -13);
+    this.shadow.setPosition(this.sprite.x, this.sprite.y - 13);
     this.shadow.setDepth(this.sprite.y - 0.1);
 
     if (t >= 1) {
       this.moving = false;
       const next = this.path.shift();
+      
       if (next) {
         const dCol = next.col - this.col;
         const dRow = next.row - this.row;
         this.beginStep(next.col, next.row, dCol, dRow);
       } else if (this.receivedInputThisFrame && this.lastIsWalkable && this.lastIsWalkable(this.col + this.lastDCol, this.row + this.lastDRow)) {
-        // Continua andando instantaneamente para o próximo tile se a tecla continuar pressionada
+        // Continua andando instantaneamente se a tecla continuar pressionada
         const col = this.col + this.lastDCol;
         const row = this.row + this.lastDRow;
         this.beginStep(col, row, this.lastDCol, this.lastDRow);
       } else {
         this.playIdle();
       }
-      this.receivedInputThisFrame = false;
     }
+
+    // A flag é limpa apenas no final de tudo!
+    this.receivedInputThisFrame = false;
   }
 
   private playIdle(): void {

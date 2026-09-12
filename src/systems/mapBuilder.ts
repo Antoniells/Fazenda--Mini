@@ -126,7 +126,7 @@ export function buildFarmDecorations(
     const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
     shadow.setDepth(STATIC_SHADOW_DEPTH);
 
-    const tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
+    const tree = scene.add.image(x, y + 6, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
     tree.setOrigin(0.5, 1);
     tree.setScale(DISPLAY_SCALE);
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra
@@ -200,7 +200,7 @@ export function buildShopStand(scene: Phaser.Scene, map: FarmMapData): Phaser.Ga
   const stand = scene.add.image(x, y, SHOP_STAND_KEY);
   stand.setOrigin(0.5, 1);
   stand.setScale(DISPLAY_SCALE);
-  stand.setDepth(stand.y);
+  stand.setDepth(stand.y-10);
 
   return stand;
 }

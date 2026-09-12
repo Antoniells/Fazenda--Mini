@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Farmland, Plot } from './farmland';
 import { CROPS } from '../data/crops';
-import { SOIL_TILESET_KEY, SOIL_DRY_INDEX, SOIL_WET_INDEX } from '../data/tiles';
+import { SOIL_TILESET_KEY, SOIL_DRY_INDEX } from '../data/tiles';
 import { SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
@@ -11,6 +11,15 @@ import { FarmMapData } from '../data/maps/farmMap';
 const DEAD_TINT = 0x8a6d4a;
 /** Tingimento marrom-terra aplicado à mancha de sombra para virar "poeira" ao arar — mesmo asset, só a cor muda. */
 const DUST_TINT = 0x8a5a2e;
+/**
+ * Tingimento aplicado ao mesmo frame do solo seco (`SOIL_DRY_INDEX`) para
+ * representar solo molhado — ver `renderSoil`. O spritesheet
+ * "Tilled Soil and wet soil.png" só tem duas famílias de cor (laranja/seco
+ * e azul/"wet"); a variante azul destoava do resto da paleta terrosa do
+ * jogo, por isso a troca por um tingimento mais escuro sobre o mesmo asset,
+ * em vez de usar o frame azul do spritesheet.
+ */
+const WET_SOIL_TINT = 0x7a5233;
 
 /**
  * Visual da agricultura: uma imagem de solo por célula cultivável (oculta
@@ -55,8 +64,10 @@ export class FarmlandRenderer {
 
     soil.setVisible(true);
 
+    soil.setFrame(SOIL_DRY_INDEX);
+
     if (plot.state !== 'growing' || !plot.cropId) {
-      soil.setFrame(SOIL_DRY_INDEX);
+      soil.clearTint();
       return;
     }
 
@@ -64,11 +75,12 @@ const crop = CROPS[plot.cropId];
 
 // Só é considerada molhada se a última rega for DIFERENTE do tempo de plantio
 // (ou seja, o jogador regou manualmente após plantar) e ainda não secou.
-const recentlyWatered = !!crop && 
-                        plot.lastWateredAt !== plot.plantedAt && 
+const recentlyWatered = !!crop &&
+                        plot.lastWateredAt !== plot.plantedAt &&
                         farmland.timeSinceWatered(plot) < crop.maxTimeWithoutWaterMs / 2;
 
-soil.setFrame(recentlyWatered ? SOIL_WET_INDEX : SOIL_DRY_INDEX);
+if (recentlyWatered) soil.setTint(WET_SOIL_TINT);
+else soil.clearTint();
   }
 
 private renderCrop(plot: Plot): void {
@@ -84,12 +96,30 @@ private renderCrop(plot: Plot): void {
     const frame = crop.growthFrames[Math.min(plot.stage, crop.growthFrames.length - 1)];
     let image = this.cropImages.get(key);
     
+// 1. Calculamos o X e Y base
+    const x = plot.col * this.tilePx + this.tilePx / 2;
+    let y = (plot.row + 1) * this.tilePx;
+
+    // 2. O Ajuste:
+    if (plot.stage > 0) {
+      y -= 8; // Sobe as plantas que já cresceram
+    } else {
+      // É uma semente (stage === 0)
+      // Ajuste fino exclusivo para as sementes que desenham muito para baixo
+      if (plot.cropId === 'potato' || plot.cropId === 'onion') {
+        y -= 5; // Tente 4 ou 6 para centralizar certinho com a da cenoura
+      }
+    }
+
     if (!image) {
-      image = this.scene.add.image(0, 0, crop.textureKey, frame);
+// ... resto do código continua igual
+      image = this.scene.add.image(x, y, crop.textureKey, frame);
       image.setOrigin(0.5, 1);
       image.setScale(DISPLAY_SCALE);
-      image.setPosition(plot.col * this.tilePx + this.tilePx / 2, (plot.row + 1) * this.tilePx);
       this.cropImages.set(key, image);
+    } else {
+      // 3. Atualizamos a posição caso ela já exista (para ela subir quando passar do stage 0 para o 1)
+      image.setPosition(x, y);
     }
     
     image.setFrame(frame);
@@ -97,12 +127,9 @@ private renderCrop(plot: Plot): void {
     if (plot.state === 'dead') image.setTint(DEAD_TINT);
     else image.clearTint();
 
-    // ADICIONE ISTO AQUI NO FINAL:
-    // Se for o estágio 0 (semente) ou estiver morta, fica colada no chão (-0.25 fica acima da terra que é -0.5)
     if (plot.stage === 0 || plot.state === 'dead') {
       image.setDepth(-0.25);
     } else {
-      // Se já for uma plantinha crescendo, ganha profundidade para o personagem passar por trás/frente
       image.setDepth(image.y + 1);
     }
   }

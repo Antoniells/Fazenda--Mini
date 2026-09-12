@@ -37,7 +37,7 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   }
 
   blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
-  blocked.add(key(map.shopPosition[0], map.shopPosition[1]));
+  blocked.add(key(map.shopPosition[0], map.shopPosition[1]-1));
 
   const inBounds = (col: number, row: number): boolean =>
     col >= 0 && row >= 0 && col < map.cols && row < map.rows;

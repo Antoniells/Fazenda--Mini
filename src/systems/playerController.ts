@@ -181,7 +181,7 @@ export class PlayerController {
       const dRow = this.cursors.up.isDown ? -1 : this.cursors.down.isDown ? 1 : 0;
 
       if (dCol !== 0 || dRow !== 0) {
-        if (!this.player.isMoving()) {
+         {
           this.player.clearPath();
           this.pendingInteraction = null;
           // Prioriza um eixo por vez (sem diagonais): vertical antes de horizontal.

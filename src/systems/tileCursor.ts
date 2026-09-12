@@ -3,7 +3,7 @@ import { FarmMapData } from '../data/maps/farmMap';
 import { INVENTORY_UI_KEY, SELECTION_CORNER_NAMES, SELECTION_CORNER_RECTS } from '../data/ui';
 
 const CURSOR_SCALE = 2;
-const CURSOR_DEPTH = 900; // Acima de qualquer sprite do mundo (Y-sort chega no máximo à altura do mapa), abaixo dos HUDs (1000+).
+const CURSOR_DEPTH = -0.3; // Acima de qualquer sprite do mundo (Y-sort chega no máximo à altura do mapa), abaixo dos HUDs (1000+).
 
 type CornerKey = keyof typeof SELECTION_CORNER_NAMES;
 

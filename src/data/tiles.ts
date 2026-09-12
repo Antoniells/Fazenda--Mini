@@ -67,8 +67,13 @@ export const SOIL_TILESET_PATH = 'Tileset/Tilled Soil and wet soil.png';
  * tile antigo, só que com textura de verdade.
  */
 export const SOIL_DRY_INDEX = 26;
-/** Solo arado molhado/regado — mesma posição relativa do seco (linha 5, coluna 2), 4 linhas abaixo, igual ao par antigo. */
-export const SOIL_WET_INDEX = 122;
+/**
+ * Não existe índice "molhado" aqui: as únicas variantes de cor do
+ * spritesheet são laranja (seca) e azul, e o azul destoava da paleta
+ * terrosa do jogo (ver o pedido que corrigiu isso). Solo molhado reusa
+ * `SOIL_DRY_INDEX` com um tingimento marrom mais escuro em vez de trocar de
+ * frame — ver `WET_SOIL_TINT` em `systems/farmlandRenderer.ts`.
+ */
 
 export const SHIPPING_BIN_KEY = 'shipping-bin';
 export const SHIPPING_BIN_PATH = 'Objects/Exterior/shipping box.png';
