@@ -513,3 +513,162 @@ escuro + opacidade reduzida, nunca uma forma nova.
 - `ShopMenu` não ganhou entrada animada — fica oculto até `open()`, e abrir
   já é a própria "entrada" (não faz sentido animar algo que começa
   invisível e só aparece sob demanda).
+
+## Construções e decoração (Fase 6)
+
+Primeiro passo da fase: um sistema **genérico** de posicionamento livre —
+comprar na Loja, posicionar em qualquer grama livre com preview e checagem
+de colisão, remover depois — usando o Poço (`WELL`) como primeiro objeto.
+A arquitetura não é específica do Poço: qualquer construção ou decoração
+futura reaproveita as mesmas peças, só precisando de uma nova
+`DecorationDefinition`. "Expansão da propriedade" (o último item da fase)
+não foi implementada — fora do escopo deste passo.
+
+### Dados de decoração (`data/decorations.ts`)
+
+`DecorationDefinition` é o equivalente de `CropDefinition` para objetos do
+mundo: `textureKey`/`texturePath`, um `frameName` recortado à mão
+(`frameRect`) para o ícone da Loja e o sprite no mundo, e `price`. O
+`frameRect` do Poço (`Objects/Exterior/Well .png`) veio do mesmo processo
+de escaneamento de pixels (PowerShell + `System.Drawing`) já usado para
+outros assets — encontrar os limites reais do sprite, sem confundir com o
+canto de um vizinho na mesma folha.
+
+### Estoque de decorações (`systems/inventory.ts`)
+
+Terceiro Map do `Inventory`, `decorations` (quantidade por `decorationId`),
+com o mesmo padrão e a mesma justificativa do estoque de sementes: separado
+de `items`/`seeds` para não colidir por id. `getDecorationCount`,
+`addDecorations` (compra na Loja, devolução ao remover) e `useDecoration`
+(consumido ao posicionar; recusa sem estoque).
+
+### Loja genérica (`ui/shopMenu.ts`, `scenes/MainScene.ts`)
+
+`ShopMenu` era acoplado a `CropDefinition`; virou genérico sobre `ShopItem`
+(`id`, `textureKey`, `iconFrame`, `price`) — a forma mínima que sementes e
+decorações têm em comum. `MainScene` monta uma lista única combinando
+`CROPS` (via `seedPrice`) e `DECORATIONS` (via `price`) e passa para o
+mesmo painel; o callback de compra (`buyShopItem`) despacha para
+`buySeed`/`buyDecoration` conforme o id pertence a um ou outro catálogo.
+Um único painel visual continua vendendo os dois tipos de item, sem duplicar
+UI.
+
+### Grid dinâmico (`systems/grid.ts`)
+
+Até aqui o `WalkableGrid` era só leitura, montado uma vez a partir do mapa.
+Ganhou `block`/`unblock`, operando no mesmo `Set` interno de células
+bloqueadas — necessário porque decorações agora bloqueiam/liberam células
+em tempo de execução, algo que nenhum obstáculo anterior (fixo desde a
+criação do mapa) precisava fazer.
+
+### Roubando o clique: `PointerInputInterceptor` (`systems/playerController.ts`)
+
+Durante o modo de posicionamento, um clique no mundo não pode significar
+"mover/interagir" (comportamento normal do `PlayerController`) **e**
+"posicionar a decoração" ao mesmo tempo. Em vez de espalhar essa checagem
+pelo `PlayerController`, ele ganhou um gancho genérico: um
+`PointerInputInterceptor` opcional (`{ isActive(), handleClick(x,y) }`),
+checado logo no início de `handlePointerDown` — se houver um interceptor
+ativo, o clique é inteiramente entregue a ele e a lógica normal é pulada.
+Sem interceptor (ou inativo), o comportamento é idêntico ao de antes dessa
+mudança — o gancho não altera nenhum fluxo existente.
+
+### Posicionamento e remoção (`systems/decorationPlacement.ts`)
+
+`DecorationPlacementSystem` implementa `PointerInputInterceptor` e concentra
+toda a lógica da Fase 6:
+
+- **Modo de posicionamento** (`toggle`, tecla B em `MainScene`): sem
+  estoque da decoração, não entra no modo (só avisa no console, mesmo
+  espírito de "clique sem efeito" já usado noutros lugares). Com estoque,
+  ativa um preview (`ghost`, uma única `Image` reaproveitada) que segue o
+  mouse.
+- **Preview**: verde (`0x9be89b`) sobre local válido, vermelho
+  (`0xff8a8a`) sobre inválido — `canPlaceAt` recusa células não andáveis
+  (já ocupadas) e células da área de plantio (`farmlandArea`), para não
+  competir por espaço com a agricultura. Meio-transparente
+  (`alpha 0.6`), profundidade 950 — acima do mundo, abaixo dos HUDs
+  (3000+), mesma faixa do `TileCursor` (900).
+- **Confirmar** (`handleClick`, chamado pelo `PlayerController` via o
+  interceptor): valida a célula de novo, consome 1 do estoque
+  (`useDecoration`) e cria o objeto — sprite com sombra de chão
+  (`createGroundShadow`, mesma sombra reaproveitada de `mapBuilder.ts`,
+  profundidade -0.4, abaixo de qualquer objeto ordenado por Y), bloqueia a
+  célula no grid e registra um `Interactable` ali. Sem mais estoque depois
+  de colocar, sai do modo sozinho.
+- **Remover**: uma decoração posicionada é só mais um objeto sólido do
+  mundo com um `Interactable` registrado — a interação adjacente que já
+  existia para a Caixa de Remessas e a Loja (`PlayerController`,
+  inalterado) funciona sem nenhum código novo. Ao interagir
+  (`PlacedDecorationInteractable`), o objeto e sua sombra são destruídos,
+  a célula é liberada no grid, o registro de interação é removido e 1
+  unidade volta ao estoque.
+- Tecla ESC (`MainScene`) cancela o modo sem posicionar nada. Entrar no
+  modo também fecha a Loja se estiver aberta (`ShopMenu.close()` antes do
+  `toggle`) — evitar os dois painéis/modos abertos ao mesmo tempo.
+
+Testado de ponta a ponta: comprar o Poço na Loja (moedas e estoque
+corretos) → tecla B → preview segue o mouse e reage a local válido/inválido
+→ clique posiciona (estoque zera, grid bloqueia a célula) → clicar no Poço
+posicionado remove (estoque volta, grid libera a célula) — sem erros no
+console em nenhum passo.
+
+### Personagem não encobre a decoração ao se aproximar (`systems/decorationPlacement.ts`, `systems/treeOverlap.ts`)
+
+O Poço é visualmente mais alto que 1 tile (76px de altura de exibição contra
+32px da célula que ocupa), mas a ordenação por Y só enxerga a base dele. Ao
+se aproximar por baixo (mesma coluna, uma linha abaixo — a forma mais comum
+de se aproximar para interagir/remover), o personagem tem Y maior e a
+ordenação o coloca na frente, encobrindo quase todo o Poço — que parecia
+"sumir" bem na hora em que o jogador mais precisa vê-lo.
+
+É o mesmo problema que `updateTreeOverlap` já resolve para árvores, só que
+invertido: lá, a árvore (na frente) fica semitransparente para não esconder
+o personagem; aqui, é o personagem (na frente) que precisa ficar
+semitransparente, porque quem não pode desaparecer é a decoração. A função
+`coverageRatio` (proporção de sobreposição das duas caixas) foi exportada de
+`treeOverlap.ts` para `decorationPlacement.ts` reaproveitar, em vez de
+duplicá-la — o cálculo geométrico é o mesmo, só o papel de quem fica
+transparente troca de lado.
+
+`DecorationPlacementSystem.updateOcclusion()` (chamado a cada frame por
+`MainScene.update`, junto com `updateTreeOverlap`): para cada decoração
+posicionada que está atrás do personagem (`sprite.depth > image.depth`),
+mede a cobertura da decoração pelo personagem e aplica a maior encontrada à
+opacidade do personagem (`Phaser.Math.Linear(1, MIN_PLAYER_ALPHA, ...)`,
+`MIN_PLAYER_ALPHA = 0.4`). Como a célula da decoração é sólida, o
+personagem nunca chega perto o bastante para cobrir 100% dela de verdade —
+por isso a cobertura medida passa por um fator de amplificação (`* 2`,
+`Phaser.Math.Clamp`d em 1) antes de virar opacidade, para o efeito já ficar
+visível assim que ele encosta, em vez de exigir uma sobreposição completa
+que nunca acontece geometricamente. Testado: personagem encostado embaixo
+do Poço colocado cai para ~0.49 de opacidade (medido via `sprite.alpha`) e
+volta a 1 assim que se afasta.
+
+### Próximos pontos (fora do escopo deste passo)
+
+- "Expansão da propriedade" (último item da Fase 6).
+- Mais tipos de decoração/construção além do Poço (a arquitetura já
+  suporta, só falta cadastrar novas `DecorationDefinition`).
+- Algum indicador visual de que a tecla B existe (hoje é descoberta só
+  pelo log do console ao comprar).
+
+## Ajustes soltos (pedidos junto com a Fase 6)
+
+Dois ajustes sem relação direta com posicionamento/decoração, pedidos na
+mesma leva de trabalho:
+
+- **Arte do solo arado** (`data/tiles.ts`, `SOIL_DRY_INDEX`/`SOIL_WET_INDEX`):
+  o tile antigo (linha 2/6, coluna 9 de `Tilled Soil and wet soil.png`) era
+  uma cor sólida lisa, sem nenhuma textura — escolhido originalmente só por
+  ser "100% uniforme" (nenhum pixel transparente, ladrilha sem emenda).
+  Substituído por um par (linha 1/5, coluna 2) achado escaneando todos os
+  192 tiles do spritesheet por script (PowerShell + `System.Drawing`):
+  filtra só tiles totalmente opacos (mesmo requisito de "sem emenda" de
+  antes) e ordena pela variância de cor dentro do tile (mais textura =
+  mais interessante visualmente). O escolhido tem marcas de terra nos 4
+  cantos que, ladrilhadas lado a lado, formam losangos espaçados
+  igualmente — confirmado renderizando um bloco 4x3 fora do jogo antes de
+  aplicar, sem nenhuma emenda visível.
+- **Velocidade de movimento** (`data/player.ts`, `PLAYER_MOVE_DURATION_MS`):
+  180ms → 260ms por célula (personagem andando mais devagar).

@@ -5,6 +5,10 @@ export interface WalkableGrid {
   rows: number;
   inBounds(col: number, row: number): boolean;
   isWalkable(col: number, row: number): boolean;
+  /** Bloqueia uma célula em tempo de execução (ex.: uma decoração posicionada — Fase 6). */
+  block(col: number, row: number): void;
+  /** Libera uma célula bloqueada em tempo de execução (ex.: uma decoração removida). */
+  unblock(col: number, row: number): void;
 }
 
 /**
@@ -41,5 +45,13 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   const isWalkable = (col: number, row: number): boolean =>
     inBounds(col, row) && !blocked.has(key(col, row));
 
-  return { cols: map.cols, rows: map.rows, inBounds, isWalkable };
+  const block = (col: number, row: number): void => {
+    blocked.add(key(col, row));
+  };
+
+  const unblock = (col: number, row: number): void => {
+    blocked.delete(key(col, row));
+  };
+
+  return { cols: map.cols, rows: map.rows, inBounds, isWalkable, block, unblock };
 }

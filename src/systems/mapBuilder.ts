@@ -195,8 +195,7 @@ export function buildShopStand(scene: Phaser.Scene, map: FarmMapData): Phaser.Ga
   const x = col * tile + tile / 2;
   const y = (row + 1) * tile;
 
-  const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.8, DISPLAY_SCALE * 0.55);
-  shadow.setDepth(STATIC_SHADOW_DEPTH);
+  // Removida a linha da sombra aqui
 
   const stand = scene.add.image(x, y, SHOP_STAND_KEY);
   stand.setOrigin(0.5, 1);

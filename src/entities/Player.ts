@@ -60,7 +60,7 @@ this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDow
     // (árvores, Caixa de Remessas, Loja), só que acompanhando o Y do
     // personagem a cada frame (ver `update`), já que ele se move.
     const shadowScale = this.tilePx / 16;
-    this.shadow = createGroundShadow(scene, x, y, shadowScale * 1.1, shadowScale * 0.5);
+    this.shadow = createGroundShadow(scene, x, y-13, shadowScale * 1.1, shadowScale * 0.5);
     this.shadow.setDepth(y - 0.1);
 
     this.playIdle();
@@ -189,7 +189,7 @@ update(_time: number, delta: number): void {
 
     // Sombra acompanha a posição e o Y-sorting do personagem — sempre logo
     // atrás dele (por isso o "-0.1"), mas ordenada contra o resto do mundo.
-    this.shadow.setPosition(this.sprite.x, this.sprite.y);
+    this.shadow.setPosition(this.sprite.x, this.sprite.y -13);
     this.shadow.setDepth(this.sprite.y - 0.1);
 
     if (t >= 1) {

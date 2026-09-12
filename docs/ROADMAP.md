@@ -47,11 +47,13 @@ Detalhes de como o sistema funciona, arquivos envolvidos e limitações atuais: 
 Detalhes: ver [TECHNICAL.md](TECHNICAL.md#economia-fase-5).
 
 ## Fase 6 — Construções e decoração
-- [ ] Construções
-- [ ] Objetos decorativos
-- [ ] Posicionamento
-- [ ] Remoção
+- [x] Construções (sistema genérico de posicionamento livre, reaproveitável para qualquer construção/decoração futura)
+- [x] Objetos decorativos (Poço, primeiro item comprável e posicionável)
+- [x] Posicionamento (preview fantasma seguindo o mouse, com checagem de colisão em tempo real)
+- [x] Remoção (clique no objeto posicionado, mesma interação adjacente já usada na Loja/Caixa de Remessas)
 - [ ] Expansão da propriedade
+
+Detalhes: ver [TECHNICAL.md](TECHNICAL.md#construções-e-decoração-fase-6).
 
 ## Fase 7 — Animais e recursos
 - [ ] Animais
@@ -92,4 +94,4 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#economia-fase-5).
 
 ---
 
-**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Um "Pit Stop de Polimento" visual (sombras, cursor de seleção, efeitos de arar/regar/colher/vender, entrada animada de HUDs) foi adiantado por pedido explícito — sem sons nem ferramentas no inventário, que ficam para quando a Fase 9 for feita por completo. Fase 6 (Construções e decoração) ainda não iniciada.
+**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Um "Pit Stop de Polimento" visual (sombras, cursor de seleção, efeitos de arar/regar/colher/vender, entrada animada de HUDs) foi adiantado por pedido explícito — sem sons nem ferramentas no inventário, que ficam para quando a Fase 9 for feita por completo. Fase 6 (Construções e decoração) com o sistema de posicionamento livre implementado e testado (comprar → posicionar → remover), usando o Poço como primeiro objeto; falta apenas "Expansão da propriedade".

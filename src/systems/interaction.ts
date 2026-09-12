@@ -23,4 +23,9 @@ export class InteractionRegistry {
   get(col: number, row: number): Interactable | undefined {
     return this.entries.get(this.key(col, row));
   }
+
+  /** Desregistra a interação de uma célula (ex.: uma decoração removida — Fase 6). */
+  remove(col: number, row: number): void {
+    this.entries.delete(this.key(col, row));
+  }
 }

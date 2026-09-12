@@ -27,6 +27,7 @@ import {
   PLAYER_ACTIONS,
 } from '../data/player';
 import { CROPS } from '../data/crops';
+import { DECORATIONS, WELL } from '../data/decorations';
 import { INVENTORY_UI_KEY, INVENTORY_UI_PATH, COIN_ICON_KEY, COIN_ICON_PATH, COIN_ICON_FRAME_SIZE } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
 import { buildFarmGround, buildFarmFence, buildFarmDecorations, buildShippingBin, buildShopStand, DISPLAY_SCALE } from '../systems/mapBuilder';
@@ -42,16 +43,17 @@ import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
 import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
 import { registerShopInteractable } from '../systems/shopInteraction';
 import { TileCursor } from '../systems/tileCursor';
+import { DecorationPlacementSystem } from '../systems/decorationPlacement';
 import { SeedBar } from '../ui/seedBar';
 import { CoinBar } from '../ui/coinBar';
-import { ShopMenu } from '../ui/shopMenu';
+import { ShopMenu, ShopItem } from '../ui/shopMenu';
 
 /**
  * Cena principal: monta a propriedade da fazenda (Fase 2), o personagem
  * jogável com movimentação/clique/pathfinding (Fase 3), a agricultura —
  * terrenos cultiváveis, arar, plantar, crescimento, regar e colher (Fase 4)
- * — e a economia: moedas, venda na Caixa de Remessas e compra de sementes
- * na Loja (Fase 5).
+ * — a economia: moedas, venda na Caixa de Remessas e compra na Loja (Fase
+ * 5) — e construções/decoração posicionáveis livremente (Fase 6).
  */
 /** Avanço de relógio (ms) aplicado pela tecla de debug T — só para acelerar testes de crescimento/morte por sede, não é mecânica de jogo. */
 const DEBUG_TIME_SKIP_MS = 5000;
@@ -66,6 +68,7 @@ export class MainScene extends Phaser.Scene {
   private seedBar!: SeedBar;
   private coinBar!: CoinBar;
   private shopMenu!: ShopMenu;
+  private decorationPlacement!: DecorationPlacementSystem;
 
   constructor() {
     super('MainScene');
@@ -119,6 +122,10 @@ export class MainScene extends Phaser.Scene {
       frameWidth: SPLASH_FRAME_SIZE,
       frameHeight: SPLASH_FRAME_SIZE,
     });
+
+    for (const decoration of Object.values(DECORATIONS)) {
+      this.load.image(decoration.textureKey, encodeURI(`/${decoration.texturePath}`));
+    }
   }
 
   create(): void {
@@ -132,6 +139,20 @@ export class MainScene extends Phaser.Scene {
         PINE_TREE_FRAME.width,
         PINE_TREE_FRAME.height,
       );
+
+    for (const decoration of Object.values(DECORATIONS)) {
+      const texture = this.textures.get(decoration.textureKey);
+      if (!texture.has(decoration.frameName)) {
+        texture.add(
+          decoration.frameName,
+          0,
+          decoration.frameRect.x,
+          decoration.frameRect.y,
+          decoration.frameRect.width,
+          decoration.frameRect.height,
+        );
+      }
+    }
 
     buildFarmGround(this, farmMap);
     buildFarmFence(this, farmMap);
@@ -161,14 +182,49 @@ export class MainScene extends Phaser.Scene {
       interactions,
     );
 
-    this.shopMenu = new ShopMenu(this, Object.values(CROPS), (cropId) => this.buySeed(cropId));
+    // A Loja vende sementes e decorações no mesmo painel — CropDefinition e
+    // DecorationDefinition são formas diferentes na origem, então cada uma
+    // é adaptada para o formato mínimo que o ShopMenu entende (`ShopItem`).
+    const shopItems: ShopItem[] = [
+      ...Object.values(CROPS).map((crop) => ({
+        id: crop.id,
+        textureKey: crop.textureKey,
+        iconFrame: crop.iconFrame,
+        price: crop.seedPrice,
+      })),
+      ...Object.values(DECORATIONS).map((decoration) => ({
+        id: decoration.id,
+        textureKey: decoration.textureKey,
+        iconFrame: decoration.frameName,
+        price: decoration.price,
+      })),
+    ];
+    this.shopMenu = new ShopMenu(this, shopItems, (itemId) => this.buyShopItem(itemId));
     registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
+
+    this.decorationPlacement = new DecorationPlacementSystem(
+      this,
+      farmMap,
+      tilePx,
+      grid,
+      this.inventory,
+      interactions,
+      this.player,
+      WELL,
+    );
 
     // Fica registrado nos listeners de input da própria cena — não precisa
     // ser guardado como campo, só criado uma vez.
     new TileCursor(this, farmMap, tilePx);
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
+    this.controller.setInputInterceptor(this.decorationPlacement);
+
+    this.input.keyboard!.on('keydown-B', () => {
+      if (this.shopMenu.isOpen()) this.shopMenu.close();
+      this.decorationPlacement.toggle(WELL);
+    });
+    this.input.keyboard!.on('keydown-ESC', () => this.decorationPlacement.cancel());
 
     this.events.on('player-stepped', (col: number, row: number) => {
       // Sempre que o player pisar em uma nova célula, tenta animar a plantinha
@@ -189,7 +245,20 @@ export class MainScene extends Phaser.Scene {
     this.setupDebugTimeSkip();
   }
 
-  /** Tenta comprar 1 semente da cultura (chamado ao clicar num slot da Loja). */
+  /**
+   * Roteia a compra de um slot da Loja: sementes e decorações vêm de
+   * fontes de dados diferentes (`CROPS`/`DECORATIONS`), então cada uma tem
+   * sua própria checagem de preço/estoque — este método só decide qual
+   * das duas o `itemId` clicado é.
+   */
+  private buyShopItem(itemId: string): void {
+    if (CROPS[itemId]) this.buySeed(itemId);
+    else if (DECORATIONS[itemId]) this.buyDecoration(itemId);
+
+    this.shopMenu.refresh(this.inventory.getCoins());
+  }
+
+  /** Tenta comprar 1 semente da cultura. */
   private buySeed(cropId: string): void {
     const crop = CROPS[cropId];
     if (!crop) return;
@@ -200,8 +269,21 @@ export class MainScene extends Phaser.Scene {
     } else {
       console.log(`Moedas insuficientes para comprar semente de ${crop.name} (precisa de ${crop.seedPrice}).`);
     }
+  }
 
-    this.shopMenu.refresh(this.inventory.getCoins());
+  /** Tenta comprar 1 unidade de uma decoração/construção. */
+  private buyDecoration(decorationId: string): void {
+    const decoration = DECORATIONS[decorationId];
+    if (!decoration) return;
+
+    if (this.inventory.spendCoins(decoration.price)) {
+      this.inventory.addDecorations(decorationId, 1);
+      console.log(
+        `Comprado: 1 ${decoration.name} por ${decoration.price} moedas (saldo: ${this.inventory.getCoins()}). Tecla B para posicionar.`,
+      );
+    } else {
+      console.log(`Moedas insuficientes para comprar ${decoration.name} (precisa de ${decoration.price}).`);
+    }
   }
 
   /** Troca a semente ativa (chamado pelas teclas 1/2/3 e pelo clique na barra de sementes). */
@@ -239,6 +321,7 @@ export class MainScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     this.controller.update(time, delta);
     updateTreeOverlap(this.player, this.trees);
+    this.decorationPlacement.updateOcclusion();
 
     this.farmland.update(delta);
     this.farmlandRenderer.renderAll(this.farmland);

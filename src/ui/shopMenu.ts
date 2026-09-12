@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { CropDefinition } from '../data/crops';
 import { INVENTORY_UI_KEY, SLOT_FRAME_NAME, SLOT_FRAME_RECT } from '../data/ui';
 
 const SLOT_SCALE = 1.8;
@@ -7,8 +6,24 @@ const SLOT_GAP = 8;
 const AFFORDABLE_ALPHA = 1;
 const UNAFFORDABLE_ALPHA = 0.45;
 
+/**
+ * Formato mínimo que qualquer coisa vendida na Loja precisa ter — sementes
+ * (`CropDefinition`) e decorações (`DecorationDefinition`) são formas
+ * diferentes na origem dos dados, mas ambas cabem aqui sem o `ShopMenu`
+ * precisar saber a diferença entre elas. Quem monta essa lista (`MainScene`)
+ * decide o preço de cada uma (`seedPrice` para culturas, `price` para
+ * decorações).
+ */
+export interface ShopItem {
+  id: string;
+  textureKey: string;
+  /** Frame do ícone: número (spritesheet, culturas) ou nome (frame recortado à mão, decorações). */
+  iconFrame: number | string;
+  price: number;
+}
+
 interface ShopSlot {
-  cropId: string;
+  itemId: string;
   price: number;
   frame: Phaser.GameObjects.Image;
   icon: Phaser.GameObjects.Image;
@@ -16,11 +31,11 @@ interface ShopSlot {
 }
 
 /**
- * Painel de compra de sementes: mesma linguagem visual da `SeedBar`/
- * `CoinBar` — moldura de `UI/Inventory/Slots.png`, ícone é o frame da
- * cultura já colhida (`CropDefinition.iconFrame`), preço em texto (mesma
- * justificativa da `CoinBar`: não há fonte em pixel art no pacote para um
- * número livre). Nenhuma forma nova desenhada por código.
+ * Painel de compra (sementes e decorações): mesma linguagem visual da
+ * `SeedBar`/`CoinBar` — moldura de `UI/Inventory/Slots.png`, ícone é o
+ * frame do item, preço em texto (mesma justificativa da `CoinBar`: não há
+ * fonte em pixel art no pacote para um número livre). Nenhuma forma nova
+ * desenhada por código.
  *
  * Fica oculto até `open()`/`toggle()`. Puramente visual e de clique: quem
  * decide se a compra é possível é sempre `Inventory`, via o callback
@@ -31,7 +46,7 @@ export class ShopMenu {
   private readonly slots: ShopSlot[] = [];
   private isOpen_ = false;
 
-  constructor(scene: Phaser.Scene, crops: CropDefinition[], onBuy: (cropId: string) => void) {
+  constructor(scene: Phaser.Scene, items: ShopItem[], onBuy: (itemId: string) => void) {
     const texture = scene.textures.get(INVENTORY_UI_KEY);
     if (!texture.has(SLOT_FRAME_NAME)) {
       texture.add(
@@ -46,11 +61,11 @@ export class ShopMenu {
 
     const slotWidth = SLOT_FRAME_RECT.width * SLOT_SCALE;
     const slotHeight = SLOT_FRAME_RECT.height * SLOT_SCALE;
-    const totalWidth = crops.length * slotWidth + (crops.length - 1) * SLOT_GAP;
+    const totalWidth = items.length * slotWidth + (items.length - 1) * SLOT_GAP;
     const startX = (scene.scale.width - totalWidth) / 2 + slotWidth / 2;
     const centerY = scene.scale.height / 2;
 
-    crops.forEach((crop, index) => {
+    items.forEach((item, index) => {
       const x = startX + index * (slotWidth + SLOT_GAP);
 
       const frame = scene.add.image(x, centerY, INVENTORY_UI_KEY, SLOT_FRAME_NAME);
@@ -67,17 +82,17 @@ export class ShopMenu {
         'pointerdown',
         (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
           event.stopPropagation();
-          onBuy(crop.id);
+          onBuy(item.id);
         },
       );
 
-      const icon = scene.add.image(x, centerY, crop.textureKey, crop.iconFrame);
+      const icon = scene.add.image(x, centerY, item.textureKey, item.iconFrame);
       icon.setOrigin(0.5, 0.5);
       icon.setScale(SLOT_SCALE);
       icon.setScrollFactor(0);
       icon.setDepth(3001);
 
-      const priceText = scene.add.text(x, centerY + slotHeight / 2 + 6, `${crop.seedPrice}`, {
+      const priceText = scene.add.text(x, centerY + slotHeight / 2 + 6, `${item.price}`, {
         fontFamily: 'monospace',
         fontSize: '14px',
         fontStyle: 'bold',
@@ -89,7 +104,7 @@ export class ShopMenu {
       priceText.setScrollFactor(0);
       priceText.setDepth(3001);
 
-      this.slots.push({ cropId: crop.id, price: crop.seedPrice, frame, icon, priceText });
+      this.slots.push({ itemId: item.id, price: item.price, frame, icon, priceText });
     });
 
     this.setElementsVisible(false);

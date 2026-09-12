@@ -5,20 +5,22 @@ import { Player } from '../entities/Player';
 const MIN_ALPHA = 0.5;
 
 /**
- * Proporção (0-1) da caixa do personagem que está coberta pela caixa da
- * árvore. 0 = não se tocam; 1 = o personagem está inteiramente por baixo.
+ * Proporção (0-1) da caixa `a` que está coberta pela caixa `b`. 0 = não se
+ * tocam; 1 = `a` está inteiramente por baixo de `b`. Genérico o bastante
+ * para também medir o inverso (decoração coberta pelo personagem — ver
+ * `systems/decorationPlacement.ts`), por isso exportado.
  */
-function coverageRatio(playerBounds: Phaser.Geom.Rectangle, treeBounds: Phaser.Geom.Rectangle): number {
-  const left = Math.max(playerBounds.left, treeBounds.left);
-  const right = Math.min(playerBounds.right, treeBounds.right);
-  const top = Math.max(playerBounds.top, treeBounds.top);
-  const bottom = Math.min(playerBounds.bottom, treeBounds.bottom);
+export function coverageRatio(a: Phaser.Geom.Rectangle, b: Phaser.Geom.Rectangle): number {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.right, b.right);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.bottom, b.bottom);
 
   if (right <= left || bottom <= top) return 0;
 
   const overlapArea = (right - left) * (bottom - top);
-  const playerArea = playerBounds.width * playerBounds.height;
-  return Phaser.Math.Clamp(overlapArea / playerArea, 0, 1);
+  const aArea = a.width * a.height;
+  return Phaser.Math.Clamp(overlapArea / aArea, 0, 1);
 }
 
 /**

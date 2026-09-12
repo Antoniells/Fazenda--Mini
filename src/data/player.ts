@@ -46,7 +46,7 @@ export const PLAYER_ANIM_FRAMES = {
 export const PLAYER_START = { col: 12, row: 9 };
 
 /** Tempo (ms) para se mover de uma célula do grid para a adjacente. */
-export const PLAYER_MOVE_DURATION_MS = 180;
+export const PLAYER_MOVE_DURATION_MS = 260;
 
 /** Ações agrícolas com animação própria (Fase 4). */
 export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest';

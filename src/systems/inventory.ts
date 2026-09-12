@@ -7,20 +7,24 @@ const STARTING_SEEDS = 3;
 
 /**
  * Estrutura mínima para guardar o resultado de colheitas, o estoque de
- * sementes (compradas na Loja, consumidas ao plantar), qual semente o
- * jogador tem selecionada, e as moedas do jogador. Não é o inventário
- * completo — item de estoque por tipo, sem espaços/pesos/empilhamento —
- * mas já é a base real da Fase 5 (Economia).
+ * sementes (compradas na Loja, consumidas ao plantar), o estoque de
+ * decorações/construções (compradas na Loja, consumidas ao posicionar,
+ * Fase 6), qual semente o jogador tem selecionada, e as moedas do
+ * jogador. Não é o inventário completo — item de estoque por tipo, sem
+ * espaços/pesos/empilhamento — mas já é a base real da economia.
  *
- * `items` (colheita) e `seeds` (sementes para plantar) são estoques
- * deliberadamente separados, mesmo indexados pelo mesmo `cropId`: vender
- * na Caixa de Remessas (`takeAll`) nunca deve consumir sementes, e plantar
- * nunca deve consumir colheita — misturar os dois num só Map criaria um
- * bug onde vender esvaziaria também o estoque de plantio.
+ * `items` (colheita), `seeds` (sementes para plantar) e `decorations`
+ * (objetos para posicionar) são estoques deliberadamente separados, mesmo
+ * quando indexados pelo mesmo id: vender na Caixa de Remessas (`takeAll`)
+ * nunca deve consumir sementes ou decorações, e plantar/posicionar nunca
+ * deve consumir colheita — misturar tudo num só Map criaria um bug onde
+ * vender esvaziaria também os outros estoques.
  */
 export class Inventory {
   private readonly items = new Map<string, number>();
   private readonly seeds = new Map<string, number>([[DEFAULT_CROP_ID, STARTING_SEEDS]]);
+  /** Estoque de decorações/construções compradas na Loja (Fase 6), consumido ao posicionar. Mesma separação de responsabilidade dos outros Maps. */
+  private readonly decorations = new Map<string, number>();
   private selectedSeedId: string = DEFAULT_CROP_ID;
   private coins = STARTING_COINS;
 
@@ -66,6 +70,24 @@ export class Inventory {
     const count = this.getSeedCount(cropId);
     if (count <= 0) return false;
     this.seeds.set(cropId, count - 1);
+    return true;
+  }
+
+  /** Quantas unidades dessa decoração o jogador tem para posicionar. */
+  getDecorationCount(decorationId: string): number {
+    return this.decorations.get(decorationId) ?? 0;
+  }
+
+  /** Adiciona decorações ao estoque (ex.: compra na Loja). */
+  addDecorations(decorationId: string, amount: number): void {
+    this.decorations.set(decorationId, this.getDecorationCount(decorationId) + amount);
+  }
+
+  /** Consome 1 unidade do estoque, se houver. Retorna `false` (sem consumir nada) se não houver. */
+  useDecoration(decorationId: string): boolean {
+    const count = this.getDecorationCount(decorationId);
+    if (count <= 0) return false;
+    this.decorations.set(decorationId, count - 1);
     return true;
   }
 

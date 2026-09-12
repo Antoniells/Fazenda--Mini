@@ -10,9 +10,11 @@
  *   adjacentes de "White Fence.png" para garantir que se repetem sem costura.
  * - PINE_TREE_FRAME foi obtido recortando visualmente uma árvore completa e
  *   isolada dentro do spritesheet "Pine Tree.png".
- * - Os índices de solo arado (seco/molhado) foram encontrados pela mesma
- *   varredura de tiles 100% uniformes em "Tilled Soil and wet soil.png"
- *   (metade de cima = seco, metade de baixo = molhado/regado).
+ * - Os índices de solo arado (seco/molhado) vieram de uma varredura de
+ *   "Tilled Soil and wet soil.png" checando, por tile, opacidade total (sem
+ *   nenhum pixel transparente — ladrilha sem emenda) e variância de cor
+ *   (prioriza textura visível sobre cor sólida lisa), com o par seco/molhado
+ *   sempre na mesma coluna, 4 linhas de diferença.
  * - SHIPPING_BIN_FRAME foi obtido recortando "shipping box.png" (48x64):
  *   o spritesheet tem estados fechado/aberto em tiles de 16x16, mas só o
  *   frame fechado (linha 2, coluna 1) é uma imagem completa e autocontida
@@ -54,10 +56,19 @@ export const PINE_TREE_FRAME = { x: 96, y: 0, width: 32, height: 48 };
 
 export const SOIL_TILESET_KEY = 'tilled-soil';
 export const SOIL_TILESET_PATH = 'Tileset/Tilled Soil and wet soil.png';
-/** Solo arado seco, tile sólido (linha 2, coluna 9). */
-export const SOIL_DRY_INDEX = 57;
-/** Solo arado molhado/regado, tile sólido (linha 6, coluna 9). */
-export const SOIL_WET_INDEX = 153;
+/**
+ * Solo arado seco (linha 1, coluna 2). O tile "100% uniforme" original
+ * (linha 2, coluna 9) era uma cor sólida sem nenhuma textura — visualmente
+ * pobre. Este, escaneado por pixel (PowerShell + `System.Drawing`, checando
+ * opacidade total e variância de cor de cada tile do spritesheet), tem
+ * marcas de terra nos 4 cantos que, ao ladrilhar lado a lado, formam losangos
+ * espaçados igualmente (confirmado renderizando um bloco 4x3 lado a lado,
+ * sem nenhuma emenda/pixel transparente) — mesmo espírito "sem emendas" do
+ * tile antigo, só que com textura de verdade.
+ */
+export const SOIL_DRY_INDEX = 26;
+/** Solo arado molhado/regado — mesma posição relativa do seco (linha 5, coluna 2), 4 linhas abaixo, igual ao par antigo. */
+export const SOIL_WET_INDEX = 122;
 
 export const SHIPPING_BIN_KEY = 'shipping-bin';
 export const SHIPPING_BIN_PATH = 'Objects/Exterior/shipping box.png';

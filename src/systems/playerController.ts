@@ -21,6 +21,19 @@ interface PendingInteraction {
 }
 
 /**
+ * Permite outro sistema "roubar" o clique do mundo enquanto estiver ativo
+ * (ex.: `DecorationPlacementSystem` durante o modo de posicionamento, Fase
+ * 6) — sem isso, um clique nesse modo tanto tentaria mover/interagir com
+ * o mundo (`PlayerController`) quanto posicionar a decoração, os dois ao
+ * mesmo tempo. Quando não há nenhum interceptor ativo, o comportamento é
+ * idêntico ao de antes desta mudança.
+ */
+export interface PointerInputInterceptor {
+  isActive(): boolean;
+  handleClick(x: number, y: number): void;
+}
+
+/**
  * Liga o input do jogador (teclado e clique no mapa) à entidade `Player`.
  * Teclado move uma célula por vez e cancela qualquer rota em andamento;
  * clique calcula uma rota com A* e entrega ao Player para seguir (isso não
@@ -45,6 +58,8 @@ export class PlayerController {
   private lastCol: number;
   private lastRow: number;
 
+  private inputInterceptor: PointerInputInterceptor | null = null;
+
   constructor(
     scene: Phaser.Scene,
     player: Player,
@@ -67,8 +82,18 @@ export class PlayerController {
     });
   }
 
+  /** Registra o sistema que pode roubar o clique enquanto `isActive()` — ver `PointerInputInterceptor`. */
+  setInputInterceptor(interceptor: PointerInputInterceptor): void {
+    this.inputInterceptor = interceptor;
+  }
+
   private handlePointerDown(x: number, y: number): void {
     if (this.player.isBusy()) return;
+
+    if (this.inputInterceptor?.isActive()) {
+      this.inputInterceptor.handleClick(x, y);
+      return;
+    }
 
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
