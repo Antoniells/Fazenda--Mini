@@ -1,18 +1,72 @@
 import Phaser from 'phaser';
 import { Farmland, Plot } from './farmland';
 import { CROPS } from '../data/crops';
-import { SOIL_TILESET_KEY, SOIL_DRY_INDEX } from '../data/tiles';
+import { SOIL_TILESET_KEY, SOIL_DRY_AUTOTILE, SOIL_WET_AUTOTILE, SoilAutotileSet } from '../data/tiles';
 import { SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
 import { FarmMapData } from '../data/maps/farmMap';
+
+/** Os 4 vizinhos ortogonais de uma célula — usado tanto para escolher a borda do autotile quanto para saber quem re-renderizar depois de arar/limpar. */
+const NEIGHBOR_OFFSETS: ReadonlyArray<[number, number]> = [
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+];
+
+/**
+ * Decide qual peça usar a partir de quais dos 4 vizinhos ortogonais TAMBÉM
+ * estão arados — mesmo estilo de bitmask já usado em `systems/dirtPaths.ts`
+ * (`pickDirtBlobTile`) para o caminho de terra: cada `missing*` é "esse
+ * lado NÃO está arado, precisa da borda ali".
+ *
+ * Três casos distintos, checados nesta ordem:
+ * 1. Isolada dos 4 lados -> `isolated` (monte redondo).
+ * 2. Faixa de 1 célula de LARGURA (sem vizinho à esquerda nem à direita,
+ *    mas com vizinho em cima OU embaixo) -> cápsula vertical
+ *    (`verticalTop`/`verticalMiddle`/`verticalBottom`) — o 9-slice normal
+ *    pressupõe pelo menos 2 células de largura, então não se aplica aqui.
+ * 3. Faixa de 1 célula de ALTURA (análogo, cápsula horizontal).
+ * 4. Qualquer outra forma (largura e altura >= 2): canto/borda/preenchimento normal.
+ */
+function pickSoilAutotileKey(
+  missingTop: boolean,
+  missingBottom: boolean,
+  missingLeft: boolean,
+  missingRight: boolean,
+): keyof SoilAutotileSet {
+  if (missingTop && missingBottom && missingLeft && missingRight) return 'isolated';
+
+  if (missingLeft && missingRight) {
+    if (missingTop) return 'verticalTop';
+    if (missingBottom) return 'verticalBottom';
+    return 'verticalMiddle';
+  }
+
+  if (missingTop && missingBottom) {
+    if (missingLeft) return 'horizontalLeft';
+    if (missingRight) return 'horizontalRight';
+    return 'horizontalMiddle';
+  }
+
+  if (missingTop && missingLeft) return 'topLeft';
+  if (missingTop && missingRight) return 'topRight';
+  if (missingBottom && missingLeft) return 'bottomLeft';
+  if (missingBottom && missingRight) return 'bottomRight';
+  if (missingTop) return 'top';
+  if (missingBottom) return 'bottom';
+  if (missingLeft) return 'left';
+  if (missingRight) return 'right';
+  return 'center';
+}
 
 /** Tingimento aplicado à plantação morta — reaproveita o frame existente, sem novo sprite. */
 const DEAD_TINT = 0x8a6d4a;
 /** Tingimento marrom-terra aplicado à mancha de sombra para virar "poeira" ao arar — mesmo asset, só a cor muda. */
 const DUST_TINT = 0x8a5a2e;
 /**
- * Tingimento aplicado ao mesmo frame do solo seco (`SOIL_DRY_INDEX`) para
+ * Tingimento aplicado ao mesmo frame do solo seco (`SOIL_DRY_AUTOTILE`) para
  * representar solo molhado — ver `renderSoil`. O spritesheet
  * "Tilled Soil and wet soil.png" só tem duas famílias de cor (laranja/seco
  * e azul/"wet"); a variante azul destoava do resto da paleta terrosa do
@@ -40,7 +94,7 @@ export class FarmlandRenderer {
     this.tilePx = map.tileSize * DISPLAY_SCALE;
 
     for (const [col, row] of map.farmlandArea) {
-      const soil = scene.add.image(col * this.tilePx, row * this.tilePx, SOIL_TILESET_KEY, SOIL_DRY_INDEX);
+      const soil = scene.add.image(col * this.tilePx, row * this.tilePx, SOIL_TILESET_KEY, SOIL_DRY_AUTOTILE.isolated);
       soil.setOrigin(0, 0);
       soil.setScale(DISPLAY_SCALE);
       soil.setDepth(-0.5); // Acima do chão (-1), abaixo de tudo que é ordenado por Y.
@@ -64,23 +118,26 @@ export class FarmlandRenderer {
 
     soil.setVisible(true);
 
-    soil.setFrame(SOIL_DRY_INDEX);
+    // Autotile (melhoria visual): olha os 4 vizinhos ortogonais — os que
+    // NÃO estão arados (`!farmland.isTilled`, célula fora da lavoura conta
+    // como não arada) precisam da borda daquele lado. Ver `pickSoilAutotileKey`
+    // e o aviso em `data/tiles.ts` sobre os índices ainda serem provisórios.
+    const missingTop = !farmland.isTilled(plot.col, plot.row - 1);
+    const missingBottom = !farmland.isTilled(plot.col, plot.row + 1);
+    const missingLeft = !farmland.isTilled(plot.col - 1, plot.row);
+    const missingRight = !farmland.isTilled(plot.col + 1, plot.row);
+    const variant = pickSoilAutotileKey(missingTop, missingBottom, missingLeft, missingRight);
 
-    if (plot.state !== 'growing' || !plot.cropId) {
-      soil.clearTint();
-      return;
-    }
+    // `Farmland.isWatered` reflete "foi regada hoje" (Fase 9) — fica molhada
+    // o dia inteiro depois de uma rega, só seca de novo na virada do dia
+    // seguinte (`Farmland.onNewDay`), mesma condição que rege o crescimento
+    // e a sobrevivência da plantação.
+    const isWatered = plot.state === 'growing' && !!plot.cropId && farmland.isWatered(plot);
+    const autotile = isWatered ? SOIL_WET_AUTOTILE : SOIL_DRY_AUTOTILE;
+    soil.setFrame(autotile[variant]);
 
-const crop = CROPS[plot.cropId];
-
-// Só é considerada molhada se a última rega for DIFERENTE do tempo de plantio
-// (ou seja, o jogador regou manualmente após plantar) e ainda não secou.
-const recentlyWatered = !!crop &&
-                        plot.lastWateredAt !== plot.plantedAt &&
-                        farmland.timeSinceWatered(plot) < crop.maxTimeWithoutWaterMs / 2;
-
-if (recentlyWatered) soil.setTint(WET_SOIL_TINT);
-else soil.clearTint();
+    if (isWatered) soil.setTint(WET_SOIL_TINT);
+    else soil.clearTint();
   }
 
 private renderCrop(plot: Plot): void {
@@ -137,6 +194,24 @@ private renderCrop(plot: Plot): void {
   renderPlot(farmland: Farmland, plot: Plot): void {
     this.renderSoil(farmland, plot);
     this.renderCrop(plot);
+  }
+
+  /**
+   * Igual a `renderPlot`, mas também re-renderiza os 4 vizinhos ortogonais
+   * — necessário depois de arar (ou limpar) uma célula, já que a borda do
+   * autotile deles depende de `plot` ter passado a contar como "arada"
+   * (`Farmland.isTilled`). Vizinhos fora da lavoura (`getPlot` retorna
+   * `undefined`) são ignorados silenciosamente. Chamar só quando a célula
+   * pode ter mudado de "arada"/"não arada" — as demais ações
+   * (plantar/regar/colher) não mudam essa condição, `renderPlot` sozinho já
+   * basta.
+   */
+  renderPlotAndNeighbors(farmland: Farmland, plot: Plot): void {
+    this.renderPlot(farmland, plot);
+    for (const [dCol, dRow] of NEIGHBOR_OFFSETS) {
+      const neighbor = farmland.getPlot(plot.col + dCol, plot.row + dRow);
+      if (neighbor) this.renderPlot(farmland, neighbor);
+    }
   }
 
   renderAll(farmland: Farmland): void {

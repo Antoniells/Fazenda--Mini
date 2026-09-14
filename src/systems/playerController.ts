@@ -51,6 +51,7 @@ export class PlayerController {
   private readonly player: Player;
   private readonly grid: WalkableGrid;
   private readonly cursors: Phaser.Types.Input.Keyboard.CursorKeys;
+  private readonly wasd: any;
   private readonly tilePx: number;
   private readonly interactions: InteractionRegistry;
   private pendingInteraction: PendingInteraction | null = null;
@@ -58,7 +59,8 @@ export class PlayerController {
   private lastCol: number;
   private lastRow: number;
 
-  private inputInterceptor: PointerInputInterceptor | null = null;
+  /** Vários sistemas podem "roubar" o clique (Fase 6: posicionar decoração; Fase 8: tela de Inventário) — o primeiro que estiver `isActive()` vence. */
+  private readonly inputInterceptors: PointerInputInterceptor[] = [];
 
   constructor(
     scene: Phaser.Scene,
@@ -73,6 +75,12 @@ export class PlayerController {
     this.tilePx = tilePx;
     this.interactions = interactions;
     this.cursors = scene.input.keyboard!.createCursorKeys();
+    this.wasd = scene.input.keyboard!.addKeys({
+      up: Phaser.Input.Keyboard.KeyCodes.W,
+      down: Phaser.Input.Keyboard.KeyCodes.S,
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      right: Phaser.Input.Keyboard.KeyCodes.D
+    });
 
     this.lastCol = player.col;
     this.lastRow = player.row;
@@ -84,16 +92,17 @@ export class PlayerController {
     });
   }
 
-  /** Registra o sistema que pode roubar o clique enquanto `isActive()` — ver `PointerInputInterceptor`. */
-  setInputInterceptor(interceptor: PointerInputInterceptor): void {
-    this.inputInterceptor = interceptor;
+  /** Registra um sistema que pode roubar o clique enquanto `isActive()` — ver `PointerInputInterceptor`. */
+  addInputInterceptor(interceptor: PointerInputInterceptor): void {
+    this.inputInterceptors.push(interceptor);
   }
 
   private handlePointerDown(x: number, y: number): void {
     if (this.player.isBusy()) return;
 
-    if (this.inputInterceptor?.isActive()) {
-      this.inputInterceptor.handleClick(x, y);
+    const activeInterceptor = this.inputInterceptors.find((interceptor) => interceptor.isActive());
+    if (activeInterceptor) {
+      activeInterceptor.handleClick(x, y);
       return;
     }
 
@@ -178,10 +187,17 @@ export class PlayerController {
   }
 
   update(time: number, delta: number): void {
-    if (!this.player.isBusy()) {
-      const dCol = this.cursors.left.isDown ? -1 : this.cursors.right.isDown ? 1 : 0;
-      const dRow = this.cursors.up.isDown ? -1 : this.cursors.down.isDown ? 1 : 0;
+if (!this.player.isBusy()) {
+      
+      // Verifica se o jogador apertou a setinha OU a respectiva tecla WASD
+      const isLeft = this.cursors.left.isDown || this.wasd.left.isDown;
+      const isRight = this.cursors.right.isDown || this.wasd.right.isDown;
+      const isUp = this.cursors.up.isDown || this.wasd.up.isDown;
+      const isDown = this.cursors.down.isDown || this.wasd.down.isDown;
 
+      // Define a direção baseada no que foi apertado
+      const dCol = isLeft ? -1 : isRight ? 1 : 0;
+      const dRow = isUp ? -1 : isDown ? 1 : 0;
       if (dCol !== 0 || dRow !== 0) {
          {
           this.player.clearPath();

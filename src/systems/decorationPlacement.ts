@@ -24,6 +24,11 @@ const PLACED_SHADOW_DEPTH = -0.4; // Mesma faixa das sombras estáticas de mapBu
  * cuidada pelo `PlayerController`. O Poço é a exceção: tem uma utilidade
  * própria (encher o regador, ver `DecorationPlacementSystem.refillWateringCan`),
  * então clicar nele usa em vez de remover.
+ *
+ * `col`/`row` aqui são sempre a célula-âncora (canto superior-esquerdo do
+ * footprint) — a MESMA instância é registrada em todas as células que a
+ * construção ocupa (Fase 9, multi-tile), então não importa em qual célula
+ * da base o jogador clicou: a ação sempre se refere à construção inteira.
  */
 class PlacedDecorationInteractable implements Interactable {
   constructor(
@@ -31,7 +36,7 @@ class PlacedDecorationInteractable implements Interactable {
     private readonly player: Player,
     private readonly col: number,
     private readonly row: number,
-    private readonly decorationId: string // <-- ADICIONADO AQUI
+    private readonly decorationId: string, // <-- ADICIONADO AQUI
   ) {}
 
   interact(): void {
@@ -50,6 +55,14 @@ class PlacedDecorationInteractable implements Interactable {
   }
 }
 
+/** Uma decoração posicionada: além do que já existia, guarda o `footprint` usado no momento da colocação — necessário pra `removeAt` desbloquear/desregistrar exatamente as mesmas células (a definição em `data/decorations.ts` poderia teoricamente mudar depois). */
+interface PlacedDecoration {
+  image: Phaser.GameObjects.Image;
+  shadow: Phaser.GameObjects.Image;
+  decorationId: string;
+  footprint: { width: number; height: number };
+}
+
 /**
  * Modo de posicionamento livre de decorações (Fase 6): o jogador entra no
  * modo (`start`) com uma decoração do estoque, um preview semitransparente
@@ -58,15 +71,14 @@ class PlacedDecorationInteractable implements Interactable {
  * `PlayerController` para "roubar" esse clique do fluxo normal de
  * movimento/interação enquanto o modo estiver ativo.
  *
- * Uma decoração posicionada é só mais um objeto sólido do mundo: bloqueia
- * a célula no `WalkableGrid` (dinâmico agora, `block`/`unblock`) e se
- * registra no `InteractionRegistry` para poder ser removida depois.
+ * Uma decoração posicionada bloqueia todas as células do seu `footprint`
+ * (Fase 9 — Construções Multi-tile) no `WalkableGrid` (dinâmico,
+ * `block`/`unblock`) e se registra no `InteractionRegistry` em cada uma
+ * delas, para poder ser clicada/removida a partir de qualquer ponto da sua
+ * base — não só na célula onde o clique de colocação caiu.
  */
 export class DecorationPlacementSystem implements PointerInputInterceptor {
-  private readonly placed = new Map<
-    string,
-    { image: Phaser.GameObjects.Image; shadow: Phaser.GameObjects.Image; decorationId: string }
-  >();
+  private readonly placed = new Map<string, PlacedDecoration>();
   private readonly ghost: Phaser.GameObjects.Image;
   private readonly farmlandCells: Set<string>;
   private activeDecoration: DecorationDefinition | null = null;
@@ -124,16 +136,33 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
   }
 
   private handlePointerMove(x: number, y: number): void {
-    if (!this.activeDecoration) return;
+    const decoration = this.activeDecoration;
+    if (!decoration) return;
 
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
-    this.ghost.setPosition(col * this.tilePx + this.tilePx / 2, (row + 1) * this.tilePx);
-    this.ghost.setTint(this.canPlaceAt(col, row) ? GHOST_VALID_TINT : GHOST_INVALID_TINT);
+    const { width, height } = decoration.footprint;
+
+    // Fantasma centralizado no footprint inteiro (não só na célula sob o
+    // mouse): o `col`/`row` sob o cursor é o canto superior-esquerdo do
+    // footprint, que se estende `width` células pra direita e `height` pra
+    // baixo — o mesmo cálculo de antes (origem inferior-central da imagem)
+    // generalizado, que pra `width: 1, height: 1` dá exatamente o resultado
+    // de antes desta fase.
+    this.ghost.setPosition(col * this.tilePx + (width * this.tilePx) / 2, (row + height) * this.tilePx);
+    this.ghost.setTint(this.canPlaceAt(col, row, decoration.footprint) ? GHOST_VALID_TINT : GHOST_INVALID_TINT);
   }
 
-  private canPlaceAt(col: number, row: number): boolean {
-    return this.grid.isWalkable(col, row) && !this.farmlandCells.has(`${col},${row}`);
+  /** Verdadeiro só se TODAS as células do footprint, a partir de (`col`,`row`), estiverem livres (andáveis e fora da lavoura). */
+  private canPlaceAt(col: number, row: number, footprint: { width: number; height: number }): boolean {
+    for (let dy = 0; dy < footprint.height; dy++) {
+      for (let dx = 0; dx < footprint.width; dx++) {
+        const c = col + dx;
+        const r = row + dy;
+        if (!this.grid.isWalkable(c, r) || this.farmlandCells.has(`${c},${r}`)) return false;
+      }
+    }
+    return true;
   }
 
   /** Chamado pelo `PlayerController` enquanto este sistema está ativo (ver `PointerInputInterceptor`). */
@@ -143,7 +172,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
 
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
-    if (!this.canPlaceAt(col, row)) return;
+    if (!this.canPlaceAt(col, row, decoration.footprint)) return;
     if (!this.inventory.useDecoration(decoration.id)) return;
 
     this.placeAt(decoration, col, row);
@@ -154,8 +183,9 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
   }
 
   private placeAt(decoration: DecorationDefinition, col: number, row: number): void {
-    const x = col * this.tilePx + this.tilePx / 2;
-    const y = (row + 1) * this.tilePx;
+    const { width, height } = decoration.footprint;
+    const x = col * this.tilePx + (width * this.tilePx) / 2;
+    const y = (row + height) * this.tilePx;
 
     const shadow = createGroundShadow(this.scene, x, y, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
     shadow.setDepth(PLACED_SHADOW_DEPTH);
@@ -165,12 +195,24 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     image.setScale(DISPLAY_SCALE);
     image.setDepth(y);
 
-    this.grid.block(col, row);
-    this.interactions.set(col, row, new PlacedDecorationInteractable(this, this.player, col, row, decoration.id));
-    this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id });
+    const interactable = new PlacedDecorationInteractable(this, this.player, col, row, decoration.id);
+    for (let dy = 0; dy < height; dy++) {
+      for (let dx = 0; dx < width; dx++) {
+        this.grid.block(col + dx, row + dy);
+        this.interactions.set(col + dx, row + dy, interactable);
+      }
+    }
+
+    this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id, footprint: { width, height } });
   }
 
-  /** Remove a decoração da célula e devolve 1 unidade ao estoque. Chamado por `PlacedDecorationInteractable`. */
+  /**
+   * Remove a decoração da célula-âncora (`col`,`row` — canto superior-
+   * esquerdo do footprint, o que `PlacedDecorationInteractable` sempre usa,
+   * não importa em qual célula da base o jogador clicou) e devolve 1
+   * unidade ao estoque. Desbloqueia e desregistra TODAS as células do
+   * footprint original, não só a âncora.
+   */
   removeAt(col: number, row: number): void {
     const key = `${col},${row}`;
     const entry = this.placed.get(key);
@@ -179,8 +221,15 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     entry.image.destroy();
     entry.shadow.destroy();
     this.placed.delete(key);
-    this.grid.unblock(col, row);
-    this.interactions.remove(col, row);
+
+    const { width, height } = entry.footprint;
+    for (let dy = 0; dy < height; dy++) {
+      for (let dx = 0; dx < width; dx++) {
+        this.grid.unblock(col + dx, row + dy);
+        this.interactions.remove(col + dx, row + dy);
+      }
+    }
+
     this.inventory.addDecorations(entry.decorationId, 1);
     console.log(`Removido: 1 ${entry.decorationId} (estoque: ${this.inventory.getDecorationCount(entry.decorationId)}).`);
   }
@@ -218,11 +267,11 @@ updateOcclusion(): void {
       // Verifica se a decoração está na frente do personagem
       const decInFront = image.depth > sprite.depth;
       const coverage = decInFront ? coverageRatio(playerBounds, image.getBounds()) : 0;
-      
+
       // Agora é a IMAGEM (poço) que fica transparente (até 50%), e não o personagem
       image.setAlpha(Phaser.Math.Linear(1, 0.5, coverage));
     }
-    
+
     // Garante que o personagem sempre fique totalmente opaco
     sprite.setAlpha(1);
   }

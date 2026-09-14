@@ -1,4 +1,19 @@
 /**
+ * `Crops/All Crops.png` (416x288, grid uniforme de 16x16): uma folha
+ * consolidada com os ícones de várias culturas do pacote, uma por linha
+ * (coluna 0-1 = saquinho de semente fechado/aberto, colunas 2-6 = variações
+ * do item já colhido, coluna 7 = placa) — confirmado varrendo e rotulando a
+ * grade. Cada `CropDefinition` usa a COLUNA 0 (saquinho de semente, não o
+ * vegetal colhido — pedido explícito do usuário) da linha correspondente.
+ * Usada só para os ÍCONES (Hotbar/Loja/Inventário, ver `resolveSlotVisual`
+ * em `data/items.ts`); o spritesheet próprio de cada cultura
+ * (`CropDefinition.textureKey`) continua sendo usado para os estágios de
+ * crescimento na lavoura — a troca de ícone não mexe na plantinha no campo.
+ */
+export const ALL_CROPS_ICONS_KEY = 'all-crops-icons';
+export const ALL_CROPS_ICONS_PATH = 'Crops/All Crops.png';
+
+/**
  * Definições de culturas agrícolas. A estrutura permite adicionar outras
  * sem alterar o sistema de agricultura (`systems/farmland.ts`) — basta
  * acrescentar uma entrada em `CROPS`.
@@ -17,19 +32,10 @@ export interface CropDefinition {
    * não usamos 1, 6 e 7 aqui.
    */
   growthFrames: number[];
-  /** Frame do item já colhido, usado como ícone (ex.: na barra de sementes). */
-  iconFrame: number;
-  /**
-   * Tempo total (ms) da semente até "pronta para colher" — baseado só no
-   * tempo desde o plantio, independente de quantas vezes (ou se) foi
-   * regada. Dividido em partes iguais entre os estágios de `growthFrames`.
-   */
-  totalGrowthMs: number;
-  /**
-   * Tempo máximo (ms) que a plantação sobrevive sem ser regada de novo
-   * antes de morrer. Não tem relação com a velocidade de crescimento.
-   */
-  maxTimeWithoutWaterMs: number;
+  /** Nome do frame recortado de `ALL_CROPS_ICONS_KEY` (registrado uma vez em `MainScene`), usado como ícone (Hotbar/Loja/Inventário). */
+  iconFrameName: string;
+  /** Retângulo do recorte no spritesheet `ALL_CROPS_ICONS_KEY`. */
+  iconFrameRect: { x: number; y: number; width: number; height: number };
   /** Quantidade devolvida ao jogador por colheita. */
   yieldAmount: number;
   /** Preço (moedas) para comprar uma semente desta cultura. */
@@ -44,12 +50,11 @@ export const CARROT: CropDefinition = {
   textureKey: 'crop-carrot',
   texturePath: 'Crops/Spring/Carrot.png',
   growthFrames: [0, 2, 3, 4, 5],
-  iconFrame: 7,
-  totalGrowthMs: 16000,
-  // 20s dá uma janela de 10s entre a terra ficar visivelmente seca (metade
-  // deste valor, ver farmlandRenderer.renderSoil) e a plantação morrer —
-  // tempo suficiente para o jogador perceber e regar de novo a tempo.
-  maxTimeWithoutWaterMs: 20000,
+  // Linha 6, coluna 0 de `ALL_CROPS_ICONS_KEY` (saquinho de semente, não o
+  // vegetal colhido — pedido explícito do usuário) — confirmado rotulando a
+  // grade 16x16.
+  iconFrameName: 'crop-icon-carrot',
+  iconFrameRect: { x: 0, y: 96, width: 16, height: 16 },
   yieldAmount: 1,
   seedPrice: 5,
   sellPrice: 12,
@@ -68,20 +73,21 @@ export const POTATO: CropDefinition = {
   textureKey: 'crop-potato',
   texturePath: 'Crops/Spring/Potato.png',
   growthFrames: [0, 2, 3, 4, 5],
-  iconFrame: 7,
-  totalGrowthMs: 20000,
-  maxTimeWithoutWaterMs: 25000,
+  // Linha 4, coluna 0 de `ALL_CROPS_ICONS_KEY` (saquinho de semente).
+  iconFrameName: 'crop-icon-potato',
+  iconFrameRect: { x: 0, y: 64, width: 16, height: 16 },
   yieldAmount: 1,
-  // Cresce mais devagar que as outras duas — preço mais alto para compensar
-  // o ciclo mais longo (mesma lógica de risco/recompensa das demais).
+  // Preço mais alto que a cenoura — mesma lógica de risco/recompensa das
+  // demais (todas levam o mesmo número de dias pra crescer por ora, ver
+  // `growthFrames`; a diferença é só no preço/rendimento).
   seedPrice: 8,
   sellPrice: 18,
 };
 
 /**
  * Mesma convenção de frames da cenoura e da batata, conferida visualmente
- * em `Crops/Spring/Onion.png`. Cresce mais rápido que as outras duas — só
- * para dar variedade ao testar/alternar entre culturas.
+ * em `Crops/Spring/Onion.png` — só para dar variedade ao testar/alternar
+ * entre culturas.
  */
 export const ONION: CropDefinition = {
   id: 'onion',
@@ -89,11 +95,11 @@ export const ONION: CropDefinition = {
   textureKey: 'crop-onion',
   texturePath: 'Crops/Spring/Onion.png',
   growthFrames: [0, 2, 3, 4, 5],
-  iconFrame: 7,
-  totalGrowthMs: 12000,
-  maxTimeWithoutWaterMs: 16000,
+  // Linha 5, coluna 0 de `ALL_CROPS_ICONS_KEY` (saquinho de semente).
+  iconFrameName: 'crop-icon-onion',
+  iconFrameRect: { x: 0, y: 80, width: 16, height: 16 },
   yieldAmount: 1,
-  // Cresce mais rápido — preço mais baixo, ciclos mais curtos.
+  // Preço mais baixo — a mais barata das três.
   seedPrice: 4,
   sellPrice: 9,
 };

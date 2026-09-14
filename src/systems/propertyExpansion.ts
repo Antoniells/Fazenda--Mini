@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { ExpansionChunk, ExpansionDirection, FarmMapData } from '../data/maps/farmMap';
+import { BIOME_LABELS, ExpansionChunk, ExpansionDirection, FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
 import { WalkableGrid } from './grid';
-import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, buildConstructionSign } from './mapBuilder';
+import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, buildConstructionSign, BIOME_TINTS } from './mapBuilder';
 
 /** Placa de um trecho: ao interagir, tenta comprar aquele trecho específico (ver `PropertyExpansionSystem.tryBuy`). */
 class ExpansionSignInteractable implements Interactable {
@@ -43,7 +43,7 @@ export class PropertyExpansionSystem {
     private readonly interactions: InteractionRegistry,
   ) {
     for (const chunk of map.expansions) {
-      buildGroundChunk(scene, map.tileSize, chunk.col0, chunk.row0, chunk.cols, chunk.rows);
+      buildGroundChunk(scene, map.tileSize, chunk.col0, chunk.row0, chunk.cols, chunk.rows, undefined, BIOME_TINTS[chunk.biome]);
       buildExpansionChunkFence(scene, map.tileSize, chunk);
 
       this.wallImages.set(chunk.direction, buildFenceSide(scene, map, chunk.direction));
@@ -81,13 +81,15 @@ export class PropertyExpansionSystem {
 
   /** Chamado pela placa do trecho (`ExpansionSignInteractable`) ao interagir. */
   tryBuy(chunk: ExpansionChunk): void {
+    const biomeLabel = BIOME_LABELS[chunk.biome];
+
     if (this.purchased.has(chunk.direction)) {
-      console.log(`Trecho a ${chunk.direction} já comprado.`);
+      console.log(`${biomeLabel} já desbloqueada.`);
       return;
     }
 
     if (!this.inventory.spendCoins(chunk.price)) {
-      console.log(`Moedas insuficientes para liberar o trecho a ${chunk.direction} (precisa de ${chunk.price}).`);
+      console.log(`Moedas insuficientes para desbloquear ${biomeLabel} (precisa de ${chunk.price} moedas).`);
       return;
     }
 
@@ -103,21 +105,33 @@ export class PropertyExpansionSystem {
     this.grid.unblock(signCol, signRow);
     this.interactions.remove(signCol, signRow);
 
-    console.log(`Propriedade expandida a ${chunk.direction}! (saldo: ${this.inventory.getCoins()}).`);
+    console.log(`${biomeLabel} desbloqueada! (saldo: ${this.inventory.getCoins()}).`);
   }
 
-  /** Libera, no grid, a parede do núcleo naquele lado — os mesmos cantos que ficam sempre bloqueados (ver `buildFenceCorners`). */
+  /**
+   * Libera, no grid, a parede do núcleo naquele lado — os mesmos cantos que
+   * ficam sempre bloqueados (ver `buildFenceCorners`). Pula as células de
+   * `farmMap.bridges` que ficam nessa mesma parede (Sistema de Cenas): uma
+   * ponte não é "mais um pedaço de terra que se abre" como as expansões —
+   * ela sempre precisa continuar bloqueada pro clique disparar a interação
+   * (`BridgeSystem`/`PlayerController.handleBlockedClick`), não virar uma
+   * célula andável comum só porque o lado foi expandido.
+   */
   private unblockCoreWall(direction: ExpansionDirection): void {
     const { cols, rows } = this.map;
+    const bridgeCoord = (direction === 'north' || direction === 'south' ? 'col' : 'row') as 'col' | 'row';
+    const bridgeCoordsOnThisWall = new Set(
+      this.map.bridges.filter((bridge) => bridge.direction === direction).map((bridge) => bridge[bridgeCoord]),
+    );
 
     if (direction === 'north') {
-      for (let col = 1; col < cols - 1; col++) this.grid.unblock(col, 0);
+      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col)) this.grid.unblock(col, 0);
     } else if (direction === 'south') {
-      for (let col = 1; col < cols - 1; col++) this.grid.unblock(col, rows - 1);
+      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col)) this.grid.unblock(col, rows - 1);
     } else if (direction === 'west') {
-      for (let row = 1; row < rows - 1; row++) this.grid.unblock(0, row);
+      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row)) this.grid.unblock(0, row);
     } else {
-      for (let row = 1; row < rows - 1; row++) this.grid.unblock(cols - 1, row);
+      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row)) this.grid.unblock(cols - 1, row);
     }
   }
 }

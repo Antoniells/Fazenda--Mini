@@ -1,4 +1,4 @@
-import { ExpansionChunk, FarmMapData } from '../data/maps/farmMap';
+import { ExpansionChunk, FarmMapData, getFarmlandFenceLayout } from '../data/maps/farmMap';
 
 export interface WalkableGrid {
   cols: number;
@@ -11,7 +11,15 @@ export interface WalkableGrid {
   unblock(col: number, row: number): void;
 }
 
-/** Bloqueia o perímetro externo PERMANENTE de um trecho de expansão — mesmas 3 bordas desenhadas por `buildExpansionChunkFence` (o lado que faz fronteira com o núcleo fica aberto). */
+/**
+ * Bloqueia o perímetro externo PERMANENTE de um trecho de expansão — mesmas
+ * 3 bordas desenhadas por `buildExpansionChunkFence` (o lado que faz
+ * fronteira com o núcleo fica aberto). Para os biomas de Cavernas (norte) e
+ * Praia (sul — ver `ExpansionChunk.biome`), essa borda mais distante do
+ * núcleo É a parede da caverna / a água do oceano pedida na Fase 6.1: não
+ * há bloqueio extra a fazer, o perímetro genérico já cobre exatamente essa
+ * borda extrema em todos os 4 biomas.
+ */
 function blockExpansionChunkPerimeter(blocked: Set<string>, key: (col: number, row: number) => string, chunk: ExpansionChunk): void {
   const { direction, col0, row0, cols, rows } = chunk;
   const colEnd = col0 + cols - 1;
@@ -39,7 +47,8 @@ function blockExpansionChunkPerimeter(blocked: Set<string>, key: (col: number, r
 /**
  * Constrói a grade de caminhabilidade a partir dos dados do mapa: o anel da
  * borda do núcleo (onde a cerca é desenhada), as células das árvores, a
- * Caixa de Remessas e a Loja são bloqueados. Fonte única de obstáculos —
+ * Caixa de Remessas, a Loja, a Casa e a cerca da lavoura (com seu portão,
+ * ver `getFarmlandFenceLayout`) são bloqueados. Fonte única de obstáculos —
  * nenhuma posição é redefinida aqui, tudo vem de `farmMap`. Para adicionar
  * um novo tipo de obstáculo no futuro, basta marcar mais células como
  * bloqueadas aqui, sem alterar quem consome o grid.
@@ -67,6 +76,32 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
 
   blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
   blocked.add(key(map.shopPosition[0], map.shopPosition[1]-1));
+
+  // Casa do jogador (Fase 9): bloco sólido inteiro — a única célula com
+  // interação própria é a porta (`houseDoorPosition`, registrada à parte
+  // em `systems/sleepInteraction.ts`), as demais só impedem passagem.
+  const { col0: houseCol0, row0: houseRow0, cols: houseCols, rows: houseRows } = map.housePosition;
+  for (let row = houseRow0; row < houseRow0 + houseRows; row++) {
+    for (let col = houseCol0; col < houseCol0 + houseCols; col++) {
+      blocked.add(key(col, row));
+    }
+  }
+
+  // Cerca da lavoura (Fase 9): mesmo perímetro desenhado por
+  // `mapBuilder.buildFarmlandFence` (fonte única em `getFarmlandFenceLayout`,
+  // pra nunca desenhar cerca sem colisão ou vice-versa) — bloqueada por
+  // inteiro, exceto o portão (única abertura, alinhada com a porta de casa).
+  const fence = getFarmlandFenceLayout(map);
+  const gateKey = key(fence.gate[0], fence.gate[1]);
+  for (let col = fence.col0; col <= fence.colEnd; col++) {
+    blocked.add(key(col, fence.row0));
+    blocked.add(key(col, fence.rowEnd));
+  }
+  for (let row = fence.row0; row <= fence.rowEnd; row++) {
+    blocked.add(key(fence.col0, row));
+    blocked.add(key(fence.colEnd, row));
+  }
+  blocked.delete(gateKey);
 
   // Trechos de expansão (Fase 6): perímetro externo permanente de cada um
   // (a área interna já nasce andável — só a parede do núcleo, bloqueada

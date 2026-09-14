@@ -24,6 +24,7 @@
  * `Watering.png` (regar, 8 frames/direção) e `Sickle.png` (colher,
  * 6 frames/direção).
  */
+import { farmMap } from './maps/farmMap';
 
 export const PLAYER_FRAME_SIZE = 32;
 
@@ -42,14 +43,21 @@ export const PLAYER_ANIM_FRAMES = {
   walkSide: { start: 12, end: 17 },
 } as const;
 
-/** Célula de grid onde o personagem aparece ao iniciar. */
-export const PLAYER_START = { col: 12, row: 9 };
+/**
+ * Célula de grid onde o personagem aparece ao iniciar — logo em frente à
+ * porta de casa (`farmMap.houseDoorPosition`, uma célula ao sul dela, já
+ * que a porta em si é bloqueada/interativa, não andável).
+ */
+export const PLAYER_START = {
+  col: farmMap.houseDoorPosition[0],
+  row: farmMap.houseDoorPosition[1] + 1,
+};
 
 /** Tempo (ms) para se mover de uma célula do grid para a adjacente. */
 export const PLAYER_MOVE_DURATION_MS = 260;
 
-/** Ações agrícolas com animação própria (Fase 4) + buscar água no Poço (Fase 7). */
-export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well';
+/** Ações agrícolas com animação própria (Fase 4) + buscar água no Poço (Fase 7) + coleta de recursos (Fase 7 — Machado/Picareta). */
+export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well' | 'axe' | 'pickaxe';
 
 interface ActionAnimSpec {
   key: string;
@@ -104,6 +112,26 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
   harvest: {
     key: 'player-alex-sickle',
     path: 'Character/Character/Pre-made/Alex/Sickle.png',
+    frameRate: 10,
+    frameSize: PLAYER_FRAME_SIZE,
+    down: { start: 0, end: 5 },
+    up: { start: 6, end: 11 },
+    side: { start: 12, end: 17 },
+  },
+  /** Cortar árvore com o Machado (Fase 7 — Coleta de Recursos). Mesmo layout de `Hoe.png`/`Sickle.png` (192x96, 6 frames/direção), confirmado pelas dimensões da folha. */
+  axe: {
+    key: 'player-alex-axe',
+    path: 'Character/Character/Pre-made/Alex/Axe.png',
+    frameRate: 10,
+    frameSize: PLAYER_FRAME_SIZE,
+    down: { start: 0, end: 5 },
+    up: { start: 6, end: 11 },
+    side: { start: 12, end: 17 },
+  },
+  /** Quebrar pedra/rocha com a Picareta (Fase 7 — Coleta de Recursos). Mesmo layout das demais. */
+  pickaxe: {
+    key: 'player-alex-pickaxe',
+    path: 'Character/Character/Pre-made/Alex/Pickaxe.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
     down: { start: 0, end: 5 },

@@ -1,12 +1,10 @@
-/**
- * Duração (ms) de um dia inteiro (24h em jogo). Bem mais curta que o ritmo
- * "realista" de outros jogos do gênero de propósito — as culturas daqui
- * crescem em 12-20s (ver `data/crops.ts`), então um dia no estilo Stardew
- * Valley (~13min reais) deixaria o relógio desconectado do resto do jogo.
- * 90s dá uns 5-7 ciclos de plantio por dia, o suficiente para o dia ter
- * peso sem travar o ritmo arcade já estabelecido.
- */
-export const DAY_LENGTH_MS = 90_000;
+/** Duração (ms) de um dia inteiro (24h em jogo) — pedido explícito: 12 minutos reais por dia. */
+export const DAY_LENGTH_MS = 12 * 60_000;
+
+/** Hora em que cada novo dia começa (06:00 — o jogador "acorda" com o sol já nascendo, não à meia-noite). */
+const START_HOUR = 6;
+/** Os minutos exibidos na UI avançam de 5 em 5 (relógio "read-out", não um cronômetro exato) — pedido explícito, ver `getMinutesOfDay`. */
+const DISPLAY_MINUTE_STEP = 5;
 
 /** Início/fim de cada trecho do dia, em horas (0-24). A transição entre dia e noite é suave dentro da janela informada, não abrupta. */
 const DAWN_START_HOUR = 5;
@@ -27,7 +25,7 @@ const MAX_NIGHT_ALPHA = 0.55;
  * crescimento ou qualquer outra mecânica existente.
  */
 export class GameClock {
-  private dayProgressMs = 0;
+  private dayProgressMs = (START_HOUR / 24) * DAY_LENGTH_MS;
   private day = 1;
 
   /** Avança o relógio; devolve `true` só no frame em que um novo dia começa (pra quem quiser reagir a isso). */
@@ -45,9 +43,48 @@ export class GameClock {
     return this.day;
   }
 
-  /** Hora do dia, 0 (meia-noite) a 24 (exclusivo). */
+  /**
+   * Pula direto para as 06:00 do dia seguinte — usado pela mecânica de
+   * dormir (Fase 9, ver `systems/sleepInteraction.ts`): dormir sempre leva
+   * pro início do próximo dia, não soma um número fixo de horas (diferente
+   * de `update`, que avança gradualmente com o tempo real). Sempre soma 1
+   * ao dia, mesmo que já fosse exatamente 06:00.
+   */
+  advanceToNextMorning(): void {
+    this.dayProgressMs = (START_HOUR / 24) * DAY_LENGTH_MS;
+    this.day += 1;
+  }
+
+  /** Hora do dia, 0 (meia-noite) a 24 (exclusivo) — contínua, usada pelo véu noturno (`getNightAlpha`) para uma transição suave. */
   getHours(): number {
     return (this.dayProgressMs / DAY_LENGTH_MS) * 24;
+  }
+
+  /**
+   * Minuto do dia (0-1439) já arredondado para baixo em passos de
+   * `DISPLAY_MINUTE_STEP` (5) — é o que a UI mostra (`getTimeString`), não
+   * o progresso contínuo usado internamente (`getHours`/`getNightAlpha`).
+   */
+  getMinutesOfDay(): number {
+    const rawMinutes = this.getHours() * 60;
+    return Math.floor(rawMinutes / DISPLAY_MINUTE_STEP) * DISPLAY_MINUTE_STEP;
+  }
+
+  /** Hora exibida (0-23), já alinhada ao passo de 5 minutos de `getMinutesOfDay`. */
+  getHour(): number {
+    return Math.floor(this.getMinutesOfDay() / 60) % 24;
+  }
+
+  /** Minuto exibido (0-55, múltiplo de 5) dentro da hora atual. */
+  getMinute(): number {
+    return this.getMinutesOfDay() % 60;
+  }
+
+  /** Hora formatada "HH:MM" (minutos em passos de 5) — pronta pra UI. */
+  getTimeString(): string {
+    const hh = String(this.getHour()).padStart(2, '0');
+    const mm = String(this.getMinute()).padStart(2, '0');
+    return `${hh}:${mm}`;
   }
 
   /**
