@@ -57,6 +57,8 @@ import {
   SHOP_BOOK_CONTENT_RECT,
   INVENTORY_PANEL_KEY,
   INVENTORY_PANEL_PATH,
+  INVENTORY_LARGE_PANEL_KEY,
+  INVENTORY_LARGE_PANEL_PATH,
   EXTRAS_UI_KEY,
   EXTRAS_UI_PATH,
   CLOCK_MONEY_HUD_KEY,
@@ -82,14 +84,15 @@ import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE, LE
 import { GRASS_DETAILS_KEY, GRASS_DETAILS_PATH } from '../data/grassDetails';
 import { buildFarmGround, buildFenceCorners, buildFarmDecorations, buildShippingBin, buildShopStand, buildPlayerHouse, buildFarmlandFence, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildDirtZone } from '../systems/dirtPaths';
-import { buildGrassDetails } from '../systems/grassDetails';
+import { buildGrassDetails, rustleGrassTuft, GrassTuftMap } from '../systems/grassDetails';
 import { buildWalkableGrid } from '../systems/grid';
 import { PropertyExpansionSystem } from '../systems/propertyExpansion';
 import { BridgeSystem } from '../systems/bridgeSystem';
 import { TreePlantingSystem, advanceFarmTreesDay } from '../systems/treePlanting';
 import { advanceForestDay } from './ForestScene';
 import { advanceQuarryDay } from './QuarryScene';
-import { ACORN } from '../data/resources';
+import { ACORN, RESOURCES } from '../data/resources';
+import { PURCHASABLE_WEAPONS, WEAPONS } from '../data/weapons';
 import { updateTreeOverlap } from '../systems/treeOverlap';
 import { GameClock, DAY_LENGTH_MS } from '../systems/gameClock';
 import { DayNightOverlay } from '../systems/dayNightOverlay';
@@ -121,23 +124,15 @@ import { ShopMenu, ShopItem, ShopTabDefinition } from '../ui/shopMenu';
  * propriedade (Fase 6) — e o relógio interno com ciclo dia/noite (Fase 7,
  * primeiro item — "Sistema de Tempo").
  */
-/**
- * Avanço de relógio (ms) aplicado pela tecla de debug T — igual a um dia
- * inteiro (`DAY_LENGTH_MS`), pra cada aperto sempre corresponder a
- * exatamente uma virada de dia de verdade (`GameClock.update` retornando
- * `true`), nunca mexendo na lavoura (rega/crescimento/decaimento) sem o
- * "Dia N" da UI também mudar — não é mecânica de jogo.
- */
 const DEBUG_TIME_SKIP_MS = DAY_LENGTH_MS;
-/** Moedas adicionadas pela tecla de debug + — só para testar compras sem precisar vender a colheita inteira, não é mecânica de jogo. */
 const DEBUG_ADD_COINS_AMOUNT = 1000;
-/** Duração (ms) de cada metade (fade-out/fade-in) da transição de dormir — ver `MainScene.sleep`. */
 const SLEEP_FADE_MS = 600;
 
 export class MainScene extends Phaser.Scene {
   private player!: Player;
   private controller!: PlayerController;
   private trees!: Phaser.GameObjects.Image[];
+  private grassTufts!: GrassTuftMap;
   private farmland!: Farmland;
   private farmlandRenderer!: FarmlandRenderer;
   private inventory!: Inventory;
@@ -147,23 +142,13 @@ export class MainScene extends Phaser.Scene {
   private gameClock!: GameClock;
   private dayNightOverlay!: DayNightOverlay;
   private pauseMenu!: PauseMenu;
-  /** `true` durante a transição de dormir (fade-out → avança o dia → fade-in) — bloqueia movimento/interação, ver o `PointerInputInterceptor` registrado em `create` e a checagem em `update`. */
   private isSleeping = false;
-  /**
-   * Célula onde o jogador deve nascer nesta passagem por `create()` — `null`
-   * usa o padrão (`PLAYER_START`, porta de casa). Vem de `scene.start(key,
-   * data)` ao voltar de uma ponte (Sistema de Cenas, ver
-   * `systems/bridgeSystem.ts`/`scenes/ExternalAreaScene.ts`): sem isso, toda
-   * volta pra `MainScene` reapareceria sempre na porta de casa, não na
-   * própria ponte usada.
-   */
   private spawnOverride: { col: number; row: number } | null = null;
 
   constructor() {
     super('MainScene');
   }
 
-  /** Recebido de `scene.start('MainScene', data)` — ver `spawnOverride`. Chamado pelo Phaser antes de `preload`/`create` toda vez que a cena (re)inicia. */
   init(data?: { spawnPoint?: { col: number; row: number } }): void {
     this.spawnOverride = data?.spawnPoint ?? null;
   }
@@ -201,16 +186,14 @@ export class MainScene extends Phaser.Scene {
         frameHeight: TILE_SIZE,
       });
     }
-    this.load.image(ALL_CROPS_ICONS_KEY, encodeURI(`/${ALL_CROPS_ICONS_PATH}`));
 
+    this.load.image(ALL_CROPS_ICONS_KEY, encodeURI(`/${ALL_CROPS_ICONS_PATH}`));
     this.load.image(INVENTORY_UI_KEY, encodeURI(`/${INVENTORY_UI_PATH}`));
     this.load.image(CLOCK_MONEY_HUD_KEY, encodeURI(`/${CLOCK_MONEY_HUD_PATH}`));
     this.load.spritesheet(WATERING_CAN_ICON_KEY, encodeURI(`/${WATERING_CAN_ICON_PATH}`), {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
     });
-    // Enxada e Foice usam a mesma folha 32x16 (2 frames de 16x16) do
-    // regador acima — só o frame 0 é usado (ver data/tools.ts).
     this.load.spritesheet(HOE.textureKey, encodeURI(`/${HOE.texturePath}`), {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
@@ -219,7 +202,6 @@ export class MainScene extends Phaser.Scene {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
     });
-    // Fase 7 — Coleta de Recursos: Machado/Picareta, mesma folha 32x16 das demais ferramentas.
     this.load.spritesheet(AXE.textureKey, encodeURI(`/${AXE.texturePath}`), {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
@@ -228,29 +210,36 @@ export class MainScene extends Phaser.Scene {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
     });
+
+    for (const weapon of Object.values(WEAPONS)) {
+      this.load.spritesheet(weapon.textureKey, encodeURI(`/${weapon.texturePath}`), {
+        frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
+        frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
+      });
+    }
+
     this.load.image(WOOD_KEY, encodeURI(`/${WOOD_PATH}`));
     this.load.image(ROCK_KEY, encodeURI(`/${ROCK_PATH}`));
     this.load.image(SHOP_BOOK_KEY, encodeURI(`/${SHOP_BOOK_PATH}`));
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
+    this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
     this.load.image(EXTRAS_UI_KEY, encodeURI(`/${EXTRAS_UI_PATH}`));
     this.load.image(SHOP_TAB_RIBBONS_KEY, encodeURI(`/${SHOP_TAB_RIBBONS_PATH}`));
     this.load.image(CLOSE_BUTTON_SHEET_KEY, encodeURI(`/${CLOSE_BUTTON_SHEET_PATH}`));
     this.load.image(BACKPACK_ICON_KEY, encodeURI(`/${BACKPACK_ICON_PATH}`));
     this.load.image(FISHING_ROD_ICON_KEY, encodeURI(`/${FISHING_ROD_ICON_PATH}`));
-
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
     this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
     this.load.image(GRASS_DETAILS_KEY, encodeURI(`/${GRASS_DETAILS_PATH}`));
     this.load.image(CONSTRUCTION_SIGN_KEY, encodeURI(`/${CONSTRUCTION_SIGN_PATH}`));
     this.load.image(PLAYER_HOUSE_KEY, encodeURI(`/${PLAYER_HOUSE_PATH}`));
     this.load.image(BRIDGE_KEY, encodeURI(`/${BRIDGE_PATH}`));
-
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
+
     this.load.spritesheet(SPLASH_KEY, encodeURI(`/${SPLASH_PATH}`), {
       frameWidth: SPLASH_FRAME_SIZE,
       frameHeight: SPLASH_FRAME_SIZE,
     });
-    // Fase 9 — mecânica de hits: folhas caindo a cada golpe de Machado.
     this.load.spritesheet(LEAF_FALL_KEY, encodeURI(`/${LEAF_FALL_PATH}`), {
       frameWidth: LEAF_FALL_FRAME_SIZE,
       frameHeight: LEAF_FALL_FRAME_SIZE,
@@ -264,7 +253,7 @@ export class MainScene extends Phaser.Scene {
   create(): void {
     const pineTexture = this.textures.get(PINE_TREE_KEY);
     pineTexture.add(PINE_TREE_FRAME_NAME, 0, PINE_TREE_FRAME.x, PINE_TREE_FRAME.y, PINE_TREE_FRAME.width, PINE_TREE_FRAME.height);
-    // Fase 7 — Coleta de Recursos: estágios de broto/muda (ver `systems/externalMapBuilder.buildGrowingTree`) — registrados aqui também porque o ícone da Bolota (`data/resources.ts`) reaproveita o frame de broto direto na Hotbar, sem passar por `buildGrowingTree`.
+    
     if (!pineTexture.has(PINE_SPROUT_FRAME_NAME)) {
       pineTexture.add(PINE_SPROUT_FRAME_NAME, 0, PINE_SPROUT_FRAME.x, PINE_SPROUT_FRAME.y, PINE_SPROUT_FRAME.width, PINE_SPROUT_FRAME.height);
     }
@@ -276,6 +265,7 @@ export class MainScene extends Phaser.Scene {
     if (!rockTexture.has(ROCK_FRAME_1.name)) {
       rockTexture.add(ROCK_FRAME_1.name, 0, ROCK_FRAME_1.rect.x, ROCK_FRAME_1.rect.y, ROCK_FRAME_1.rect.width, ROCK_FRAME_1.rect.height);
     }
+
     const woodTexture = this.textures.get(WOOD_KEY);
     if (!woodTexture.has(WOOD_FRAME.name)) {
       woodTexture.add(WOOD_FRAME.name, 0, WOOD_FRAME.rect.x, WOOD_FRAME.rect.y, WOOD_FRAME.rect.width, WOOD_FRAME.rect.height);
@@ -359,12 +349,10 @@ export class MainScene extends Phaser.Scene {
 
     buildFarmGround(this, farmMap);
     buildFenceCorners(this, farmMap);
-    // `buildDirtZone` tem cache por referência de `farmMap` — chamar de novo
-    // aqui não recalcula nada, só reaproveita a mesma zona já usada pelo
-    // chão (`buildFarmGround`), pra os detalhes de grama não nascerem em
-    // cima do caminho de terra.
-    buildGrassDetails(this, farmMap, buildDirtZone(farmMap));
+
+    this.grassTufts = buildGrassDetails(this, farmMap, buildDirtZone(farmMap));
     this.trees = buildFarmDecorations(this, farmMap);
+
     const shippingBin = buildShippingBin(this, farmMap);
     buildShopStand(this, farmMap);
     buildPlayerHouse(this, farmMap);
@@ -374,16 +362,11 @@ export class MainScene extends Phaser.Scene {
     const tilePx = farmMap.tileSize * DISPLAY_SCALE;
 
     Player.createAnimations(this);
+
     const spawn = this.spawnOverride ?? PLAYER_START;
     this.player = new Player(this, spawn.col, spawn.row, tilePx);
     this.player.sprite.setScale(DISPLAY_SCALE);
 
-    // Câmera (Fase 6 — Expansão): o mundo pode ser maior que a janela
-    // (`gameConfig.ts`) — cada trecho ao redor do núcleo
-    // (`farmMap.expansions`) já existe (grama e perímetro definitivo
-    // desenhados) desde o início, mesmo antes de comprado, então os limites
-    // da câmera cobrem o retângulo total (núcleo + todos os trechos), não
-    // só o núcleo — ela já pode rolar até lá, mesmo cercada.
     const worldBounds = farmMap.expansions.reduce(
       (bounds, chunk) => ({
         minCol: Math.min(bounds.minCol, chunk.col0),
@@ -393,11 +376,7 @@ export class MainScene extends Phaser.Scene {
       }),
       { minCol: 0, minRow: 0, maxCol: farmMap.cols - 1, maxRow: farmMap.rows - 1 },
     );
-    // Mesmo helper usado pelas cenas externas (`systems/cameraSetup.ts`) —
-    // garante o mesmo comportamento de câmera (suavizado do seguimento) em
-    // todo cenário, pedido explícito do usuário; só os limites em si
-    // continuam calculados aqui (dependem das expansões, que não existem
-    // fora da Fazenda).
+    
     setupWorldCamera(
       this,
       this.player.sprite,
@@ -409,10 +388,9 @@ export class MainScene extends Phaser.Scene {
 
     this.farmland = new Farmland(farmMap.farmlandArea);
     this.farmlandRenderer = new FarmlandRenderer(this, farmMap);
-    // Compartilhado (Sistema de Cenas) — não `new Inventory()`: precisa ser
-    // o MESMO objeto que a `UIScene` lê, e continuar o mesmo depois de
-    // atravessar uma ponte e voltar (ver `systems/gameState.ts`).
+
     this.inventory = gameState.inventory;
+
     const interactions = new InteractionRegistry();
     registerFarmlandInteractables(farmMap, this.farmland, this.farmlandRenderer, this.inventory, this.player, interactions);
     registerShippingBinInteractable(
@@ -425,11 +403,6 @@ export class MainScene extends Phaser.Scene {
       interactions,
     );
 
-    // A Loja tem 3 abas (Fase 8): Agricultura (sementes), Ferramentas (vazia
-    // por enquanto — preparada pra upgrades futuros) e Construções
-    // (decorações). CropDefinition e DecorationDefinition são formas
-    // diferentes na origem, então cada uma é adaptada para o formato mínimo
-    // que o ShopMenu entende (`ShopItem`), já com a categoria/aba.
     const shopTabs: ShopTabDefinition[] = [
       {
         category: 'agriculture',
@@ -453,6 +426,7 @@ export class MainScene extends Phaser.Scene {
         tabFrameLight: TAB_FRAME_CONSTRUCTION_LIGHT.name,
       },
     ];
+
     const shopItems: ShopItem[] = [
       ...Object.values(CROPS).map((crop) => ({
         id: crop.id,
@@ -468,12 +442,21 @@ export class MainScene extends Phaser.Scene {
         iconFrame: decoration.frameName,
         price: decoration.price,
       })),
+      ...PURCHASABLE_WEAPONS.map((weapon) => ({
+        id: weapon.id,
+        category: 'tools' as const,
+        textureKey: weapon.textureKey,
+        iconFrame: weapon.iconFrame,
+        price: weapon.price,
+        resourceCost: weapon.resourceCost
+          ? { resourceId: weapon.resourceCost.resourceId, resourceName: RESOURCES[weapon.resourceCost.resourceId].name, amount: weapon.resourceCost.amount }
+          : undefined,
+      })),
     ];
+
     this.shopMenu = new ShopMenu(this, shopTabs, shopItems, (itemId) => this.buyShopItem(itemId));
     registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
 
-    // Dormir (Fase 9): interagir com a porta de casa avança pro dia
-    // seguinte — ver `sleep()`.
     registerSleepInteractable(
       farmMap.houseDoorPosition[0],
       farmMap.houseDoorPosition[1],
@@ -482,16 +465,10 @@ export class MainScene extends Phaser.Scene {
       interactions,
     );
 
-    // Expansão de propriedade (Fase 6, inspirada no Forager): cada trecho
-    // ao redor do núcleo tem sua própria placa física — sem menu envolvido,
-    // ver `systems/propertyExpansion.ts`.
     new PropertyExpansionSystem(this, farmMap, grid, this.inventory, interactions);
 
-    // Sistema de Cenas: 4 pontes (uma por lado do núcleo, ver
-    // `farmMap.bridges`) levando a cenas de destino separadas de verdade
-    // (`scene.start`, hard cut) — ver `systems/bridgeSystem.ts`.
     const lockedMessage = new LockedMessage(this);
-    new BridgeSystem(this, farmMap, this.inventory, interactions, lockedMessage);
+    new BridgeSystem(this, farmMap, grid, this.inventory, interactions, lockedMessage);
 
     this.decorationPlacement = new DecorationPlacementSystem(
       this,
@@ -505,35 +482,26 @@ export class MainScene extends Phaser.Scene {
       WELL,
     );
 
-    // Plantio de bolotas (Fase 7 — Coleta de Recursos): mesma técnica de
-    // "fantasma + clique" das decorações, mas numa classe própria (árvores
-    // crescem em estágios, decorações não) — ver `systems/treePlanting.ts`.
     this.treePlanting = new TreePlantingSystem(this, farmMap, tilePx, grid, this.inventory, interactions, this.player);
 
-    // Fica registrado nos listeners de input da própria cena — não precisa
-    // ser guardado como campo, só criado uma vez.
-    new TileCursor(this, farmMap, tilePx, grid);
+    new TileCursor(this, tilePx, grid, farmMap.farmlandArea);
 
     this.pauseMenu = new PauseMenu(this);
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
     this.controller.addInputInterceptor(this.decorationPlacement);
     this.controller.addInputInterceptor(this.treePlanting);
-    // Inventário (Fase 8 — Interface): agora vive na `UIScene` persistente
-    // (pode abrir em qualquer mapa), não mais nesta cena — só "rouba" o
-    // clique do mundo enquanto aberto, mesma técnica de Dormir/Pausa abaixo.
+
     this.controller.addInputInterceptor({
       isActive: () => isInventoryOpen(),
       handleClick: () => {},
     });
-    // Dormir e Pausa (Fase 9): "roubam" o clique enquanto ativos — não
-    // precisam fazer nada com o clique em si, só existir já impede mover/
-    // interagir com o mundo (ver `isSleeping`/`pauseMenu.isOpen()`, também
-    // usados em `update` pra bloquear o teclado).
+
     this.controller.addInputInterceptor({
       isActive: () => this.isSleeping,
       handleClick: () => {},
     });
+
     this.controller.addInputInterceptor({
       isActive: () => this.pauseMenu.isOpen(),
       handleClick: () => {},
@@ -543,9 +511,7 @@ export class MainScene extends Phaser.Scene {
       if (this.shopMenu.isOpen()) this.shopMenu.close();
       this.decorationPlacement.toggle(WELL);
     });
-    // ESC fecha o que estiver "no topo" (posicionamento > Inventário >
-    // Loja); só se nada disso estiver aberto é que abre/fecha o Menu do
-    // Jogo (pausa) — um único aperto nunca faz as duas coisas de uma vez.
+
     this.input.keyboard!.on('keydown-ESC', () => {
       if (this.decorationPlacement.isActive()) {
         this.decorationPlacement.cancel();
@@ -562,6 +528,7 @@ export class MainScene extends Phaser.Scene {
       if (this.isSleeping) return;
       this.pauseMenu.toggle();
     });
+
     this.input.keyboard!.on('keydown-E', () => {
       if (this.shopMenu.isOpen()) this.shopMenu.close();
       this.decorationPlacement.cancel();
@@ -569,25 +536,18 @@ export class MainScene extends Phaser.Scene {
     });
 
     this.events.on('player-stepped', (col: number, row: number) => {
-      // Sempre que o player pisar em uma nova célula, tenta animar a plantinha
       this.farmlandRenderer.rustleCrop(col, row);
-      // Andar embora fecha a loja, igual a afastar-se de um balcão — evita
-      // deixar o painel aberto "preso" na tela enquanto o jogador vagueia.
+      rustleGrassTuft(this, this.grassTufts, col, row);
+      this.treePlanting.rustle(col, row); // <-- Faz as mudas plantadas balançarem
+      
       if (this.shopMenu.isOpen()) this.shopMenu.close();
     });
 
-    // Compartilhado — mesma razão do `Inventory` acima.
     this.gameClock = gameState.gameClock;
     this.dayNightOverlay = new DayNightOverlay(this);
 
-    // UIScene (Hotbar + HUD de Data/Hora): roda em paralelo, criada uma
-    // única vez (ver `ensureUIScene`) — sobrevive a esta cena sendo
-    // destruída/recriada ao atravessar uma ponte. O único contato que esta
-    // cena tem com ela é reagir à troca de slot (`HOTBAR_CHANGED_EVENT`)
-    // pra decidir se deve ativar/cancelar o posicionamento do Poço —
-    // registrado no `game.events` (global, não por cena), por isso limpo
-    // no `shutdown` pra não acumular um listener a cada troca de mapa.
     ensureUIScene(this);
+
     const onHotbarChanged = (index: number): void => this.handleHotbarChanged(index);
     this.game.events.on(HOTBAR_CHANGED_EVENT, onHotbarChanged);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -598,20 +558,14 @@ export class MainScene extends Phaser.Scene {
     this.setupDebugAddCoins();
   }
 
-  /**
-   * Roteia a compra de um slot da Loja: sementes e decorações vêm de
-   * fontes de dados diferentes (`CROPS`/`DECORATIONS`), então cada uma tem
-   * sua própria checagem de preço/estoque — este método só decide qual
-   * das duas o `itemId` clicado é.
-   */
   private buyShopItem(itemId: string): void {
     if (CROPS[itemId]) this.buySeed(itemId);
     else if (DECORATIONS[itemId]) this.buyDecoration(itemId);
+    else if (WEAPONS[itemId]) this.buySword(itemId);
 
-    this.shopMenu.refresh(this.inventory.getCoins());
+    this.shopMenu.refresh(this.inventory);
   }
 
-  /** Tenta comprar 1 semente da cultura. */
   private buySeed(cropId: string): void {
     const crop = CROPS[cropId];
     if (!crop) return;
@@ -624,7 +578,6 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /** Tenta comprar 1 unidade de uma decoração/construção. */
   private buyDecoration(decorationId: string): void {
     const decoration = DECORATIONS[decorationId];
     if (!decoration) return;
@@ -639,15 +592,34 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Reage a uma troca de slot ativo da Hotbar, seja lá qual UI disparou
-   * (teclado/scroll na `UIScene`, clique na linha de cima do Inventário
-   * aqui) — decide se deve ativar/cancelar o posicionamento do Poço.
-   * Refresh visual do Hotbar/Inventário em si não precisa mais acontecer
-   * aqui: a `UIScene` já se redesenha sozinha a cada frame a partir do
-   * `gameState.inventory` (ver `UIScene.update`), incluindo o Inventário —
-   * que agora também mora lá (Fase 8 — Interface).
-   */
+  private buySword(swordId: string): void {
+    const sword = WEAPONS[swordId];
+    if (!sword) return;
+
+    if (this.inventory.hasTool(swordId)) {
+      console.log(`${sword.name} já comprada.`);
+      return;
+    }
+
+    const hasEnoughResource =
+      !sword.resourceCost || this.inventory.getResourceCount(sword.resourceCost.resourceId) >= sword.resourceCost.amount;
+
+    if (!hasEnoughResource) {
+      const resource = RESOURCES[sword.resourceCost!.resourceId];
+      console.log(`Recursos insuficientes para comprar ${sword.name} (precisa de ${sword.resourceCost!.amount}x ${resource.name}).`);
+      return;
+    }
+
+    if (!this.inventory.spendCoins(sword.price)) {
+      console.log(`Moedas insuficientes para comprar ${sword.name} (precisa de ${sword.price}).`);
+      return;
+    }
+
+    if (sword.resourceCost) this.inventory.useResource(sword.resourceCost.resourceId, sword.resourceCost.amount);
+    this.inventory.unlockTool(swordId);
+    console.log(`Comprado: ${sword.name}! (saldo: ${this.inventory.getCoins()}).`);
+  }
+
   private handleHotbarChanged(_index: number): void {
     const selectedSlot = this.inventory.getSelectedSlot();
 
@@ -659,7 +631,6 @@ export class MainScene extends Phaser.Scene {
       this.decorationPlacement.cancel();
     }
 
-    // Bolota selecionada (Fase 7): ativa o modo de plantio — mesma lógica do Poço acima, só que noutro sistema (`systems/treePlanting.ts`).
     if (selectedSlot && selectedSlot.category === 'resource' && selectedSlot.id === ACORN.id) {
       if (!this.treePlanting.isActive()) this.treePlanting.toggle();
     } else {
@@ -667,15 +638,6 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Dormir (Fase 9): interagir com a porta de casa faz fade-out pra preto,
-   * pula o relógio direto pras 06:00 do dia seguinte
-   * (`GameClock.advanceToNextMorning`, não o avanço gradual de `update`),
-   * roda a virada de dia da lavoura (`farmland.onNewDay`) já com a tela
-   * preta, e faz o fade-in — tudo com o movimento bloqueado (`isSleeping`,
-   * ver o `PointerInputInterceptor` registrado em `create` e a checagem em
-   * `update`).
-   */
   private sleep(): void {
     if (this.isSleeping) return;
     this.isSleeping = true;
@@ -686,7 +648,9 @@ export class MainScene extends Phaser.Scene {
       this.farmland.onNewDay();
       this.farmlandRenderer.renderAll(this.farmland);
       this.dayNightOverlay.setNightAlpha(this.gameClock.getNightAlpha());
+      
       this.advanceWorldResourcesDay();
+
       console.log(`Dia ${this.gameClock.getDay()} começou (dormiu).`);
 
       this.cameras.main.fadeIn(SLEEP_FADE_MS, 0, 0, 0);
@@ -696,16 +660,6 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * "Gancho de virada de dia" (Fase 7 — Coleta de Recursos, pedido
-   * explícito): avança o respawn/crescimento de árvores e pedras da
-   * Floresta e da Pedreira (funciona mesmo com essas cenas fechadas — ver
-   * `systems/resourceNodeRegistry.ts`) e das árvores plantadas na própria
-   * Fazenda, redesenhando estas últimas na hora (o jogador pode estar
-   * olhando pra elas neste exato momento, diferente da Floresta/Pedreira).
-   * Chamado nos dois lugares que já disparam a virada de dia (`sleep` e o
-   * avanço gradual em `update`).
-   */
   private advanceWorldResourcesDay(): void {
     advanceForestDay();
     advanceQuarryDay();
@@ -713,21 +667,10 @@ export class MainScene extends Phaser.Scene {
     this.treePlanting.refreshAfterDayChange();
   }
 
-  /** Bloqueia movimento/interação do jogador enquanto qualquer tela modal estiver aberta (Inventário, Menu de Pausa) ou a transição de dormir estiver rodando. */
   private isInputLocked(): boolean {
     return isInventoryOpen() || this.isSleeping || this.pauseMenu.isOpen();
   }
 
-  /**
-   * Tecla T (debug): adianta o relógio de dia/noite em exatamente um dia
-   * (`DEBUG_TIME_SKIP_MS === DAY_LENGTH_MS`) — não é mecânica de jogo. Só
-   * chama `farmland.onNewDay()` quando `gameClock.update` de fato sinaliza
-   * uma virada de dia (sempre vai sinalizar, dado o avanço de um dia
-   * inteiro), a mesma condição usada no loop real (`update`) — sem essa
-   * checagem, a lavoura (rega/crescimento/decaimento da terra arada)
-   * mudaria mesmo em apertos que não avançassem o "Dia N" da UI, o que
-   * pareceria um bug.
-   */
   private setupDebugTimeSkip(): void {
     this.input.keyboard!.on('keydown-T', () => {
       const newDay = this.gameClock.update(DEBUG_TIME_SKIP_MS);
@@ -739,33 +682,28 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  /** Tecla + (debug): adiciona moedas para testar compras (ex.: a expansão de propriedade) sem precisar vender a colheita inteira — não é mecânica de jogo. */
   private setupDebugAddCoins(): void {
     const addDebugCoins = (): void => {
       this.inventory.addCoins(DEBUG_ADD_COINS_AMOUNT);
       console.log(`[debug] +${DEBUG_ADD_COINS_AMOUNT} moedas (saldo: ${this.inventory.getCoins()}).`);
     };
-    // PLUS cobre o "=/+" do teclado principal; NUMPAD_ADD, o "+" do numérico.
+    
     this.input.keyboard!.on('keydown-PLUS', addDebugCoins);
     this.input.keyboard!.on('keydown-NUMPAD_ADD', addDebugCoins);
   }
 
   update(time: number, delta: number): void {
-    // Tela de Inventário aberta (Fase 8), dormindo ou Menu de Pausa aberto
-    // (Fase 9): bloqueia movimento/interação do jogador (pedido explícito
-    // — "pausar OU bloquear movimentação").
     if (!this.isInputLocked()) this.controller.update(time, delta);
 
-    updateTreeOverlap(this.player, this.trees);
+    // Pedido explícito do usuário: árvores plantadas pelo jogador (bolota)
+    // não ficavam semitransparentes ao personagem passar atrás delas,
+    // porque só as árvores ESTÁTICAS do mapa (`this.trees`) entravam nessa
+    // checagem — combina as duas fontes.
+    const allTrees = [...this.trees, ...this.treePlanting.getPlantedTrees()];
+    updateTreeOverlap(this.player, allTrees);
     this.decorationPlacement.updateOcclusion();
-
     this.farmlandRenderer.renderAll(this.farmland);
 
-    // O relógio continua correndo com o Inventário aberto (pedido original
-    // da Fase 8: "sem travar o resto do jogo") — só para de verdade durante
-    // a transição de dormir (que já avança o relógio manualmente, ver
-    // `sleep()`) e com o Menu de Pausa aberto (esse sim pausa o mundo
-    // inteiro, não só o movimento).
     if (!this.isSleeping && !this.pauseMenu.isOpen()) {
       const newDay = this.gameClock.update(delta);
       if (newDay) {
@@ -774,15 +712,9 @@ export class MainScene extends Phaser.Scene {
         console.log(`Dia ${this.gameClock.getDay()} começou.`);
       }
     }
+    
     this.dayNightOverlay.setNightAlpha(this.gameClock.getNightAlpha());
 
-    // Hotbar, HUD de Data/Hora e Inventário não precisam mais ser
-    // redesenhados daqui — a `UIScene` já faz isso sozinha a cada frame,
-    // direto do `gameState` compartilhado (ver `UIScene.update`).
-
-    // A Loja só precisa refletir o saldo enquanto está aberta (o jogador
-    // não pode estar em dois lugares ao mesmo tempo, então nada muda o
-    // saldo enquanto ela está fechada).
-    if (this.shopMenu.isOpen()) this.shopMenu.refresh(this.inventory.getCoins());
+    if (this.shopMenu.isOpen()) this.shopMenu.refresh(this.inventory);
   }
 }
