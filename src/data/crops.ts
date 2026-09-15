@@ -1,14 +1,19 @@
 /**
  * `Crops/All Crops.png` (416x288, grid uniforme de 16x16): uma folha
  * consolidada com os ícones de várias culturas do pacote, uma por linha
- * (coluna 0-1 = saquinho de semente fechado/aberto, colunas 2-6 = variações
- * do item já colhido, coluna 7 = placa) — confirmado varrendo e rotulando a
- * grade. Cada `CropDefinition` usa a COLUNA 0 (saquinho de semente, não o
- * vegetal colhido — pedido explícito do usuário) da linha correspondente.
- * Usada só para os ÍCONES (Hotbar/Loja/Inventário, ver `resolveSlotVisual`
- * em `data/items.ts`); o spritesheet próprio de cada cultura
- * (`CropDefinition.textureKey`) continua sendo usado para os estágios de
- * crescimento na lavoura — a troca de ícone não mexe na plantinha no campo.
+ * (coluna 0-1 = saquinho de semente fechado/aberto, coluna 2 = item colhido
+ * "puro" sem selo de qualidade, colunas 3-5 = o mesmo item com selo de
+ * qualidade prata/ouro/roxo — estilo Stardew Valley, não usado aqui, ainda
+ * não existe sistema de qualidade —, coluna 6 = outra variação do item puro,
+ * coluna 7 = placa) — confirmado recortando/ampliando pixel a pixel linha a
+ * linha. Cada `CropDefinition` usa a COLUNA 2 (o vegetal/fruta já colhido,
+ * pedido explícito do usuário — antes usava a coluna 0, o saquinho de
+ * semente, o que mostrava o item errado no Inventário/Loja/Hotbar) da linha
+ * correspondente. Usada só para os ÍCONES (Hotbar/Loja/Inventário, ver
+ * `resolveSlotVisual` em `data/items.ts`); o spritesheet próprio de cada
+ * cultura (`CropDefinition.textureKey`) continua sendo usado para os
+ * estágios de crescimento na lavoura — a troca de ícone não mexe na
+ * plantinha no campo.
  */
 export const ALL_CROPS_ICONS_KEY = 'all-crops-icons';
 export const ALL_CROPS_ICONS_PATH = 'Crops/All Crops.png';
@@ -50,11 +55,10 @@ export const CARROT: CropDefinition = {
   textureKey: 'crop-carrot',
   texturePath: 'Crops/Spring/Carrot.png',
   growthFrames: [0, 2, 3, 4, 5],
-  // Linha 6, coluna 0 de `ALL_CROPS_ICONS_KEY` (saquinho de semente, não o
-  // vegetal colhido — pedido explícito do usuário) — confirmado rotulando a
-  // grade 16x16.
+  // Linha 6, coluna 2 de `ALL_CROPS_ICONS_KEY` (cenoura já colhida, sem selo
+  // de qualidade) — confirmado recortando/ampliando pixel a pixel.
   iconFrameName: 'crop-icon-carrot',
-  iconFrameRect: { x: 0, y: 96, width: 16, height: 16 },
+  iconFrameRect: { x: 32, y: 96, width: 16, height: 16 },
   yieldAmount: 1,
   seedPrice: 5,
   sellPrice: 12,
@@ -73,9 +77,10 @@ export const POTATO: CropDefinition = {
   textureKey: 'crop-potato',
   texturePath: 'Crops/Spring/Potato.png',
   growthFrames: [0, 2, 3, 4, 5],
-  // Linha 4, coluna 0 de `ALL_CROPS_ICONS_KEY` (saquinho de semente).
+  // Linha 4, coluna 2 de `ALL_CROPS_ICONS_KEY` (batata já colhida, sem selo
+  // de qualidade).
   iconFrameName: 'crop-icon-potato',
-  iconFrameRect: { x: 0, y: 64, width: 16, height: 16 },
+  iconFrameRect: { x: 32, y: 64, width: 16, height: 16 },
   yieldAmount: 1,
   // Preço mais alto que a cenoura — mesma lógica de risco/recompensa das
   // demais (todas levam o mesmo número de dias pra crescer por ora, ver
@@ -95,9 +100,10 @@ export const ONION: CropDefinition = {
   textureKey: 'crop-onion',
   texturePath: 'Crops/Spring/Onion.png',
   growthFrames: [0, 2, 3, 4, 5],
-  // Linha 5, coluna 0 de `ALL_CROPS_ICONS_KEY` (saquinho de semente).
+  // Linha 5, coluna 2 de `ALL_CROPS_ICONS_KEY` (cebola já colhida, sem selo
+  // de qualidade).
   iconFrameName: 'crop-icon-onion',
-  iconFrameRect: { x: 0, y: 80, width: 16, height: 16 },
+  iconFrameRect: { x: 32, y: 80, width: 16, height: 16 },
   yieldAmount: 1,
   // Preço mais baixo — a mais barata das três.
   seedPrice: 4,

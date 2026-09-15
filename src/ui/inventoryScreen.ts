@@ -1,11 +1,18 @@
 import Phaser from 'phaser';
 import { Inventory, HOTBAR_SIZE, INVENTORY_SIZE } from '../systems/inventory';
 import { resolveSlotVisual } from '../data/items';
-import { CROPS, ALL_CROPS_ICONS_KEY } from '../data/crops';
+import { CROPS, ALL_CROPS_ICONS_KEY, CropDefinition } from '../data/crops';
+import { PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES } from '../data/player';
 import {
   INVENTORY_PANEL_KEY,
   INVENTORY_SLOT_FRAME_NAME,
   INVENTORY_SLOT_RECT,
+  INVENTORY_SLOT_DARK_FRAME_NAME,
+  INVENTORY_SLOT_DARK_RECT,
+  INVENTORY_LARGE_PANEL_KEY,
+  INVENTORY_LARGE_PANEL_FRAME_NAME,
+  INVENTORY_LARGE_PANEL_RECT,
+  INVENTORY_LARGE_PANEL_BORDER,
   SHOP_BOOK_KEY,
   SHOP_BOOK_FRAME_NAME,
   SHOP_TAB_RIBBONS_KEY,
@@ -42,10 +49,11 @@ type CornerKey = keyof typeof GLOBAL_CURSOR_CORNER_NAMES;
 const BOOK_SCALE = 2.2;
 const SLOT_SCALE = 1.7;
 const SLOT_GAP = 5;
-const ROW_GAP = 16;
-/** Cada página do livro comporta um grid de 6 colunas x 4 linhas. */
+/** Reduzido de 16 pra 12 (pedido explícito do usuário) pra caber a 5ª linha do grid sem espremer a página. */
+const ROW_GAP = 12;
+/** Cada página do livro comporta um grid de 6 colunas x 5 linhas (pedido explícito do usuário — antes eram 4 linhas). */
 const GRID_COLS = 6;
-const GRID_ROWS = 4;
+const GRID_ROWS = 5;
 const ITEMS_PER_PAGE = GRID_COLS * GRID_ROWS;
 /** Fração da célula (16px nativos) que um ícone "normal" (16x16) preenche. */
 const ICON_FILL_RATIO = 0.8;
@@ -78,6 +86,85 @@ const PAGE_RECT = {
   right: { x: 124, width: 96 },
   top: 4,
   height: 119,
+};
+
+/**
+ * Reformulação da Mochila (Fase 9 — Interface, pedido explícito do
+ * usuário): a página ESQUERDA sempre mostra o grid cheio de 24 slots (cabe
+ * exatamente numa página — `GRID_COLS*GRID_ROWS === INVENTORY_SIZE`, por
+ * isso o pool de slots deixou de precisar de uma segunda página). A página
+ * DIREITA passou a depender da aba ativa: Mochila mostra o personagem +
+ * slots de equipamento, Agricultura mostra o painel de detalhe do item
+ * selecionado. `EQUIPMENT_SLOTS` são só os 5 tipos pedidos — sem itens de
+ * armadura de verdade no jogo ainda (nenhuma arte de armadura sendo
+ * usada/comprável), cada um nasce e fica permanentemente vazio, só a
+ * moldura + rótulo indicando o que vai ali no futuro.
+ */
+type EquipmentSlotType = 'hat' | 'shirt' | 'pants' | 'boots' | 'accessory';
+interface EquipmentSlotDefinition {
+  type: EquipmentSlotType;
+  label: string;
+  /** Deslocamento (px, antes da escala do livro) relativo ao centro do personagem na página direita. */
+  offsetX: number;
+  offsetY: number;
+}
+const EQUIPMENT_SLOTS: EquipmentSlotDefinition[] = [
+  { type: 'hat', label: 'Chapéu', offsetX: 0, offsetY: -52 },
+  { type: 'shirt', label: 'Camisa', offsetX: -46, offsetY: -16 },
+  { type: 'pants', label: 'Calça', offsetX: 46, offsetY: -16 },
+  { type: 'boots', label: 'Botas', offsetX: -30, offsetY: 48 },
+  { type: 'accessory', label: 'Acessório', offsetX: 30, offsetY: 48 },
+];
+/** Menores que antes (pedido explícito do usuário: "colados" ao personagem, não espalhados) — slot e personagem reduzidos pra caber um "boneco de papel" compacto na página direita. */
+const EQUIPMENT_SLOT_SCALE = 2.0;
+const CHARACTER_SPRITE_SCALE = 3.0;
+const EQUIPMENT_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontFamily: '"Courier New", Courier, monospace',
+  fontSize: '8px',
+  color: '#4a3524',
+  stroke: '#f6e6cf',
+  strokeThickness: 2,
+};
+
+/**
+ * Painel de detalhe da aba Agricultura (diário de descobertas, pedido
+ * explícito do usuário — layout de referência: grid de "?" na página
+ * esquerda, ícone grande + nome + status na direita ao selecionar).
+ *
+ * Correção urgente (pedido explícito do usuário): a versão anterior pegava
+ * o slot PEQUENO (`INVENTORY_SLOT_FRAME_NAME`, 18x18) e dava `setScale`
+ * gigante nele — isso estica os cantos/bordas desenhados junto com o resto,
+ * ficando com a decoração toda borrada/deformada. Agora usa
+ * `INVENTORY_LARGE_PANEL_*` com `scene.add.nineslice`: largura/altura FIXAS
+ * abaixo, cantos preservados (`INVENTORY_LARGE_PANEL_BORDER`), só o miolo
+ * estica.
+ */
+const DETAIL_ICON_PANEL_WIDTH = 100;
+const DETAIL_ICON_PANEL_HEIGHT = 100;
+const DETAIL_TEXT_PANEL_WIDTH = 100;
+const DETAIL_TEXT_PANEL_HEIGHT = 72;
+const DETAIL_PANEL_GAP = 10;
+/** Ícone (a arte em si, não a moldura) preenchendo a maior parte do painel de ícone, com folga pra não encostar na borda. */
+const DETAIL_ICON_TARGET_PX = DETAIL_ICON_PANEL_WIDTH * 0.55;
+const DETAIL_NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontFamily: '"Courier New", Courier, monospace',
+  fontSize: '13px',
+  fontStyle: 'bold',
+  color: '#4a3524',
+  align: 'center',
+};
+const DETAIL_STATUS_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontFamily: '"Courier New", Courier, monospace',
+  fontSize: '10px',
+  color: '#6b5a4a',
+  align: 'center',
+  wordWrap: { width: DETAIL_TEXT_PANEL_WIDTH - 16 },
+};
+const QUESTION_MARK_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontFamily: 'monospace',
+  fontSize: '16px',
+  fontStyle: 'bold',
+  color: '#4a3524',
 };
 
 /** As 3 abas do Inventário (pedido explícito): Mochila (equipáveis, com seleção de Hotbar), Pesca (ainda sem mecânica) e Agricultura (colheita, só visualização). */
@@ -128,6 +215,11 @@ interface InventorySlot {
   frame: Phaser.GameObjects.Image;
   icon: Phaser.GameObjects.Image;
   badgeText: Phaser.GameObjects.Text;
+  /** "?" central (Fase 9 — diário de descobertas), visível só num slot de Agricultura ainda não descoberto — ver `QUESTION_MARK_STYLE`. */
+  questionMark: Phaser.GameObjects.Text;
+  /** Posição fixa do slot (a mesma sempre — o que muda de frame a frame é o CONTEÚDO nela, nunca a célula). Usada pra resetar o ícone de volta no lugar certo a cada render, já que o drag o move temporariamente. */
+  x: number;
+  y: number;
   onClick: (() => void) | null;
 }
 
@@ -138,6 +230,10 @@ interface InventorySlotContent {
   badge: string;
   tint: number;
   onClick: (() => void) | null;
+  /** Só relevante na aba Agricultura (Fase 9 — diário de descobertas): mostra "?" em vez do ícone quando `false`. `true` em qualquer outra aba (não afeta o comportamento de antes). */
+  discovered: boolean;
+  /** Índice do slot que pode ser arrastado para OUTRO (Fase 9 — drag and drop, pedido explícito do usuário) — só a Mochila usa isso; `undefined` desativa o arrasto (Agricultura é só leitura). */
+  slotIndex?: number;
 }
 
 /**
@@ -169,6 +265,27 @@ export class InventoryScreen implements PointerInputInterceptor {
   private readonly closeButtonMark: Phaser.GameObjects.Image;
   private activeCategory: InventoryTabCategory = 'backpack';
   private isOpen_ = false;
+  /** Referência viva do `Inventory` sendo mostrado — guardada pra o `dragend` (disparado fora do fluxo normal de `refresh`) poder chamar `swapSlots` sem precisar receber o inventário de novo. */
+  private currentInventory: Inventory | null = null;
+  /** Slot que está sendo arrastado no momento (Fase 9 — drag and drop), `null` quando não há arrasto em andamento. */
+  private dragSourceIndex: number | null = null;
+
+  // Página direita da aba Mochila (Fase 9 — personagem + equipamento).
+  private readonly characterSprite: Phaser.GameObjects.Image;
+  private readonly equipmentSlots: Array<{ frame: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text }> = [];
+
+  // Página direita da aba Agricultura (Fase 9 — diário de descobertas).
+  // `NineSlice` (correção urgente pedida pelo usuário — ver doc de
+  // `DETAIL_ICON_PANEL_WIDTH`): tamanho FIXO, cantos preservados.
+  private readonly detailIconPanel: Phaser.GameObjects.NineSlice;
+  private readonly detailTextPanel: Phaser.GameObjects.NineSlice;
+  private readonly detailIcon: Phaser.GameObjects.Image;
+  private readonly detailQuestionMark: Phaser.GameObjects.Text;
+  private readonly detailName: Phaser.GameObjects.Text;
+  private readonly detailStatus: Phaser.GameObjects.Text;
+  private selectedCropId: string | null = null;
+  /** Cantinhos de destaque (mesma técnica de `tabSelector`) ao redor do slot selecionado no grid da Agricultura — referência visual pedida pelo usuário. */
+  private readonly gridSelector: Record<CornerKey, Phaser.GameObjects.Image>;
 
   constructor(scene: Phaser.Scene, private readonly onSelectHotbarSlot: (index: number) => void) {
     const panelTexture = scene.textures.get(INVENTORY_PANEL_KEY);
@@ -180,6 +297,27 @@ export class InventoryScreen implements PointerInputInterceptor {
         INVENTORY_SLOT_RECT.y,
         INVENTORY_SLOT_RECT.width,
         INVENTORY_SLOT_RECT.height,
+      );
+    }
+    if (!panelTexture.has(INVENTORY_SLOT_DARK_FRAME_NAME)) {
+      panelTexture.add(
+        INVENTORY_SLOT_DARK_FRAME_NAME,
+        0,
+        INVENTORY_SLOT_DARK_RECT.x,
+        INVENTORY_SLOT_DARK_RECT.y,
+        INVENTORY_SLOT_DARK_RECT.width,
+        INVENTORY_SLOT_DARK_RECT.height,
+      );
+    }
+    const largePanelTexture = scene.textures.get(INVENTORY_LARGE_PANEL_KEY);
+    if (!largePanelTexture.has(INVENTORY_LARGE_PANEL_FRAME_NAME)) {
+      largePanelTexture.add(
+        INVENTORY_LARGE_PANEL_FRAME_NAME,
+        0,
+        INVENTORY_LARGE_PANEL_RECT.x,
+        INVENTORY_LARGE_PANEL_RECT.y,
+        INVENTORY_LARGE_PANEL_RECT.width,
+        INVENTORY_LARGE_PANEL_RECT.height,
       );
     }
     const backpackTexture = scene.textures.get(BACKPACK_ICON_KEY);
@@ -308,25 +446,18 @@ export class InventoryScreen implements PointerInputInterceptor {
     const startY = pageTop + (pageHeight - gridHeight) / 2 + slotHeight / 2;
 
     const leftPageWidth = PAGE_RECT.left.width * BOOK_SCALE;
-    const rightPageWidth = PAGE_RECT.right.width * BOOK_SCALE;
     const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - gridWidth) / 2 + slotWidth / 2;
-    const rightStartX = bookLeft + PAGE_RECT.right.x * BOOK_SCALE + (rightPageWidth - gridWidth) / 2 + slotWidth / 2;
 
-    // Maior categoria é sempre a Mochila (24 slots físicos) — mesma fórmula
-    // de dimensionamento do pool do `ShopMenu` (garante as 2 páginas cheias).
-    const maxItemsPerCategory = Math.max(INVENTORY_SIZE, Object.keys(CROPS).length);
-    const totalSlots = Math.max(ITEMS_PER_PAGE * 2, Math.ceil(maxItemsPerCategory / (ITEMS_PER_PAGE * 2)) * (ITEMS_PER_PAGE * 2));
+    // Reformulação (Fase 9): o grid inteiro cabe numa página só — 6x4 = 24 =
+    // `INVENTORY_SIZE` exatamente —, então o pool de slots agora vive só na
+    // página ESQUERDA, sempre; a direita virou conteúdo próprio por aba (ver
+    // personagem+equipamento/painel de detalhe abaixo), em vez de uma
+    // segunda leva do mesmo grid.
+    for (let index = 0; index < ITEMS_PER_PAGE; index++) {
+      const col = index % GRID_COLS;
+      const row = Math.floor(index / GRID_COLS);
 
-    for (let index = 0; index < totalSlots; index++) {
-      const page = Math.floor(index / ITEMS_PER_PAGE);
-      const isLeftPage = page % 2 === 0;
-
-      const indexInPage = index % ITEMS_PER_PAGE;
-      const col = indexInPage % GRID_COLS;
-      const row = Math.floor(indexInPage / GRID_COLS);
-
-      const pageStartX = isLeftPage ? leftStartX : rightStartX;
-      const x = pageStartX + col * (slotWidth + SLOT_GAP);
+      const x = leftStartX + col * (slotWidth + SLOT_GAP);
       const y = startY + row * (slotHeight + ROW_GAP);
 
       const frame = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
@@ -351,6 +482,39 @@ export class InventoryScreen implements PointerInputInterceptor {
       icon.setScrollFactor(0);
       icon.setDepth(3002);
 
+      // Drag and drop (Fase 9, pedido explícito do usuário): só o ÍCONE é
+      // arrastável (o `frame` embaixo continua cuidando do clique-pra-
+      // selecionar-Hotbar, igual antes) — só fica interativo/arrastável
+      // quando a aba Mochila está ativa E o slot tem algo dentro
+      // (`renderActiveCategory` decide isso a cada frame).
+      icon.setInteractive({ useHandCursor: true });
+      icon.disableInteractive();
+      scene.input.setDraggable(icon, true);
+      icon.on('dragstart', () => {
+        this.dragSourceIndex = index;
+        icon.setDepth(3500);
+      });
+      icon.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+        icon.setPosition(dragX, dragY);
+      });
+      icon.on('dragend', () => {
+        const sourceIndex = this.dragSourceIndex;
+        this.dragSourceIndex = null;
+        icon.setDepth(3002);
+        if (sourceIndex === null || !this.currentInventory) return;
+
+        const targetIndex = this.slots.findIndex((slot) => Phaser.Geom.Rectangle.Contains(slot.frame.getBounds(), icon.x, icon.y));
+        if (targetIndex !== -1 && targetIndex !== sourceIndex) {
+          this.currentInventory.swapSlots(sourceIndex, targetIndex);
+        }
+        // Sempre reposiciona na célula fixa — se o swap não aconteceu (alvo
+        // inválido ou solto fora de qualquer slot), volta pro lugar de
+        // origem; se aconteceu, `renderActiveCategory` (chamado todo frame
+        // por `UIScene.update`) já redesenha o conteúdo novo no lugar certo
+        // no próximo frame de qualquer forma.
+        icon.setPosition(this.slots[index].x, this.slots[index].y);
+      });
+
       const badgeText = scene.add.text(x + slotWidth / 2 - 2, y + slotHeight / 2 - 2, '', {
         fontFamily: 'monospace',
         fontSize: '11px',
@@ -363,8 +527,123 @@ export class InventoryScreen implements PointerInputInterceptor {
       badgeText.setScrollFactor(0);
       badgeText.setDepth(3002);
 
-      this.slots.push({ frame, icon, badgeText, onClick: null });
+      const questionMark = scene.add.text(x, y, '?', QUESTION_MARK_STYLE);
+      questionMark.setOrigin(0.5, 0.5);
+      questionMark.setScrollFactor(0);
+      questionMark.setDepth(3002);
+      questionMark.setVisible(false);
+
+      this.slots.push({ frame, icon, badgeText, questionMark, x, y, onClick: null });
     }
+
+    // Página direita — Mochila: personagem parado (mesmo frame usado como
+    // pose de repouso no mundo) cercado pelos 5 slots de equipamento.
+    const rightPageWidth = PAGE_RECT.right.width * BOOK_SCALE;
+    const rightCenterX = bookLeft + PAGE_RECT.right.x * BOOK_SCALE + rightPageWidth / 2;
+    const rightCenterY = bookTop + PAGE_RECT.top * BOOK_SCALE + pageHeight / 2;
+
+    this.characterSprite = scene.add.image(rightCenterX, rightCenterY, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown.start);
+    this.characterSprite.setOrigin(0.5, 0.5);
+    this.characterSprite.setScale(CHARACTER_SPRITE_SCALE);
+    this.characterSprite.setScrollFactor(0);
+    this.characterSprite.setDepth(3001);
+
+    for (const def of EQUIPMENT_SLOTS) {
+      const ex = rightCenterX + def.offsetX * (BOOK_SCALE / 2);
+      const ey = rightCenterY + def.offsetY * (BOOK_SCALE / 2);
+
+      const frame = scene.add.image(ex, ey, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
+      frame.setOrigin(0.5, 0.5);
+      frame.setScale(EQUIPMENT_SLOT_SCALE);
+      frame.setScrollFactor(0);
+      frame.setDepth(3002);
+
+      const label = scene.add.text(ex, ey + (INVENTORY_SLOT_RECT.height * EQUIPMENT_SLOT_SCALE) / 2 + 2, def.label, EQUIPMENT_LABEL_STYLE);
+      label.setOrigin(0.5, 0);
+      label.setScrollFactor(0);
+      label.setDepth(3002);
+
+      this.equipmentSlots.push({ frame, label });
+    }
+
+    // Página direita — Agricultura: painel de detalhe do item selecionado
+    // no grid da esquerda (layout de referência do usuário: ícone grande +
+    // nome + status "Descoberto"/"Ainda não descoberto"). Correção urgente
+    // pedida pelo usuário: `NineSlice` com tamanho FIXO em vez de `Image` +
+    // `setScale` gigante — os cantos ornamentados do painel nunca esticam,
+    // só o miolo (ver `INVENTORY_LARGE_PANEL_BORDER`).
+    const detailIconY = rightCenterY - (DETAIL_TEXT_PANEL_HEIGHT + DETAIL_PANEL_GAP) / 2;
+    const detailTextY = detailIconY + DETAIL_ICON_PANEL_HEIGHT / 2 + DETAIL_PANEL_GAP + DETAIL_TEXT_PANEL_HEIGHT / 2;
+
+    this.detailIconPanel = scene.add.nineslice(
+      rightCenterX,
+      detailIconY,
+      INVENTORY_LARGE_PANEL_KEY,
+      INVENTORY_LARGE_PANEL_FRAME_NAME,
+      DETAIL_ICON_PANEL_WIDTH,
+      DETAIL_ICON_PANEL_HEIGHT,
+      INVENTORY_LARGE_PANEL_BORDER,
+      INVENTORY_LARGE_PANEL_BORDER,
+      INVENTORY_LARGE_PANEL_BORDER,
+      INVENTORY_LARGE_PANEL_BORDER,
+    );
+    this.detailIconPanel.setOrigin(0.5, 0.5);
+    this.detailIconPanel.setScrollFactor(0);
+    this.detailIconPanel.setDepth(3001);
+
+    this.detailIcon = scene.add.image(rightCenterX, detailIconY, ALL_CROPS_ICONS_KEY, '');
+    this.detailIcon.setOrigin(0.5, 0.5);
+    this.detailIcon.setScrollFactor(0);
+    this.detailIcon.setDepth(3002);
+
+    this.detailQuestionMark = scene.add.text(rightCenterX, detailIconY, '???', {
+      ...QUESTION_MARK_STYLE,
+      fontSize: '22px',
+    });
+    this.detailQuestionMark.setOrigin(0.5, 0.5);
+    this.detailQuestionMark.setScrollFactor(0);
+    this.detailQuestionMark.setDepth(3002);
+
+    this.detailTextPanel = scene.add.nineslice(
+      rightCenterX,
+      detailTextY,
+      INVENTORY_LARGE_PANEL_KEY,
+      INVENTORY_LARGE_PANEL_FRAME_NAME,
+      DETAIL_TEXT_PANEL_WIDTH,
+      DETAIL_TEXT_PANEL_HEIGHT,
+      INVENTORY_LARGE_PANEL_BORDER,
+      INVENTORY_LARGE_PANEL_BORDER,
+      INVENTORY_LARGE_PANEL_BORDER,
+      INVENTORY_LARGE_PANEL_BORDER,
+    );
+    this.detailTextPanel.setOrigin(0.5, 0.5);
+    this.detailTextPanel.setScrollFactor(0);
+    this.detailTextPanel.setDepth(3001);
+
+    this.detailName = scene.add.text(rightCenterX, detailTextY - 14, '', DETAIL_NAME_STYLE);
+    this.detailName.setOrigin(0.5, 0.5);
+    this.detailName.setScrollFactor(0);
+    this.detailName.setDepth(3002);
+
+    this.detailStatus = scene.add.text(rightCenterX, detailTextY + 10, '', DETAIL_STATUS_STYLE);
+    this.detailStatus.setOrigin(0.5, 0.5);
+    this.detailStatus.setScrollFactor(0);
+    this.detailStatus.setDepth(3002);
+
+    const makeGridSelectorCorner = (key: CornerKey, originX: number, originY: number): Phaser.GameObjects.Image => {
+      const corner = scene.add.image(0, 0, EXTRAS_UI_KEY, GLOBAL_CURSOR_CORNER_NAMES[key]);
+      corner.setOrigin(originX, originY);
+      corner.setScale(SLOT_SCALE);
+      corner.setScrollFactor(0);
+      corner.setDepth(3003);
+      return corner;
+    };
+    this.gridSelector = {
+      topLeft: makeGridSelectorCorner('topLeft', 0, 0),
+      topRight: makeGridSelectorCorner('topRight', 1, 0),
+      bottomLeft: makeGridSelectorCorner('bottomLeft', 0, 1),
+      bottomRight: makeGridSelectorCorner('bottomRight', 1, 1),
+    };
 
     this.emptyText = scene.add.text(centerX, centerY, 'Em breve', {
       fontFamily: 'monospace',
@@ -394,6 +673,7 @@ export class InventoryScreen implements PointerInputInterceptor {
 
   open(inventory: Inventory): void {
     this.isOpen_ = true;
+    this.currentInventory = inventory;
     this.setElementsVisible(true);
     this.renderActiveCategory(inventory);
   }
@@ -411,12 +691,18 @@ export class InventoryScreen implements PointerInputInterceptor {
   /** Chamado a cada frame enquanto aberta (ver `UIScene.update`) — mantém a aba Mochila e o realce da Hotbar sempre em dia com o `Inventory` ao vivo. */
   refresh(inventory: Inventory): void {
     if (!this.isOpen_) return;
+    this.currentInventory = inventory;
     this.renderActiveCategory(inventory);
   }
 
   private selectCategory(category: InventoryTabCategory): void {
     if (category === this.activeCategory) return;
     this.activeCategory = category;
+  }
+
+  /** Clicado num slot do grid da Agricultura (pedido explícito do usuário: clicar mostra o detalhe na página direita, descoberto ou não). */
+  private selectCropDetail(cropId: string): void {
+    this.selectedCropId = cropId;
   }
 
   /** Resolve o conteúdo (ícone/quantidade/clique) de cada slot da aba ativa — ver `InventorySlotContent`. */
@@ -431,7 +717,7 @@ export class InventoryScreen implements PointerInputInterceptor {
         const onClick = index < HOTBAR_SIZE ? () => this.onSelectHotbarSlot(index) : null;
 
         if (!visual || !ref) {
-          content.push({ textureKey: '', iconFrame: '', badge: '', tint, onClick });
+          content.push({ textureKey: '', iconFrame: '', badge: '', tint, onClick, discovered: true, slotIndex: index });
           continue;
         }
 
@@ -440,19 +726,26 @@ export class InventoryScreen implements PointerInputInterceptor {
         else if (ref.category === 'decoration') badge = String(inventory.getDecorationCount(ref.id));
         else if (ref.category === 'resource') badge = String(inventory.getResourceCount(ref.id));
 
-        content.push({ textureKey: visual.textureKey, iconFrame: visual.iconFrame, badge, tint, onClick });
+        content.push({ textureKey: visual.textureKey, iconFrame: visual.iconFrame, badge, tint, onClick, discovered: true, slotIndex: index });
       }
       return content;
     }
 
     if (this.activeCategory === 'agriculture') {
-      return Object.values(CROPS).map((crop) => ({
-        textureKey: ALL_CROPS_ICONS_KEY,
-        iconFrame: crop.iconFrameName,
-        badge: String(inventory.getCount(crop.id)),
-        tint: UNSELECTED_TINT,
-        onClick: null,
-      }));
+      // Diário de descobertas (Fase 9, pedido explícito do usuário):
+      // `Inventory.hasHarvested` nunca esquece — mesmo se o jogador vender
+      // toda a colheita depois, a cultura continua "descoberta".
+      return Object.values(CROPS).map((crop) => {
+        const discovered = inventory.hasHarvested(crop.id);
+        return {
+          textureKey: ALL_CROPS_ICONS_KEY,
+          iconFrame: crop.iconFrameName,
+          badge: discovered ? String(inventory.getCount(crop.id)) : '',
+          tint: UNSELECTED_TINT,
+          onClick: () => this.selectCropDetail(crop.id),
+          discovered,
+        };
+      });
     }
 
     // 'fishing' — sem mecânica ainda, mostra só o texto "Em breve".
@@ -468,15 +761,32 @@ export class InventoryScreen implements PointerInputInterceptor {
     this.positionTabSelector();
 
     const content = this.computeContent(inventory);
+    const isBackpack = this.activeCategory === 'backpack';
+    const isAgriculture = this.activeCategory === 'agriculture';
 
     this.slots.forEach((slot, index) => {
       const entry: InventorySlotContent | undefined = content[index];
       slot.onClick = entry?.onClick ?? null;
-      slot.frame.setTint(entry ? entry.tint : UNSELECTED_TINT);
 
-      if (!entry || !entry.textureKey) {
+      // Slot "não descoberto" (Fase 9): troca pra textura do slot ESCURO de
+      // verdade (`INVENTORY_SLOT_DARK_FRAME_NAME`) em vez de tingir o slot
+      // creme — pedido explícito do usuário, mesma folha `inventory.png`,
+      // só a fileira de cima em vez da de baixo.
+      const isDark = isAgriculture && !!entry && !entry.discovered;
+      slot.frame.setTexture(INVENTORY_PANEL_KEY, isDark ? INVENTORY_SLOT_DARK_FRAME_NAME : INVENTORY_SLOT_FRAME_NAME);
+      slot.frame.setTint(entry ? entry.tint : UNSELECTED_TINT);
+      // O drag pode ter movido o ícone pra fora da célula — sempre volta
+      // pro lugar fixo antes de decidir o que mostrar nele (ver `dragend`).
+      slot.icon.setPosition(slot.x, slot.y);
+
+      const draggable = isBackpack && !!entry?.textureKey;
+      if (draggable) slot.icon.setInteractive();
+      else slot.icon.disableInteractive();
+
+      if (!entry || !entry.textureKey || isDark) {
         slot.icon.setVisible(false);
         slot.badgeText.setVisible(false);
+        slot.questionMark.setVisible(isDark);
         return;
       }
 
@@ -485,9 +795,72 @@ export class InventoryScreen implements PointerInputInterceptor {
       slot.icon.setVisible(true);
       slot.badgeText.setText(entry.badge);
       slot.badgeText.setVisible(!!entry.badge);
+      slot.questionMark.setVisible(false);
     });
 
     this.emptyText.setVisible(content.length === 0);
+
+    this.characterSprite.setVisible(isBackpack);
+    for (const equipmentSlot of this.equipmentSlots) {
+      equipmentSlot.frame.setVisible(isBackpack);
+      equipmentSlot.label.setVisible(isBackpack);
+    }
+
+    this.renderAgricultureDetail(inventory, isAgriculture);
+  }
+
+  /** Painel de detalhe da página direita da Agricultura (Fase 9) — ver doc da classe/`EQUIPMENT_SLOTS`. */
+  private renderAgricultureDetail(inventory: Inventory, visible: boolean): void {
+    this.detailIconPanel.setVisible(visible);
+    this.detailTextPanel.setVisible(visible);
+    this.detailName.setVisible(visible);
+    this.detailStatus.setVisible(visible);
+    for (const corner of Object.values(this.gridSelector)) corner.setVisible(visible && this.selectedCropId !== null);
+
+    if (!visible) {
+      this.detailIcon.setVisible(false);
+      this.detailQuestionMark.setVisible(false);
+      return;
+    }
+
+    const crop: CropDefinition | undefined = this.selectedCropId ? CROPS[this.selectedCropId] : undefined;
+    if (!crop) {
+      this.detailIcon.setVisible(false);
+      this.detailQuestionMark.setVisible(true);
+      this.detailName.setText('');
+      this.detailStatus.setText('Selecione um item.');
+      return;
+    }
+
+    const discovered = inventory.hasHarvested(crop.id);
+    if (discovered) {
+      this.detailIcon.setTexture(ALL_CROPS_ICONS_KEY, crop.iconFrameName);
+      this.detailIcon.setScale(computeFitScale(this.detailIcon, DETAIL_ICON_TARGET_PX));
+      this.detailIcon.setVisible(true);
+      this.detailQuestionMark.setVisible(false);
+      this.detailName.setText(crop.name);
+      this.detailStatus.setText(`Colhido: ${inventory.getCount(crop.id)}`);
+    } else {
+      this.detailIcon.setVisible(false);
+      this.detailQuestionMark.setVisible(true);
+      this.detailName.setText('???');
+      this.detailStatus.setText('Ainda não descoberto.');
+    }
+
+    // Cantinhos de destaque ao redor do slot selecionado no grid esquerdo.
+    const selectedIndex = Object.values(CROPS).findIndex((c) => c.id === this.selectedCropId);
+    const selectedSlot = selectedIndex !== -1 ? this.slots[selectedIndex] : null;
+    if (selectedSlot) {
+      const bounds = selectedSlot.frame.getBounds();
+      const left = bounds.left - TAB_SELECTOR_PADDING;
+      const top = bounds.top - TAB_SELECTOR_PADDING;
+      const right = bounds.right + TAB_SELECTOR_PADDING;
+      const bottom = bounds.bottom + TAB_SELECTOR_PADDING;
+      this.gridSelector.topLeft.setPosition(left, top);
+      this.gridSelector.topRight.setPosition(right, top);
+      this.gridSelector.bottomLeft.setPosition(left, bottom);
+      this.gridSelector.bottomRight.setPosition(right, bottom);
+    }
   }
 
   private positionTabSelector(): void {
@@ -526,10 +899,33 @@ export class InventoryScreen implements PointerInputInterceptor {
       const slotVisible = visible && slot.icon.visible;
       slot.icon.setVisible(slotVisible);
       slot.badgeText.setVisible(visible && slot.badgeText.visible);
+      slot.questionMark.setVisible(visible && slot.questionMark.visible);
 
       if (visible && slot.onClick) slot.frame.setInteractive();
       else slot.frame.disableInteractive();
+      // Arrasto (Fase 9): nunca deixa um ícone arrastável escutando depois
+      // que a tela fecha — `renderActiveCategory` reativa certo no próximo
+      // `open`/`refresh`.
+      if (!visible) slot.icon.disableInteractive();
     }
     this.emptyText.setVisible(visible && this.emptyText.visible);
+
+    // Página direita — Mochila (Fase 9): visibilidade real decidida por
+    // `renderActiveCategory` (depende da aba ativa); fechar a tela some com
+    // tudo incondicionalmente, igual ao resto.
+    this.characterSprite.setVisible(visible && this.characterSprite.visible);
+    for (const equipmentSlot of this.equipmentSlots) {
+      equipmentSlot.frame.setVisible(visible && equipmentSlot.frame.visible);
+      equipmentSlot.label.setVisible(visible && equipmentSlot.label.visible);
+    }
+
+    // Página direita — Agricultura (Fase 9): mesma ideia.
+    this.detailIconPanel.setVisible(visible && this.detailIconPanel.visible);
+    this.detailTextPanel.setVisible(visible && this.detailTextPanel.visible);
+    this.detailIcon.setVisible(visible && this.detailIcon.visible);
+    this.detailQuestionMark.setVisible(visible && this.detailQuestionMark.visible);
+    this.detailName.setVisible(visible && this.detailName.visible);
+    this.detailStatus.setVisible(visible && this.detailStatus.visible);
+    for (const corner of Object.values(this.gridSelector)) corner.setVisible(visible && corner.visible);
   }
 }

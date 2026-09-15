@@ -90,6 +90,36 @@ export const INVENTORY_SLOT_FRAME_NAME = 'inventory-slot-square';
 export const INVENTORY_SLOT_RECT = { x: 7, y: 41, width: 18, height: 18 };
 
 /**
+ * Mesma folha, fileira de cima (avermelhada/marrom-escura) — bounding box
+ * real confirmado pixel a pixel (igual à fileira creme acima, mesmo
+ * tamanho 18x18, só a cor muda): x=7-24, y=9-26. Usado como fundo dos
+ * slots "não descobertos" (Fase 9 — diário de descobertas, pedido
+ * explícito do usuário), em vez de tingir o slot creme de escuro.
+ */
+export const INVENTORY_SLOT_DARK_FRAME_NAME = 'inventory-slot-square-dark';
+export const INVENTORY_SLOT_DARK_RECT = { x: 7, y: 9, width: 18, height: 18 };
+
+/**
+ * `UI/Inventory/Banner.png` (112x256): folha de banners/painéis grandes.
+ * O painel usado aqui (canto superior-esquerdo da folha) é um quadrado de
+ * 48x48 com borda dupla preta+marrom e cantos ornamentados (bolinhas/
+ * cantoneiras) — bounding box e extensão da decoração dos cantos
+ * confirmados recortando/ampliando pixel a pixel (decoração some por volta
+ * de 20px a partir de cada canto, resto é só a linha de borda reta).
+ * Pedido explícito do usuário: painel "grande" de verdade pra usar com
+ * `scene.add.nineslice` na página de detalhe (Agricultura) — diferente do
+ * painel pequeno/creme de `INVENTORY_PANEL_*` (usado em telas menores como
+ * `PauseMenu`/`LockedMessage`), esse tem uma moldura mais chamativa,
+ * melhor pra dar destaque ao ícone/texto de um item em destaque.
+ */
+export const INVENTORY_LARGE_PANEL_KEY = 'ui-inventory-banner';
+export const INVENTORY_LARGE_PANEL_PATH = 'UI/Inventory/Banner.png';
+export const INVENTORY_LARGE_PANEL_FRAME_NAME = 'inventory-large-panel';
+export const INVENTORY_LARGE_PANEL_RECT = { x: 0, y: 0, width: 48, height: 48 };
+/** Margem que contém toda a decoração dos cantos — o NineSlice não estica essa faixa (ver comentário acima). */
+export const INVENTORY_LARGE_PANEL_BORDER = 20;
+
+/**
  * `UI/Extras.png`: folha com barras/pílulas de progresso e, mais à direita,
  * vários conjuntos de 4 cantinhos em L (mesma ideia de `SELECTION_CORNER_RECTS`,
  * só que em cores diferentes — branco/azulado, laranja, marrom-escuro,
@@ -188,17 +218,18 @@ export const TAB_FRAME_CONSTRUCTION_LIGHT = { name: 'shop-tab-ribbon-orange-ligh
 export const CLOSE_TAB_BG_FRAME = { name: 'close-tab-bg', rect: { x: 221, y: 201, width: 25, height: 29 } };
 
 /**
- * `UI/button.png`: folha de botões redondos com ícone, em várias cores —
- * cada cor tem uma fileira "só ícone" (glifo pequeno, sem fundo/botão) e,
- * embaixo, a versão com o botão redondo colorido. Usamos só o glifo
- * pequeno (sem fundo), já que o fundo aqui é o marcador de couro
- * (`CLOSE_TAB_BG_FRAME`). Coordenada do "X" (17º ícone da fileira,
- * variante marrom/maroon — a primeira cor da folha) confirmada pixel a
- * pixel: bounding box real do glifo é 8x8, sem sobra transparente.
+ * `UI/HUD.png` (416x96): folha de ícones de interface genéricos (lixeira,
+ * envelope, engrenagem, setas, etc.). Usamos o "X" vermelho robusto (pedido
+ * explícito do usuário: "grande e vermelho", em vez do glifo fino que a
+ * folha anterior — `UI/button.png` — tinha) como marca do botão de fechar,
+ * com fundo do marcador de couro (`CLOSE_TAB_BG_FRAME`). Bounding box real
+ * confirmado pixel a pixel (varredura completa por cor, sem sobra
+ * transparente): 8x8, cheio (quase sem margem dentro do próprio quadro),
+ * ao lado de um ícone de "proibido" e um de "power" na mesma folha.
  */
-export const CLOSE_BUTTON_SHEET_KEY = 'ui-button-sheet';
-export const CLOSE_BUTTON_SHEET_PATH = 'UI/button.png';
-export const CLOSE_X_ICON_FRAME = { name: 'close-x-icon', rect: { x: 404, y: 4, width: 8, height: 8 } };
+export const CLOSE_BUTTON_SHEET_KEY = 'ui-hud-icons';
+export const CLOSE_BUTTON_SHEET_PATH = 'UI/HUD.png';
+export const CLOSE_X_ICON_FRAME = { name: 'close-x-icon', rect: { x: 116, y: 20, width: 8, height: 8 } };
 
 /**
  * `Icons/RPG icons/Extras/Bags.png` (112x16, grid uniforme de 16x16): 7

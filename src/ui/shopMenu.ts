@@ -14,6 +14,7 @@ import {
   GLOBAL_CURSOR_CORNER_RECTS,
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
+import { Inventory } from '../systems/inventory';
 
 type CornerKey = keyof typeof GLOBAL_CURSOR_CORNER_NAMES;
 
@@ -82,7 +83,7 @@ const TAB_SELECTOR_PADDING = 2;
  * de `Book.png` (`CLOSE_TAB_BG_FRAME`), mesma técnica de ancoragem das
  * abas espelhada (origin pela esquerda). Depth MAIOR que o do livro —
  * pedido explícito do usuário — desenha por CIMA da capa. O ícone "X"
- * (`CLOSE_X_ICON_FRAME`, de `UI/button.png`) fica centralizado na parte do
+ * (`CLOSE_X_ICON_FRAME`, de `UI/HUD.png`) fica centralizado na parte do
  * marcador que sai pra fora do livro, com depth um pouco maior que o do
  * marcador (só decorativo, pra ficar por cima dele).
  */
@@ -125,6 +126,8 @@ export interface ShopItem {
   /** Frame do ícone: número (spritesheet, culturas) ou nome (frame recortado à mão, decorações). */
   iconFrame: number | string;
   price: number;
+  /** Custo misto (Fase 8 — Progressão, pedido explícito do usuário): além das moedas, também exige X unidades de um recurso do `Inventory` (ex.: espadas). `undefined` = só moedas, igual antes. */
+  resourceCost?: { resourceId: string; resourceName: string; amount: number };
 }
 
 /** Uma aba da Loja — ícone representativo da categoria (não precisa vir de um item à venda nela, ex.: "Ferramentas" ainda não vende nada). */
@@ -150,6 +153,7 @@ interface ShopTab {
 interface ShopSlot {
   itemId: string;
   price: number;
+  resourceCost?: { resourceId: string; resourceName: string; amount: number };
   frame: Phaser.GameObjects.Image;
   icon: Phaser.GameObjects.Image;
   priceText: Phaser.GameObjects.Text;
@@ -200,6 +204,8 @@ export class ShopMenu {
   private activeCategory: ShopCategory;
   private isOpen_ = false;
   private lastCoins = 0;
+  /** Guardado só pra `selectCategory` poder chamar `refresh` de novo ao trocar de aba, sem precisar que quem chama passe o `Inventory` outra vez. */
+  private lastInventory: Inventory | null = null;
 
   constructor(scene: Phaser.Scene, tabDefs: ShopTabDefinition[], items: ShopItem[], onBuy: (itemId: string) => void) {
     const texture = scene.textures.get(INVENTORY_PANEL_KEY);
@@ -417,7 +423,7 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
       priceText.setScrollFactor(0);
       priceText.setDepth(3002);
 
-      this.slots.push({ itemId: '', price: 0, frame, icon, priceText });
+      this.slots.push({ itemId: '', price: 0, resourceCost: undefined, frame, icon, priceText });
     }
 
     this.emptyText = scene.add.text(centerX, centerY, 'Em breve', {
@@ -453,13 +459,20 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
     else this.open();
   }
 
-  /** Escurece os ícones dos itens que o jogador não tem saldo para comprar no momento. */
-  refresh(coins: number): void {
-    this.lastCoins = coins;
+  /**
+   * Escurece os ícones dos itens que o jogador não tem saldo/recurso para
+   * comprar no momento. Recebe o `Inventory` inteiro (não só as moedas)
+   * desde a Fase 8 — Combate: o custo misto das espadas (`resourceCost`)
+   * também precisa ser checado, não só `coins`.
+   */
+  refresh(inventory: Inventory): void {
+    this.lastCoins = inventory.getCoins();
+    this.lastInventory = inventory;
     for (const slot of this.slots) {
       if (!slot.itemId) continue;
-      const affordable = coins >= slot.price;
-      slot.icon.setAlpha(affordable ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
+      const canAffordCoins = this.lastCoins >= slot.price;
+      const canAffordResource = !slot.resourceCost || inventory.getResourceCount(slot.resourceCost.resourceId) >= slot.resourceCost.amount;
+      slot.icon.setAlpha(canAffordCoins && canAffordResource ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
     }
   }
 
@@ -468,7 +481,7 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
     if (category === this.activeCategory) return;
     this.activeCategory = category;
     this.renderActiveCategory();
-    this.refresh(this.lastCoins);
+    if (this.lastInventory) this.refresh(this.lastInventory);
   }
 
   /** Redesenha o pool de slots com os itens da categoria ativa — sobra fica vazia/invisível; sem itens, mostra "Em breve". */
@@ -488,6 +501,7 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
       if (!item) {
         slot.itemId = '';
         slot.price = 0;
+        slot.resourceCost = undefined;
         slot.icon.setVisible(false);
         slot.priceText.setVisible(false);
         return;
@@ -495,12 +509,22 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
 
       slot.itemId = item.id;
       slot.price = item.price;
+      slot.resourceCost = item.resourceCost;
       slot.icon.setTexture(item.textureKey, item.iconFrame);
       // Ícones de origens diferentes (semente, decoração) têm tamanhos
       // nativos bem diferentes (ex.: o Poço, 28x38 vs 16x16 padrão) — sem
       // isso o Poço vazava pra fora do slot.
       slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
-      slot.priceText.setText(`${item.price}`);
+      // Custo misto (Fase 8 — Combate): 2ª linha menor com o recurso exigido
+      // — as demais categorias nunca têm `resourceCost`, continuam com 1
+      // linha só, mesmo tamanho de fonte de antes.
+      if (item.resourceCost) {
+        slot.priceText.setFontSize(9);
+        slot.priceText.setText(`${item.price}\n${item.resourceCost.amount} ${item.resourceCost.resourceName}`);
+      } else {
+        slot.priceText.setFontSize(11);
+        slot.priceText.setText(`${item.price}`);
+      }
       slot.icon.setVisible(true);
       slot.priceText.setVisible(true);
     });
