@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { FarmMapData } from '../data/maps/farmMap';
 import { WalkableGrid } from './grid';
 import {
   INVENTORY_UI_KEY,
@@ -71,14 +70,17 @@ function setCornerSetVisible(corners: Record<CornerKey, Phaser.GameObjects.Image
 /**
  * Destaque visual (moldura de 4 cantos, não um quadrado desenhado por
  * código) sobre a célula que o mouse está — em QUALQUER célula dentro dos
- * limites do mapa (Fase 9), não só na lavoura, com dois visuais diferentes
+ * limites do mapa (Fase 9), em TODAS as cenas (Fazenda e as 4 cenas
+ * externas, pedido explícito do usuário), com dois visuais diferentes
  * conforme o terreno:
  *
- * - Célula de `farmMap.farmlandArea` (onde faz sentido plantar/regar/
- *   colher): cantinhos marrons de `UI/Inventory/Slots.png` (já existentes).
+ * - Célula de `farmlandArea` (onde faz sentido plantar/regar/colher —
+ *   só existe na Fazenda, por isso o parâmetro é opcional): cantinhos
+ *   marrons de `UI/Inventory/Slots.png` (já existentes).
  * - Qualquer outra célula dentro de `grid.inBounds()` (grama, caminho,
- *   etc.): cantinhos brancos/azulados de `UI/Extras.png` — "cursor global",
- *   só pra indicar onde o jogador está mirando.
+ *   etc. — a ÚNICA opção nas cenas externas, que não têm lavoura):
+ *   cantinhos brancos/azulados de `UI/Extras.png` — "cursor global", só
+ *   pra indicar onde o jogador está mirando.
  * - Fora dos limites do mapa (`!grid.inBounds()`): nenhum dos dois.
  */
 export class TileCursor {
@@ -89,10 +91,10 @@ export class TileCursor {
   private readonly tilePx: number;
   private hoveredKey: string | null = null;
 
-  constructor(scene: Phaser.Scene, map: FarmMapData, tilePx: number, grid: WalkableGrid) {
+  constructor(scene: Phaser.Scene, tilePx: number, grid: WalkableGrid, farmlandArea: Array<[number, number]> = []) {
     this.tilePx = tilePx;
     this.grid = grid;
-    this.farmlandCells = new Set(map.farmlandArea.map(([col, row]) => `${col},${row}`));
+    this.farmlandCells = new Set(farmlandArea.map(([col, row]) => `${col},${row}`));
 
     this.farmlandCorners = createCornerSet(
       scene,

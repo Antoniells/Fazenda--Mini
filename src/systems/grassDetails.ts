@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { FarmMapData } from '../data/maps/farmMap';
-import { GRASS_DETAILS_KEY, GRASS_DETAILS } from '../data/grassDetails';
+import { GRASS_DETAILS_KEY, GRASS_DETAILS, GrassDetailDefinition } from '../data/grassDetails';
 import { hash2D } from './groundVariation';
 import { DirtZone } from './dirtPaths';
 import { DISPLAY_SCALE } from './mapBuilder';
@@ -14,7 +14,7 @@ import { DISPLAY_SCALE } from './mapBuilder';
  * simplesmente anda por cima, igual grama comum.
  */
 const DETAIL_CHANCE = 0.05;
-/** Profundidade fixa: acima do chão (-1) e do caminho de terra (mesma camada), abaixo de tudo ordenado por Y (personagem, árvores). */
+/** Profundidade fixa dos detalhes "achatados" (cogumelo/pedrinha/florzinha): acima do chão (-1) e do caminho de terra (mesma camada), abaixo de tudo ordenado por Y (personagem, árvores). */
 const DETAIL_DEPTH = -0.6;
 
 function buildExcludeSet(map: FarmMapData): Set<string> {
@@ -31,31 +31,82 @@ function buildExcludeSet(map: FarmMapData): Set<string> {
   return exclude;
 }
 
-function registerFrames(scene: Phaser.Scene): void {
+/** Registra (uma vez, idempotente) os frames recortados de `GRASS_DETAILS` que ainda não existem na textura — reaproveitado tanto pela Fazenda quanto por `systems/externalMapBuilder.ts` (Floresta). */
+export function registerGrassDetailFrames(scene: Phaser.Scene, details: GrassDetailDefinition[] = GRASS_DETAILS): void {
   const texture = scene.textures.get(GRASS_DETAILS_KEY);
-  for (const detail of GRASS_DETAILS) {
+  for (const detail of details) {
     if (texture.has(detail.frameName)) continue;
     const { x, y, width, height } = detail.frameRect;
     texture.add(detail.frameName, 0, x, y, width, height);
   }
 }
 
+function cellKey(col: number, row: number): string {
+  return `${col},${row}`;
+}
+
+/**
+ * Detalhes que ganham profundidade dinâmica + podem balançar ao jogador
+ * pisar em cima — tufo de grama e cogumelo (pedido explícito do usuário:
+ * "regra padrão" pra qualquer moita/cogumelo do jogo, não só a Fazenda).
+ * Pedrinha/florzinha continuam "achatadas" no chão, só decoração.
+ */
+export const RUSTLING_DETAIL_IDS: readonly string[] = ['tuft', 'mushroom'];
+
+/** Célula por célula que teve um detalhe "alto" colocado (tufo/cogumelo) — usado para tocar o balanço (`rustleGrassTuft`) quando o jogador pisa em cima. */
+export type GrassTuftMap = Map<string, Phaser.GameObjects.Image>;
+
+/**
+ * Desenha UM detalhe de grama na célula (col, row) — tufo/cogumelo
+ * (`RUSTLING_DETAIL_IDS`) ganham `origin(0.5, 1)` + profundidade dinâmica
+ * (`setDepth(y)`, MESMA convenção do personagem/plantação, ancorados na
+ * base da célula como um objeto "em pé") e são guardados em `rustling` para
+ * poder balançar depois (`rustleGrassTuft`); os demais (pedrinha/florzinha)
+ * continuam achatados no centro da célula, profundidade fixa, só decoração.
+ * Função compartilhada — usada tanto por `buildGrassDetails` (Fazenda)
+ * quanto por `systems/externalMapBuilder.ts` (`buildWildFoliage`, Floresta),
+ * pra "moita/cogumelo" se comportar igual em qualquer cena do jogo.
+ */
+export function placeGrassDetail(
+  scene: Phaser.Scene,
+  tile: number,
+  col: number,
+  row: number,
+  detail: GrassDetailDefinition,
+  rustling: GrassTuftMap,
+): void {
+  const isRustling = RUSTLING_DETAIL_IDS.includes(detail.id);
+  const x = col * tile + tile / 2;
+  const y = isRustling ? (row + 1) * tile : row * tile + tile / 2;
+
+  const image = scene.add.image(x, y, GRASS_DETAILS_KEY, detail.frameName);
+  image.setScale(DISPLAY_SCALE);
+
+  if (isRustling) {
+    image.setOrigin(0.5, 1);
+    image.setDepth(y);
+    rustling.set(cellKey(col, row), image);
+  } else {
+    image.setOrigin(0.5, 0.5);
+    image.setDepth(DETAIL_DEPTH);
+  }
+}
+
 /**
  * Espalha os detalhes pelo núcleo da propriedade (`map.cols` x `map.rows`).
- * Chamado uma vez, junto com o resto do cenário estático — devolve as
- * imagens criadas só por simetria com `buildFarmDecorations`/etc, embora
- * ninguém precise mexer nelas depois (não têm estado próprio).
+ * Chamado uma vez, junto com o resto do cenário estático — ver
+ * `placeGrassDetail` pra saber quais ganham profundidade dinâmica/balanço.
  */
-export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZone: DirtZone): Phaser.GameObjects.Image[] {
-  registerFrames(scene);
+export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZone: DirtZone): GrassTuftMap {
+  registerGrassDetailFrames(scene);
 
   const exclude = buildExcludeSet(map);
   const tile = map.tileSize * DISPLAY_SCALE;
-  const created: Phaser.GameObjects.Image[] = [];
+  const rustling: GrassTuftMap = new Map();
 
   for (let row = 0; row < map.rows; row++) {
     for (let col = 0; col < map.cols; col++) {
-      const key = `${col},${row}`;
+      const key = cellKey(col, row);
       if (exclude.has(key) || dirtZone.has(col, row)) continue;
 
       // Offset diferente do usado em `groundVariation`/`dirtPaths` na mesma
@@ -64,17 +115,31 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
       if (hash2D(col * 733 + 41, row * 977 + 83) >= DETAIL_CHANCE) continue;
 
       const detailIndex = Math.floor(hash2D(col, row) * GRASS_DETAILS.length) % GRASS_DETAILS.length;
-      const detail = GRASS_DETAILS[detailIndex];
-
-      const x = col * tile + tile / 2;
-      const y = row * tile + tile / 2;
-      const image = scene.add.image(x, y, GRASS_DETAILS_KEY, detail.frameName);
-      image.setOrigin(0.5, 0.5);
-      image.setScale(DISPLAY_SCALE);
-      image.setDepth(DETAIL_DEPTH);
-      created.push(image);
+      placeGrassDetail(scene, tile, col, row, GRASS_DETAILS[detailIndex], rustling);
     }
   }
 
-  return created;
+  return rustling;
+}
+
+/**
+ * Balanço do tufo de grama ao jogador pisar em cima (pedido explícito do
+ * usuário) — tween IDÊNTICO ao de `FarmlandRenderer.rustleCrop` (mesmo
+ * ângulo/duração/easing), só que lendo de `GrassTuftMap` em vez do mapa de
+ * plantações. Chamado direto do listener de `'player-stepped'` (ver
+ * `MainScene`) — `Map.get` é O(1), então não pesa checar a cada passo.
+ */
+export function rustleGrassTuft(scene: Phaser.Scene, tufts: GrassTuftMap, col: number, row: number): void {
+  const image = tufts.get(cellKey(col, row));
+  if (!image || scene.tweens.isTweening(image)) return;
+
+  scene.tweens.add({
+    targets: image,
+    angle: { from: 0, to: 8 },
+    duration: 120,
+    yoyo: true,
+    repeat: 1,
+    ease: 'Sine.easeInOut',
+    onComplete: () => image.setAngle(0),
+  });
 }

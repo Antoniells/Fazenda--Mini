@@ -23,9 +23,13 @@ export const GRASS_DETAILS: GrassDetailDefinition[] = [
     frameName: 'grass-detail-tuft',
     // Recorte original (x:163,w:14) cortava a lâmina esquerda do tufo —
     // reportado pelo usuário. A folha não tem um vão vazio limpo entre este
-    // ícone e a flor vizinha (sombras se tocam); alargado até a última
-    // coluna onde ainda há pixel verde de verdade (não da flor ao lado).
-    frameRect: { x: 158, y: 1, width: 18, height: 15 },
+    // ícone e a flor vizinha (sombras se tocam), então o primeiro ajuste
+    // (x:158,w:18) foi longe demais: a coluna x=158 pega 1px roxo da
+    // florzinha vizinha (confirmado varrendo x=157-159 pixel a pixel — só
+    // x=158,y=8 tem cor fora da paleta verde do tufo), aparecendo como uma
+    // manchinha de "outra arte" na base esquerda — reportado pelo usuário de
+    // novo. x=159 já é 100% verde do próprio tufo em todas as linhas.
+    frameRect: { x: 159, y: 1, width: 17, height: 15 },
   },
   {
     id: 'mushroom',

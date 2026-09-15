@@ -25,7 +25,8 @@ import { DISPLAY_SCALE } from './mapBuilder';
 import { TreeStage } from './resourceNodeRegistry';
 import { WalkableGrid } from './grid';
 import { hash2D } from './groundVariation';
-import { GRASS_DETAILS_KEY, GRASS_DETAILS, GrassDetailDefinition } from '../data/grassDetails';
+import { GRASS_DETAILS } from '../data/grassDetails';
+import { registerGrassDetailFrames, placeGrassDetail, GrassTuftMap } from './grassDetails';
 
 /** Sprite + sombra (quando houver) de um recurso plantado no mundo — devolvido para quem precisa poder destruir os dois juntos ao colher (ver `systems/resourceInteraction.ts`). */
 export interface WorldResourceVisual {
@@ -67,12 +68,14 @@ export function buildExternalTree(scene: Phaser.Scene, tileSize: number, col: nu
   const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
   shadow.setDepth(STATIC_SHADOW_DEPTH);
 
-  let tree: Phaser.GameObjects.Image;
+let tree: Phaser.GameObjects.Image;
   if (species === 'birch') {
     registerFrame(scene, BIRCH_TREE_KEY, { name: BIRCH_TREE_FRAME_NAME, rect: BIRCH_TREE_FRAME });
-    tree = scene.add.image(x, y, BIRCH_TREE_KEY, BIRCH_TREE_FRAME_NAME);
+    // Adicionando + 6 no Y
+    tree = scene.add.image(x, y + 6, BIRCH_TREE_KEY, BIRCH_TREE_FRAME_NAME);
   } else {
-    tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
+    // Adicionando + 6 no Y
+    tree = scene.add.image(x, y + 6, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
   }
   tree.setOrigin(0.5, 1);
   tree.setScale(DISPLAY_SCALE);
@@ -101,12 +104,13 @@ export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: num
   const y = (row + 1) * tile;
 
   let shadow: Phaser.GameObjects.Image | undefined;
-  if (stage === 'mature') {
+if (stage === 'mature') {
     shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
     shadow.setDepth(STATIC_SHADOW_DEPTH);
   }
 
-  const sprite = scene.add.image(x, y, PINE_TREE_KEY, frameName);
+  // Adicionando + 6 no Y para a base da árvore descer em relação à sombra
+  const sprite = scene.add.image(x, y + 6, PINE_TREE_KEY, frameName);
   sprite.setOrigin(0.5, 1);
   sprite.setScale(DISPLAY_SCALE);
   sprite.setDepth(sprite.y);
@@ -200,36 +204,28 @@ export function buildWaterArea(scene: Phaser.Scene, tileSize: number, col0: numb
 
 /** Fração de células andáveis que ganham um detalhe — mesma chance de `systems/grassDetails.ts` (Fazenda). */
 const WILD_FOLIAGE_CHANCE = 0.05;
-/** Mesma profundidade fixa de `grassDetails.ts`: acima do chão, abaixo de qualquer coisa ordenada por Y. */
-const WILD_FOLIAGE_DEPTH = -0.6;
 /** Só cogumelo/flor/tufo (pedido explícito: "cogumelos e plantinhas selvagens") — sem a pedrinha, que confundiria com as pedras de verdade colhíveis da Floresta. */
 const WILD_FOLIAGE_IDS = ['mushroom', 'flower', 'tuft'];
-
-function registerGrassDetailFrames(scene: Phaser.Scene, details: GrassDetailDefinition[]): void {
-  const texture = scene.textures.get(GRASS_DETAILS_KEY);
-  for (const detail of details) {
-    if (texture.has(detail.frameName)) continue;
-    const { x, y, width, height } = detail.frameRect;
-    texture.add(detail.frameName, 0, x, y, width, height);
-  }
-}
 
 /**
  * Espalha cogumelos/plantinhas selvagens (Fase 9 — polimento visual) pelas
  * células ANDÁVEIS de uma cena externa (Floresta) — mesma técnica
  * determinística de `systems/grassDetails.ts` (mesma célula sempre gera o
  * mesmo resultado), reaproveitando os MESMOS assets já recortados
- * (`GRASS_DETAILS`), só que decidido a partir do `WalkableGrid` da cena (já
- * exclui borda/água/árvores/pedras/ponte) em vez dos dados específicos da
- * Fazenda. Chamado no FIM de `buildMapContent`, depois de todo obstáculo já
- * ter bloqueado sua célula no grid.
+ * (`GRASS_DETAILS`) e a MESMA função `placeGrassDetail` da Fazenda — regra
+ * padrão pedida pelo usuário: tufo/cogumelo ganham profundidade dinâmica
+ * (Y-sorting) + balançam ao jogador pisar em cima em QUALQUER cena do jogo,
+ * não só a Fazenda (ver `GrassTuftMap`/`rustleGrassTuft`). Decidido a partir
+ * do `WalkableGrid` da cena (já exclui borda/água/árvores/pedras/ponte) em
+ * vez dos dados específicos da Fazenda. Chamado no FIM de `buildMapContent`,
+ * depois de todo obstáculo já ter bloqueado sua célula no grid.
  */
-export function buildWildFoliage(scene: Phaser.Scene, tileSize: number, grid: WalkableGrid): Phaser.GameObjects.Image[] {
+export function buildWildFoliage(scene: Phaser.Scene, tileSize: number, grid: WalkableGrid): GrassTuftMap {
   const details = GRASS_DETAILS.filter((detail) => WILD_FOLIAGE_IDS.includes(detail.id));
   registerGrassDetailFrames(scene, details);
 
   const tile = tileSize * DISPLAY_SCALE;
-  const created: Phaser.GameObjects.Image[] = [];
+  const rustling: GrassTuftMap = new Map();
 
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
@@ -239,19 +235,11 @@ export function buildWildFoliage(scene: Phaser.Scene, tileSize: number, grid: Wa
       if (hash2D(col * 911 + 271, row * 1013 + 349) >= WILD_FOLIAGE_CHANCE) continue;
 
       const detailIndex = Math.floor(hash2D(col, row) * details.length) % details.length;
-      const detail = details[detailIndex];
-
-      const x = col * tile + tile / 2;
-      const y = row * tile + tile / 2;
-      const image = scene.add.image(x, y, GRASS_DETAILS_KEY, detail.frameName);
-      image.setOrigin(0.5, 0.5);
-      image.setScale(DISPLAY_SCALE);
-      image.setDepth(WILD_FOLIAGE_DEPTH);
-      created.push(image);
+      placeGrassDetail(scene, tile, col, row, details[detailIndex], rustling);
     }
   }
 
-  return created;
+  return rustling;
 }
 
 /** Bloco de células (col,row) cobertas por uma área de água — pra bloquear no `WalkableGrid` (não dá pra andar sobre a água). */

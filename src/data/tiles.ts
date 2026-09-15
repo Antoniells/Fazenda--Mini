@@ -289,6 +289,30 @@ export const BRIDGE_HORIZONTAL_FRAME = { name: 'bridge-horizontal', rect: { x: 1
 export const BRIDGE_VERTICAL_FRAME = { name: 'bridge-vertical', rect: { x: 0, y: 65, width: 48, height: 59 } };
 
 /**
+ * Dentro de `BRIDGE_VERTICAL_FRAME`, os 2 postes de reforço não ficam
+ * simétricos em relação ao centro do módulo (confirmado varrendo coluna a
+ * coluna, opacidade): o esquerdo fica nas colunas 16-19, bem perto do meio
+ * (só 6.5px do centro em 24), enquanto o direito fica nas colunas 44-47,
+ * colado na borda direita (21.5px do centro). Pedido explícito do usuário
+ * pra "arrastar" o poste esquerdo até a borda e apagar o buraco que ele
+ * deixava: tentar só "remendar" a posição antiga com um pedaço de parede de
+ * outro trecho (`BRIDGE_VERTICAL_WALL_PATCH_FRAME`, descartado) deixava uma
+ * emenda visível — as ripas/argamassa têm juntas verticais a cada 4px
+ * (confirmado varrendo opacidade de todas as colunas: x=0,4,8,...44), e um
+ * remendo de 8px puxado de outro trecho nunca encaixa nessa grade.
+ *
+ * A solução é montar a ponte a partir de 2 peças, não mais uma só: um
+ * ladrilho de 4px (`BRIDGE_VERTICAL_WALL_TILE_FRAME`, exatamente 1 período
+ * da grade de juntas — colunas 24-27, sem poste) repetido como
+ * `TileSprite` pra cobrir a parede inteira sem nenhuma emenda por
+ * construção, com os 2 postes (`BRIDGE_VERTICAL_POST_FRAME`, o poste
+ * direito original — 4px limpos, reaproveitado nos dois lados) desenhados
+ * por cima, cada um na posição desejada, de forma totalmente independente.
+ */
+export const BRIDGE_VERTICAL_WALL_TILE_FRAME = { name: 'bridge-vertical-wall-tile', rect: { x: 24, y: 65, width: 4, height: 59 } };
+export const BRIDGE_VERTICAL_POST_FRAME = { name: 'bridge-vertical-post', rect: { x: 44, y: 65, width: 4, height: 59 } };
+
+/**
  * Bétula (variedade extra de árvore pra Floresta, ao lado do Pinheiro já
  * usado na Fazenda): `Tree/Common/No Shadow/Birch Tree.png` tem estágios
  * de crescimento + 3 variações de cor (verde/outono/neve) lado a lado — só

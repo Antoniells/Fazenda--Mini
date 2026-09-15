@@ -3,9 +3,9 @@ import { BIOME_LABELS, ExpansionChunk, ExpansionDirection, FarmMapData } from '.
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
 import { WalkableGrid } from './grid';
-import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, buildConstructionSign, BIOME_TINTS } from './mapBuilder';
+import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, BIOME_TINTS } from './mapBuilder';
 
-/** Placa de um trecho: ao interagir, tenta comprar aquele trecho específico (ver `PropertyExpansionSystem.tryBuy`). */
+/** Ponto de compra de um trecho (célula bloqueada, sem placa visível — ver comentário da classe): ao interagir, tenta comprar aquele trecho específico (ver `PropertyExpansionSystem.tryBuy`). */
 class ExpansionSignInteractable implements Interactable {
   constructor(
     private readonly system: PropertyExpansionSystem,
@@ -20,19 +20,24 @@ class ExpansionSignInteractable implements Interactable {
 /**
  * Expansão de propriedade (Fase 6), inspirada no Forager: em vez de uma
  * única expansão genérica comprada num menu, cada trecho ao redor do
- * núcleo (`farmMap.expansions` — um por direção) tem sua própria placa
- * física, colocada encostada na parede desse lado. O jogador anda até lá e
- * interage (mesma interação adjacente já usada na Loja/Caixa de Remessas)
- * para comprar aquele trecho específico — sem menu abstrato envolvido.
+ * núcleo (`farmMap.expansions` — um por direção) tem seu próprio ponto de
+ * compra, encostado na parede desse lado. O jogador anda até lá e interage
+ * (mesma interação adjacente já usada na Loja/Caixa de Remessas) para
+ * comprar aquele trecho específico — sem menu abstrato envolvido.
+ *
+ * A célula de compra é bloqueada (`grid.block`) mas SEM placa visível
+ * (pedido explícito do usuário, Fase 9 — limpeza visual: a única placa de
+ * "obra" que deve continuar aparecendo é a das pontes bloqueadas, ver
+ * `systems/bridgeSystem.ts`). A compra ainda funciona normalmente, só sem
+ * marcador no chão indicando onde clicar.
  *
  * Cada trecho já nasce com grama e o perímetro externo definitivo
  * desenhados (a câmera já pode alcançá-lo — ver `MainScene.create`), mas
  * fica isolado pela parede do núcleo naquele lado até a compra, quando ela
- * é removida (visual e do grid) junto com a placa.
+ * é removida (visual e do grid).
  */
 export class PropertyExpansionSystem {
   private readonly wallImages = new Map<ExpansionDirection, Phaser.GameObjects.Image[]>();
-  private readonly signImages = new Map<ExpansionDirection, Phaser.GameObjects.Image>();
   private readonly purchased = new Set<ExpansionDirection>();
 
   constructor(
@@ -48,9 +53,11 @@ export class PropertyExpansionSystem {
 
       this.wallImages.set(chunk.direction, buildFenceSide(scene, map, chunk.direction));
 
+      // Placa de "obra" removida daqui por pedido explícito do usuário — a
+      // única que deve continuar aparecendo é a da ponte bloqueada
+      // (`BridgeSystem`). A célula continua bloqueada e clicável (a compra
+      // do trecho ainda funciona, só sem marcador visual).
       const [signCol, signRow] = chunk.signPosition;
-      const sign = buildConstructionSign(scene, map.tileSize, signCol, signRow);
-      this.signImages.set(chunk.direction, sign);
       grid.block(signCol, signRow);
       interactions.set(signCol, signRow, new ExpansionSignInteractable(this, chunk));
     }
@@ -100,8 +107,6 @@ export class PropertyExpansionSystem {
     this.unblockCoreWall(chunk.direction);
 
     const [signCol, signRow] = chunk.signPosition;
-    this.signImages.get(chunk.direction)?.destroy();
-    this.signImages.delete(chunk.direction);
     this.grid.unblock(signCol, signRow);
     this.interactions.remove(signCol, signRow);
 
