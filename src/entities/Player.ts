@@ -83,12 +83,36 @@ this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDow
    * Substitui a rota atual pela informada e começa a segui-la imediatamente
    * (célula a célula) se o personagem não estiver em movimento.
    */
-  setPath(path: GridPoint[]): void {
+// Adicione esta variável:
+  private pathIsWalkable: ((col: number, row: number) => boolean) | null = null;
+
+  // Substitua o setPath atual por este:
+  setPath(path: GridPoint[], isWalkable?: (col: number, row: number) => boolean): void {
     this.path = [...path];
+    this.pathIsWalkable = isWalkable ?? null;
+
     if (!this.moving) {
-      const next = this.path.shift();
-      if (next) this.beginStep(next.col, next.row, next.col - this.col, next.row - this.row);
+      this.tryNextPathStep();
     }
+  }
+
+  // Adicione esta nova função logo abaixo do setPath:
+  private tryNextPathStep(): boolean {
+    if (this.path.length === 0) return false;
+
+    const next = this.path[0];
+    
+    // Se o próximo passo do caminho de repente foi bloqueado (ex: slime entrou na frente), cancela a rota!
+    if (this.pathIsWalkable && !this.pathIsWalkable(next.col, next.row)) {
+      this.clearPath();
+      return false;
+    }
+
+    this.path.shift();
+    const dCol = next.col - this.col;
+    const dRow = next.row - this.row;
+    this.beginStep(next.col, next.row, dCol, dRow);
+    return true;
   }
 
   /** Interrompe qualquer rota pendente (usado quando o teclado assume o controle). */
@@ -108,26 +132,37 @@ tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => bo
     // ESTA É A TRAVA DE SEGURANÇA! Ela impede o teletransporte.
     if (this.moving) return; 
 
-    const col = this.col + dCol;
+const col = this.col + dCol;
     const row = this.row + dRow;
-    if (!isWalkable(col, row)) return;
+
+    // Se não puder andar (tem um slime, árvore ou parede), 
+    // ele vira para a direção que você apertou e para.
+    if (!isWalkable(col, row)) {
+      this.faceDirection(dCol, dRow);
+      return;
+    }
     
     this.beginStep(col, row, dCol, dRow);
   }
 
   /**
    * Executa uma ação agrícola (arar, plantar, regar, colher) parado no
-   * lugar: toca a animação da ferramenta uma vez e, quando ela termina,
-   * chama `onApply` (que efetivamente altera o estado do terreno/plantação)
-   * e volta para idle. A animação só representa a ação visualmente — quem
-   * decide o efeito é sempre `onApply`, nunca a animação em si.
+   * lugar: toca a animação da ferramenta uma vez e chama `onApply` (que
+   * efetivamente altera o estado do terreno/plantação/inimigo) no "impact
+   * frame" dela (Fase 9 — Game Feel, pedido explícito do usuário) — o
+   * instante em que a ferramenta/espada visualmente toca o chão/alvo, não
+   * só quando a animação inteira termina (ver `ActionAnimSpec.impactFrameOffset`).
+   * A animação só representa a ação visualmente — quem decide o efeito é
+   * sempre `onApply`, nunca a animação em si.
    */
   performAction(action: PlayerActionKey, onApply: () => void): void {
     if (this.moving || this.busy) return;
 
-    this.facing = 'down';
-    this.flipSide = false;
-    this.sprite.setFlipX(false);
+    // Pedido explícito do usuário: NÃO forçar `facing`/`flipX` pra baixo
+    // aqui — a ferramenta/espada precisa tocar na direção em que o
+    // personagem já está olhando (`updateFacing`, chamado pelo último
+    // passo/`faceDirection`, já deixou `this.facing`/`sprite.flipX`
+    // corretos; não há nada a reaplicar).
     this.busy = true;
 
     const spec = PLAYER_ACTIONS[action];
@@ -141,9 +176,40 @@ tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => bo
 
     const key = `${spec.key}-${this.facing}`;
     this.sprite.play(key);
-    this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-      this.sprite.y -= yOffset;
+
+    // "Impact frame": `onApply` roda assim que o frame de impacto é
+    // alcançado, não só ao final — golpe de espada acerta e enxada lavra
+    // no instante visual do impacto, em vez de só depois do braço já ter
+    // voltado pra posição de descanso. `impactApplied` garante uma única
+    // chamada mesmo que `ANIMATION_UPDATE` dispare mais de uma vez sobre o
+    // mesmo frame (o próprio Phaser avisa que isso pode acontecer sob
+    // lag). `frame.index` é 1-based (primeiro frame = 1), por isso o `-1`
+    // pra comparar com o offset 0-based de `impactFrameOffset`; `>=` em
+    // vez de `===` porque sob lag o Phaser pode pular direto pro frame
+    // seguinte sem passar exatamente pelo índice de impacto.
+    const impactFrameOffset = spec.impactFrameOffset;
+    let impactApplied = false;
+    const applyImpactOnce = (): void => {
+      if (impactApplied) return;
+      impactApplied = true;
       onApply();
+    };
+
+    let handleAnimationUpdate: ((animation: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame) => void) | null = null;
+    if (impactFrameOffset !== undefined) {
+      handleAnimationUpdate = (_animation, frame) => {
+        if (frame.index - 1 >= impactFrameOffset) applyImpactOnce();
+      };
+      this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, handleAnimationUpdate);
+    }
+
+    this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      if (handleAnimationUpdate) this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, handleAnimationUpdate);
+      // Rede de segurança: ações sem `impactFrameOffset`, ou o raro caso do
+      // frame de impacto nunca ter disparado, ainda aplicam aqui — nunca
+      // termina a ação sem `onApply` ter rodado.
+      applyImpactOnce();
+      this.sprite.y -= yOffset;
       this.busy = false;
       this.playIdle();
     });
@@ -159,6 +225,18 @@ tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => bo
   faceDirection(dCol: number, dRow: number): void {
     this.updateFacing(dCol, dRow);
     this.playIdle();
+  }
+
+  /**
+   * Vetor unitário (em células) da direção que o personagem está encarando
+   * agora — usado pelo ataque de espada (Fase 8 — Combate) para posicionar
+   * a hitbox na frente dele, mesma lógica de direção/flip usada em
+   * `updateFacing`, só devolvida em vez de aplicada a um sprite.
+   */
+  getFacingVector(): { dx: number; dy: number } {
+    if (this.facing === 'up') return { dx: 0, dy: -1 };
+    if (this.facing === 'down') return { dx: 0, dy: 1 };
+    return { dx: this.flipSide ? -1 : 1, dy: 0 };
   }
 
   private beginStep(col: number, row: number, dCol: number, dRow: number): void {
@@ -203,16 +281,14 @@ update(_time: number, delta: number): void {
     this.shadow.setPosition(this.sprite.x, this.sprite.y - 13);
     this.shadow.setDepth(this.sprite.y - 0.1);
 
-    if (t >= 1) {
+if (t >= 1) {
       this.moving = false;
-      const next = this.path.shift();
       
-      if (next) {
-        const dCol = next.col - this.col;
-        const dRow = next.row - this.row;
-        this.beginStep(next.col, next.row, dCol, dRow);
+      // Tenta dar o próximo passo do caminho automático (clique)
+      if (this.tryNextPathStep()) {
+        // Já começou o próximo passo, não faz nada
       } else if (this.receivedInputThisFrame && this.lastIsWalkable && this.lastIsWalkable(this.col + this.lastDCol, this.row + this.lastDRow)) {
-        // Continua andando instantaneamente se a tecla continuar pressionada
+        // Continua andando instantaneamente se a tecla WASD continuar pressionada
         const col = this.col + this.lastDCol;
         const row = this.row + this.lastDRow;
         this.beginStep(col, row, this.lastDCol, this.lastDRow);
@@ -240,6 +316,12 @@ update(_time: number, delta: number): void {
 
   /** Cria as animações de idle/caminhada/ações agrícolas nas 3 direções do rig (baixo/cima/lado). */
   static createAnimations(scene: Phaser.Scene): void {
+    // O gerenciador de animações do Phaser é GLOBAL (por `Game`, não por
+    // cena) — sem essa checagem, toda troca de cena/`MainScene.create()`
+    // tentava recriar as mesmas chaves de novo, gerando warnings no console
+    // e trabalho repetido à toa (pedido explícito do usuário).
+    if (scene.anims.exists('player-idle-down')) return;
+
     const { anims } = scene;
 
     anims.create({

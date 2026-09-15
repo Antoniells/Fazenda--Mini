@@ -3,6 +3,10 @@ import { Player } from '../entities/Player';
 import { WalkableGrid } from './grid';
 import { findPath, GridPoint } from './pathfinding';
 import { InteractionRegistry } from './interaction';
+import { gameState } from './gameState';
+import { WEAPONS } from '../data/weapons';
+import { resolveSwordAttack } from './combat';
+import { Enemy } from '../entities/Enemy';
 
 /**
  * Alvo pendente de interação: `standCol/standRow` é a célula andável para
@@ -46,6 +50,16 @@ export interface PointerInputInterceptor {
  * clique leva até a célula andável mais próxima entre as 4 vizinhas da
  * célula clicada, e a interação só dispara depois que ele chega lá e vira
  * de frente para o alvo (ver `handleBlockedClick`).
+ *
+ * Também liga o golpe de espada (Fase 8 — Combate, pedido explícito do
+ * usuário: ataque global, não preso à Floresta): como esta classe já é
+ * instanciada por QUALQUER cena (`MainScene` e todas as `ExternalMapScene`
+ * — Floresta/Pedreira/Caverna/Praia), é o lugar certo pra escutar a tecla
+ * de ataque uma única vez em vez de cada cena reimplementar o mesmo
+ * `keydown-SPACE`. Só a Floresta tem inimigos por ora — `setEnemyProvider`
+ * deixa qualquer cena plugar de onde vêm os inimigos vivos; sem isso, o
+ * golpe ainda balança a espada no ar normalmente, só não acerta ninguém
+ * (lista vazia por padrão).
  */
 export class PlayerController {
   private readonly player: Player;
@@ -61,6 +75,9 @@ export class PlayerController {
 
   /** Vários sistemas podem "roubar" o clique (Fase 6: posicionar decoração; Fase 8: tela de Inventário) — o primeiro que estiver `isActive()` vence. */
   private readonly inputInterceptors: PointerInputInterceptor[] = [];
+
+  /** De onde vêm os inimigos vivos desta cena (Fase 8 — Combate) — `null` (padrão) equivale a nenhum inimigo aqui, ver `setEnemyProvider`. */
+  private enemyProvider: (() => Enemy[]) | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -90,11 +107,44 @@ export class PlayerController {
       // Expansão), x/y são coordenadas de TELA, não do mundo.
       this.handlePointerDown(pointer.worldX, pointer.worldY);
     });
+
+    scene.input.keyboard!.on('keydown-SPACE', () => this.handleAttackKey());
   }
 
   /** Registra um sistema que pode roubar o clique enquanto `isActive()` — ver `PointerInputInterceptor`. */
   addInputInterceptor(interceptor: PointerInputInterceptor): void {
     this.inputInterceptors.push(interceptor);
+  }
+
+  /** Plugado pela cena dona dos inimigos (só a Floresta, por ora — ver `ForestScene`) — ver doc da classe. */
+  setEnemyProvider(provider: () => Enemy[]): void {
+    this.enemyProvider = provider;
+  }
+
+  /**
+   * Golpe de espada (Fase 8 — Combate, ataque global): precisa de uma
+   * espada selecionada na Hotbar (mesmo padrão de checagem de ferramenta de
+   * `farmlandInteraction.ts`/`resourceInteraction.ts`); bloqueado pelos
+   * mesmos interceptores que já travam clique/movimento (Inventário aberto,
+   * Dormir, Pausa, posicionar decoração — ver `inputInterceptors`), sem
+   * precisar de um import novo pra isso. Toca a animação sempre — mesmo sem
+   * nenhum inimigo por perto ("balançar a espada no ar", pedido explícito
+   * do usuário) — e só então testa a hitbox contra `enemyProvider()` (vazio
+   * se a cena não tiver registrado nenhum).
+   */
+  private handleAttackKey(): void {
+    if (this.player.isBusy() || this.inputInterceptors.some((interceptor) => interceptor.isActive())) return;
+
+    const selected = gameState.inventory.getSelectedSlot();
+    const weapon = selected?.category === 'tool' ? WEAPONS[selected.id] : undefined;
+    if (!weapon) return;
+
+    // Captura a direção ANTES do `performAction` tocar a animação — ver
+    // doc de `combat.computeAttackHitbox`.
+    const facing = this.player.getFacingVector();
+    this.player.performAction('sword', () => {
+      resolveSwordAttack(this.player, this.enemyProvider?.() ?? [], weapon.damage, facing);
+    });
   }
 
   private handlePointerDown(x: number, y: number): void {
@@ -126,7 +176,7 @@ export class PlayerController {
     this.pendingInteraction = this.interactions.get(col, row)
       ? { standCol: col, standRow: row, targetCol: col, targetRow: row }
       : null;
-    this.player.setPath(path);
+    this.player.setPath(path, this.canWalkTo.bind(this));
   }
 
   /**
@@ -155,7 +205,7 @@ export class PlayerController {
     if (!path || path.length === 0) return;
 
     this.pendingInteraction = { standCol: stand.col, standRow: stand.row, targetCol: col, targetRow: row };
-    this.player.setPath(path);
+    this.player.setPath(path, this.canWalkTo.bind(this));
   }
 
   /**
@@ -186,6 +236,24 @@ export class PlayerController {
     return best;
   }
 
+/** Verifica o Grid e também a distância física real dos inimigos para a célula alvo */
+  private canWalkTo(col: number, row: number): boolean {
+    if (!this.grid.isWalkable(col, row)) return false;
+    
+    // Calcula o centro do tile que o jogador quer pisar
+    const targetX = col * this.tilePx + this.tilePx / 2;
+    const targetY = row * this.tilePx + this.tilePx / 2;
+
+    const enemies = this.enemyProvider?.() ?? [];
+    for (const enemy of enemies) {
+      // Se um inimigo estiver a menos de 26 pixels do centro desse tile, o tile fica bloqueado!
+      const dist = Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y);
+      if (dist < 28) return false;
+    }
+    
+    return true;
+  }
+
   update(time: number, delta: number): void {
 if (!this.player.isBusy()) {
       
@@ -202,9 +270,9 @@ if (!this.player.isBusy()) {
          {
           this.player.clearPath();
           this.pendingInteraction = null;
-          // Prioriza um eixo por vez (sem diagonais): vertical antes de horizontal.
-          if (dRow !== 0) this.player.tryStep(0, dRow, this.grid.isWalkable.bind(this.grid));
-          else this.player.tryStep(dCol, 0, this.grid.isWalkable.bind(this.grid));
+// Prioriza um eixo por vez (sem diagonais): vertical antes de horizontal.
+          if (dRow !== 0) this.player.tryStep(0, dRow, this.canWalkTo.bind(this));
+          else this.player.tryStep(dCol, 0, this.canWalkTo.bind(this));
         }
       }
     }

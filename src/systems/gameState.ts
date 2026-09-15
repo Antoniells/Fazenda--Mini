@@ -1,5 +1,6 @@
 import { Inventory } from './inventory';
 import { GameClock } from './gameClock';
+import { PlayerHealth } from './playerHealth';
 
 /**
  * Estado do jogo que precisa sobreviver a uma troca de cena de verdade
@@ -20,4 +21,7 @@ import { GameClock } from './gameClock';
 export const gameState = {
   inventory: new Inventory(),
   gameClock: new GameClock(),
+  unlockedBridges: new Set<string>(),
+  /** Fase 8 — Combate: vida do jogador, ver `systems/playerHealth.ts`. */
+  playerHealth: new PlayerHealth(),
 };

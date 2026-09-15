@@ -1,5 +1,6 @@
 import { DEFAULT_CROP_ID } from '../data/crops';
 import { HOE, SICKLE, WATERING_CAN_TOOL, AXE, PICKAXE } from '../data/tools';
+import { WOODEN_SWORD } from '../data/weapons';
 import { SlotCategory, SlotRef } from '../data/items';
 
 /** Moedas com que o jogador começa uma nova partida (sem save ainda, então sempre reinicia aqui). */
@@ -61,11 +62,16 @@ export class Inventory {
     this.ensureSlotted('resource', resourceId);
   }
 
-  /** Consome 1 unidade do estoque, se houver (ex.: plantar 1 bolota) — madeira/pedra nunca chamam isso ainda, não há mecânica de gasto pra elas. */
-  useResource(resourceId: string): boolean {
+  /**
+   * Consome `amount` unidades do estoque (padrão 1, ex.: plantar 1 bolota),
+   * se houver o suficiente. `amount` maior que 1 (Fase 8 — Combate: custo
+   * misto de espadas, ex. 10 Pedras) só foi necessário a partir das compras
+   * de espada; nada antes disso precisava de mais que 1 por vez.
+   */
+  useResource(resourceId: string, amount = 1): boolean {
     const count = this.getResourceCount(resourceId);
-    if (count <= 0) return false;
-    const remaining = count - 1;
+    if (count < amount) return false;
+    const remaining = count - amount;
     this.resources.set(resourceId, remaining);
     if (remaining <= 0) this.clearSlotsOf('resource', resourceId);
     return true;
@@ -94,14 +100,32 @@ export class Inventory {
     // elas, sem precisar comprar na Loja).
     this.slots[4] = { category: 'tool', id: AXE.id };
     this.slots[5] = { category: 'tool', id: PICKAXE.id };
+    // Fase 8 — Combate: Espada de Madeira é a arma inicial, mesma convenção
+    // das ferramentas acima (o jogador já nasce com ela).
+    this.slots[6] = { category: 'tool', id: WOODEN_SWORD.id };
   }
+
+  /**
+   * Toda colheita que algum dia passou por `add` — diferente de `items`
+   * (estoque ATUAL, some ao vender tudo em `takeAll`), esse registro nunca é
+   * apagado: é a base do "diário de descobertas" da aba Agricultura (Fase 9
+   * — Interface, pedido explícito do usuário), que precisa lembrar que o
+   * jogador já colheu uma cultura mesmo depois de vender/consumir tudo.
+   */
+  private readonly everHarvested = new Set<string>();
 
   add(itemId: string, amount: number): void {
     this.items.set(itemId, this.getCount(itemId) + amount);
+    if (amount > 0) this.everHarvested.add(itemId);
   }
 
   getCount(itemId: string): number {
     return this.items.get(itemId) ?? 0;
+  }
+
+  /** Já colheu ao menos uma vez esse item, alguma hora (mesmo que o estoque atual esteja zerado)? Ver `everHarvested`. */
+  hasHarvested(itemId: string): boolean {
+    return this.everHarvested.has(itemId);
   }
 
   /** Remove todas as unidades de um item e devolve quantas havia (0 se nenhuma). Usado ao vender tudo de uma vez no `ShippingBinInteractable`. */
@@ -190,6 +214,16 @@ export class Inventory {
     return this.slots[index] ?? null;
   }
 
+  /** Se já existe uma ferramenta/arma (categoria `'tool'`) com esse id em algum slot — usado antes de comprar uma espada na Loja pra não vender a mesma duas vezes (Fase 8 — Combate). */
+  hasTool(toolId: string): boolean {
+    return this.slots.some((slot) => slot?.category === 'tool' && slot?.id === toolId);
+  }
+
+  /** Dá uma ferramenta/arma nova ao jogador (compra na Loja, ex.: espada — Fase 8) — mesma mecânica de `ensureSlotted` já usada por sementes/decorações/materiais, só que pra uma categoria sem quantidade própria. */
+  unlockTool(toolId: string): void {
+    this.ensureSlotted('tool', toolId);
+  }
+
   /** Índice do slot da Hotbar atualmente selecionado (0-7). */
   getSelectedHotbarIndex(): number {
     return this.selectedHotbarIndex;
@@ -204,6 +238,22 @@ export class Inventory {
   selectHotbarSlot(index: number): void {
     if (index < 0 || index >= HOTBAR_SIZE) return;
     this.selectedHotbarIndex = index;
+  }
+
+  /**
+   * Troca o conteúdo de dois slots (Fase 9 — Interface, drag and drop
+   * pedido explícito do usuário): arrastar o item A para cima do item B
+   * troca os dois de lugar no array `slots`, funcione com Hotbar ou resto
+   * do Inventário, cheio ou vazio dos dois lados. Substitui a antiga regra
+   * de "ferramentas não saem do slot inicial" — agora qualquer slot pode
+   * ser reorganizado livremente.
+   */
+  swapSlots(indexA: number, indexB: number): void {
+    if (indexA === indexB) return;
+    if (indexA < 0 || indexA >= this.slots.length || indexB < 0 || indexB >= this.slots.length) return;
+    const temp = this.slots[indexA];
+    this.slots[indexA] = this.slots[indexB];
+    this.slots[indexB] = temp;
   }
 
   /** Se `category`+`id` ainda não ocupam nenhum slot, ocupa o primeiro vazio (Hotbar antes do resto do Inventário). Chamado ao ganhar sementes/decorações novas. */

@@ -56,8 +56,8 @@ export const PLAYER_START = {
 /** Tempo (ms) para se mover de uma célula do grid para a adjacente. */
 export const PLAYER_MOVE_DURATION_MS = 260;
 
-/** Ações agrícolas com animação própria (Fase 4) + buscar água no Poço (Fase 7) + coleta de recursos (Fase 7 — Machado/Picareta). */
-export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well' | 'axe' | 'pickaxe';
+/** Ações agrícolas com animação própria (Fase 4) + buscar água no Poço (Fase 7) + coleta de recursos (Fase 7 — Machado/Picareta) + ataque com espada (Fase 8 — Combate). */
+export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well' | 'axe' | 'pickaxe' | 'sword';
 
 interface ActionAnimSpec {
   key: string;
@@ -76,6 +76,25 @@ interface ActionAnimSpec {
    * às outras.
    */
   yOffset?: number;
+  /**
+   * "Impact frame" (Fase 9 — Game Feel, pedido explícito do usuário):
+   * índice 0-based, DENTRO da sequência de uma direção (não da folha
+   * inteira), do frame em que a ferramenta/espada realmente toca o chão/
+   * alvo — é nele que `Player.performAction` chama `onApply` (arar,
+   * quebrar pedra, golpe de espada, etc.), não só quando a animação
+   * termina. Mesmo índice pra baixo/cima/lado, já que as 3 direções de
+   * cada folha sempre têm a mesma contagem de frames (ver `down`/`up`/
+   * `side` acima). Confirmado visualmente (recorte/zoom, frame a frame) —
+   * não é o mesmo pra todas as folhas: enxada/picareta/machado/foice (6
+   * frames, mesmo rig de swing) tocam o alvo no frame 4, não no 3 (esse
+   * é o frame de "braço erguido", ainda no ar); regador (8 frames) solta
+   * o primeiro jato de água no frame 4; pá/plantar (5 frames) crava a pá
+   * no frame 2; buscar água no Poço (4 frames, agachar/levantar) chega no
+   * fundo do agachamento no frame 2; espada (10 frames) tem o arco do
+   * golpe visível no frame 4. `undefined` (nenhuma ação hoje) preserva o
+   * comportamento antigo — `onApply` só ao terminar a animação inteira.
+   */
+  impactFrameOffset?: number;
   down: { start: number; end: number };
   up: { start: number; end: number };
   side: { start: number; end: number };
@@ -87,6 +106,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Hoe.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 4,
     down: { start: 0, end: 5 },
     up: { start: 6, end: 11 },
     side: { start: 12, end: 17 },
@@ -96,6 +116,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Shovel.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 2,
     down: { start: 0, end: 4 },
     up: { start: 5, end: 9 },
     side: { start: 10, end: 14 },
@@ -105,6 +126,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Watering.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 4,
     down: { start: 0, end: 7 },
     up: { start: 8, end: 15 },
     side: { start: 16, end: 23 },
@@ -114,6 +136,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Sickle.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 4,
     down: { start: 0, end: 5 },
     up: { start: 6, end: 11 },
     side: { start: 12, end: 17 },
@@ -124,6 +147,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Axe.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 4,
     down: { start: 0, end: 5 },
     up: { start: 6, end: 11 },
     side: { start: 12, end: 17 },
@@ -134,6 +158,7 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     path: 'Character/Character/Pre-made/Alex/Pickaxe.png',
     frameRate: 10,
     frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 4,
     down: { start: 0, end: 5 },
     up: { start: 6, end: 11 },
     side: { start: 12, end: 17 },
@@ -159,8 +184,25 @@ export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
     // de margem) — ambos escaneados pixel a pixel. Diferença: 16px nativos
     // = 32px na escala de exibição (DISPLAY_SCALE = 2).
     yOffset: 32,
+    impactFrameOffset: 2,
     down: { start: 0, end: 3 },
     up: { start: 4, end: 7 },
     side: { start: 8, end: 11 },
+  },
+  /**
+   * Golpe de espada (Fase 8 — Combate): `Character/Pre-made/Alex/Sword.png`
+   * (320x96) tem 10 frames/direção, não 6 como as demais — confirmado pelas
+   * dimensões da folha (320/32=10). Mais rápido que as ferramentas
+   * (`frameRate` maior) pra um golpe responsivo em combate.
+   */
+  sword: {
+    key: 'player-alex-sword',
+    path: 'Character/Character/Pre-made/Alex/Sword.png',
+    frameRate: 16,
+    frameSize: PLAYER_FRAME_SIZE,
+    impactFrameOffset: 4,
+    down: { start: 0, end: 9 },
+    up: { start: 10, end: 19 },
+    side: { start: 20, end: 29 },
   },
 };

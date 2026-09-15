@@ -2,6 +2,7 @@ import { CROPS, ALL_CROPS_ICONS_KEY } from './crops';
 import { DECORATIONS } from './decorations';
 import { TOOLS, ToolId } from './tools';
 import { RESOURCES } from './resources';
+import { WEAPONS } from './weapons';
 
 /**
  * As 4 categorias que podem ocupar um slot da Hotbar/Inventário. Cada uma
@@ -30,7 +31,12 @@ export interface SlotVisual {
 export function resolveSlotVisual(ref: SlotRef): SlotVisual | null {
   if (ref.category === 'tool') {
     const tool = TOOLS[ref.id as ToolId];
-    return tool ? { name: tool.name, textureKey: tool.textureKey, iconFrame: tool.iconFrame } : null;
+    if (tool) return { name: tool.name, textureKey: tool.textureKey, iconFrame: tool.iconFrame };
+    // Espadas (Fase 8 — Progressão): ocupam o mesmo slot de categoria 'tool'
+    // (são equipáveis/selecionáveis igual Machado/Picareta), mas vivem na
+    // própria tabela (`data/weapons.ts`, têm `dano`/custo que `ToolDefinition` não tem).
+    const weapon = WEAPONS[ref.id];
+    return weapon ? { name: weapon.name, textureKey: weapon.textureKey, iconFrame: weapon.iconFrame } : null;
   }
   if (ref.category === 'seed') {
     const crop = CROPS[ref.id];
