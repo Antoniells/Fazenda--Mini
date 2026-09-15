@@ -2,8 +2,10 @@ import Phaser from 'phaser';
 import { BridgeDefinition, FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
-import { buildBridge, buildConstructionSign } from './mapBuilder';
+import { WalkableGrid } from './grid';
+import { buildBridge, buildConstructionSign, bridgeRailingCells } from './mapBuilder';
 import { LockedMessage } from '../ui/lockedMessage';
+import { gameState } from './gameState';
 
 /**
  * DEBUG (Sistema de Cenas): `false` — pedido explícito do usuário pra
@@ -29,45 +31,62 @@ class BridgeInteractable implements Interactable {
 }
 
 /**
- * Sistema de Cenas — pontes: cada uma das 4 pontes (`farmMap.bridges`) é um
- * objeto sólido (célula sempre bloqueada, já que fica sobre a própria
- * parede do núcleo — ver `systems/grid.ts`) com interação adjacente, mesmo
- * mecanismo já usado pela Loja/Caixa de Remessas/placas de expansão
- * (`PlayerController.handleBlockedClick`): o jogador anda até a célula
- * andável mais próxima e interage de frente, sem precisar "pisar" na ponte.
+ * Sistema de Cenas — pontes: cada uma das 4 pontes (`farmMap.bridges`) nasce
+ * BLOQUEADA (célula sólida sobre a própria parede do núcleo — ver
+ * `systems/grid.ts`), com interação adjacente igual à Loja/Caixa de
+ * Remessas/placas de expansão (`PlayerController.handleBlockedClick`): o
+ * jogador anda até a célula andável mais próxima e interage de frente,
+ * mostrando o requisito (`LockedMessage`) ou pagando na hora.
  *
- * Bloqueada, mostra os requisitos numa mensagem na tela (`LockedMessage`).
- * Destravada (ou se o jogador acabou de pagar o requisito), troca de cena
- * de verdade via `scene.scene.start(...)` — um hard cut real do Phaser, não
- * uma câmera contínua — passando `returnSpawn`: a célula andável logo
- * DENTRO do núcleo, ao lado da ponte, pra onde o jogador deve reaparecer
- * se um dia voltar da cena de destino (ver `MainScene.init`).
+ * Depois de destravada (`unlockBridge`), a célula da ponte é liberada no
+ * grid e a interação de clique é removida — pedido explícito do usuário:
+ * a troca de cena não acontece mais no instante do pagamento/clique, só
+ * quando o jogador efetivamente ATRAVESSA a ponte a pé (`handlePlayerStep`,
+ * escutando o mesmo evento `player-stepped` que já dispara a cada passo,
+ * tanto por clique quanto por teclado). `scene.scene.start(...)` continua
+ * sendo um hard cut real do Phaser, não uma câmera contínua, passando
+ * `returnSpawn`: a célula andável logo DENTRO do núcleo, ao lado da ponte,
+ * pra onde o jogador deve reaparecer se um dia voltar da cena de destino
+ * (ver `MainScene.init`).
  */
 export class BridgeSystem {
-  private readonly unlocked = new Set<string>();
   private readonly lockSigns = new Map<string, Phaser.GameObjects.Image>();
+  /** Trava contra reentrância (bug relatado pelo usuário): sem isso, pisar na célula da ponte várias vezes durante os 300ms de `fadeOut` disparava `crossInto`/`scene.start` mais de uma vez, travando a troca de cena. */
+  private isTransitioning = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly map: FarmMapData,
+    private readonly grid: WalkableGrid,
     private readonly inventory: Inventory,
-    interactions: InteractionRegistry,
+    private readonly interactions: InteractionRegistry,
     private readonly lockedMessage: LockedMessage,
   ) {
     for (const bridge of map.bridges) {
       buildBridge(scene, map.tileSize, bridge);
 
-      if (DEBUG_BRIDGES_START_UNLOCKED) {
-        this.unlocked.add(this.key(bridge));
-      } else {
-        // Placa de "obra em andamento" por cima — mesmo indicador visual já
-        // usado pelas expansões de propriedade, reaproveitado aqui pra não
-        // precisar de um asset novo só pra "isto está bloqueado".
-        this.lockSigns.set(this.key(bridge), buildConstructionSign(scene, map.tileSize, bridge.col, bridge.row));
-      }
+      // Colisão dos corrimões laterais (pedido explícito do usuário): a
+      // arte da ponte é sempre desenhada aqui em cima, destravada ou não
+      // (só a placa de bloqueio muda) — então essas 2 células ficam
+      // bloqueadas incondicionalmente, pra sempre, criando o "túnel"
+      // invisível por cima do qual o corrimão nunca é pisável.
+      for (const [col, row] of bridgeRailingCells(bridge)) this.grid.block(col, row);
 
-      interactions.set(bridge.col, bridge.row, new BridgeInteractable(this, bridge));
+      // NOVA LÓGICA: Verifica se a ponte já está no gameState global!
+      if (DEBUG_BRIDGES_START_UNLOCKED || gameState.unlockedBridges.has(this.key(bridge))) {
+        this.unlockBridge(bridge);
+      } else {
+        this.lockSigns.set(this.key(bridge), buildConstructionSign(scene, map.tileSize, bridge.col, bridge.row));
+        interactions.set(bridge.col, bridge.row, new BridgeInteractable(this, bridge));
+      }
     }
+    // ... resto do construtor
+
+    // Mesmo evento que `FarmlandRenderer.rustleCrop`/fechar a Loja já usam
+    // (emitido por `PlayerController.update` a cada célula nova) — é o
+    // único jeito de saber que o jogador REALMENTE chegou na célula da
+    // ponte, não importa se foi por clique ou pelas setas/WASD.
+    scene.events.on('player-stepped', (col: number, row: number) => this.handlePlayerStep(col, row));
   }
 
   private key(bridge: BridgeDefinition): string {
@@ -75,26 +94,33 @@ export class BridgeSystem {
   }
 
   isUnlocked(bridge: BridgeDefinition): boolean {
-    return this.unlocked.has(this.key(bridge));
+    return gameState.unlockedBridges.has(this.key(bridge));
   }
 
-  /** Chamado pela ponte (`BridgeInteractable`) ao interagir — bloqueada ou não. */
+  /** Chamado pela ponte (`BridgeInteractable`) ao interagir — só acontece enquanto ela ainda está bloqueada (depois de destravada, a própria interação é removida, ver `unlockBridge`). */
   tryCross(bridge: BridgeDefinition): void {
-    if (this.isUnlocked(bridge)) {
-      this.crossInto(bridge);
-      return;
-    }
-
     if (this.tryPayRequirement(bridge)) {
-      this.unlocked.add(this.key(bridge));
-      this.lockSigns.get(this.key(bridge))?.destroy();
-      this.lockSigns.delete(this.key(bridge));
-      console.log(`Ponte para ${bridge.destinationName} desbloqueada!`);
-      this.crossInto(bridge);
+      this.unlockBridge(bridge);
+      console.log(`Ponte para ${bridge.destinationName} desbloqueada! Atravesse a ponte para entrar.`);
       return;
     }
 
     this.lockedMessage.show(`Bloqueado: ${bridge.destinationName}`, this.describeRequirement(bridge));
+  }
+
+  /** Libera a célula da ponte no grid e tira a placa/interação de bloqueio — a travessia em si só acontece de verdade quando o jogador pisar nela (`handlePlayerStep`). */
+  private unlockBridge(bridge: BridgeDefinition): void {
+    gameState.unlockedBridges.add(this.key(bridge));
+    this.lockSigns.get(this.key(bridge))?.destroy();
+    this.lockSigns.delete(this.key(bridge));
+    this.grid.unblock(bridge.col, bridge.row);
+    this.interactions.remove(bridge.col, bridge.row);
+  }
+
+  /** Pedido explícito do usuário: a troca de cena só dispara quando o jogador pisa de fato na célula de uma ponte já destravada. */
+  private handlePlayerStep(col: number, row: number): void {
+    const bridge = this.map.bridges.find((b) => b.col === col && b.row === row);
+    if (bridge && this.isUnlocked(bridge) && !this.isTransitioning) this.crossInto(bridge);
   }
 
   /** Tenta pagar o requisito (moedas hoje — itens específicos ainda não têm estoque real pra checar, ver `BridgeRequirement`). `false` sem gastar nada se faltar algo. */
@@ -124,11 +150,19 @@ export class BridgeSystem {
     return { col: cols - 2, row: bridge.row };
   }
 
-  private crossInto(bridge: BridgeDefinition): void {
-    this.scene.scene.start(bridge.destinationSceneKey, {
-      areaName: bridge.destinationName,
-      returnSceneKey: MAIN_SCENE_KEY,
-      returnSpawn: this.computeReturnSpawn(bridge),
+private crossInto(bridge: BridgeDefinition): void {
+    this.isTransitioning = true;
+
+    // Inicia o fade out (escurece a tela em 300 milissegundos)
+    this.scene.cameras.main.fadeOut(300, 0, 0, 0);
+    
+    // Aguarda o fade out terminar para trocar de cena
+    this.scene.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.scene.start(bridge.destinationSceneKey, {
+        areaName: bridge.destinationName,
+        returnSceneKey: MAIN_SCENE_KEY,
+        returnSpawn: this.computeReturnSpawn(bridge),
+      });
     });
   }
 }

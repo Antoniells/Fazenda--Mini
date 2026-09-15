@@ -3,12 +3,13 @@ import { BridgeDefinition, ExpansionDirection } from '../data/maps/farmMap';
 import { GRASS_TILESET_KEY, GRASS_TILESET_PATH, TILE_SIZE, BRIDGE_KEY, BRIDGE_PATH } from '../data/tiles';
 import { PLAYER_IDLE_KEY, PLAYER_IDLE_PATH, PLAYER_WALK_KEY, PLAYER_WALK_PATH, PLAYER_FRAME_SIZE } from '../data/player';
 import { SHADOW_KEY, SHADOW_PATH } from '../data/effects';
-import { buildGroundChunk, buildBridge, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { buildGroundChunk, buildBridge, bridgeRailingCells, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { setupWorldCamera } from '../systems/cameraSetup';
 import { WalkableGrid } from '../systems/grid';
+import { TileCursor } from '../systems/tileCursor';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
-import { InteractionRegistry, Interactable } from '../systems/interaction';
+import { InteractionRegistry } from '../systems/interaction';
 import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen } from './UIScene';
 
 /** Dados que chegam de `scene.start(key, data)` ao atravessar a ponte da Fazenda (ver `systems/bridgeSystem.ts`). */
@@ -99,15 +100,6 @@ function buildExternalGrid(cols: number, rows: number, obstacleCells: Array<[num
   return { cols, rows, inBounds, isWalkable, block, unblock };
 }
 
-/** Interagir com a ponte de volta (sempre destravada — voltar pra Fazenda nunca teve requisito). */
-class ReturnBridgeInteractable implements Interactable {
-  constructor(private readonly scene: ExternalMapScene) {}
-
-  interact(): void {
-    this.scene.returnToFarm();
-  }
-}
-
 /**
  * Base compartilhada das 4 cenas de destino das pontes (Floresta/Pedreira/
  * Caverna/Praia — Sistema de Cenas): cada uma só define o próprio tamanho,
@@ -123,6 +115,8 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   protected entryData!: ExternalMapEntryData;
   protected player!: Player;
   protected controller!: PlayerController;
+  /** Trava contra reentrância (mesmo bug/fix de `BridgeSystem.isTransitioning`): sem isso, pisar várias vezes na célula da ponte durante o `fadeOut` de `returnToFarm` disparava `scene.start` mais de uma vez. */
+  protected isTransitioning = false;
 
   constructor(
     key: string,
@@ -180,10 +174,25 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     };
     buildBridge(this, TILE_SIZE, returnBridge);
 
-    const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
-
+const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
     const interactions = new InteractionRegistry();
-    interactions.set(bridgeCell.col, bridgeCell.row, new ReturnBridgeInteractable(this));
+
+    // 1. Libera a passagem na célula da ponte (furando a borda bloqueada do mapa)
+    grid.unblock(bridgeCell.col, bridgeCell.row);
+
+    // Colisão dos corrimões laterais (pedido explícito do usuário, mesma
+    // regra da Fazenda — ver `bridgeRailingCells`): a ponte de volta aqui
+    // não tem trava/placa (sempre destravada), mas a arte é igualmente
+    // mais larga que 1 tile, então precisa do mesmo "túnel" invisível.
+    for (const [col, row] of bridgeRailingCells(returnBridge)) grid.block(col, row);
+
+    // 2. Escuta quando o jogador pisa na célula da ponte para acionar a viagem
+    this.events.on('player-stepped', (col: number, row: number) => {
+      if (col === bridgeCell.col && row === bridgeCell.row && !this.isTransitioning) {
+        this.isTransitioning = true;
+        this.returnToFarm();
+      }
+    });
 
     const spawn = computeSpawnInFrontOf(returnDirection, bridgeCell);
     this.player = new Player(this, spawn.col, spawn.row, tilePx);
@@ -199,6 +208,11 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       handleClick: () => {},
     });
     setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
+
+    // Mesmo destaque de célula sob o mouse já usado na Fazenda (Fase 9,
+    // pedido explícito do usuário) — sem lavoura aqui, então sempre o
+    // cantinho branco/global (`farmlandArea` fica no padrão vazio).
+    new TileCursor(this, tilePx, grid);
 
     ensureUIScene(this);
 
@@ -216,6 +230,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(4000);
+      this.cameras.main.fadeIn(300, 0, 0, 0);
   }
 
   /**
@@ -232,7 +247,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     if (!isInventoryOpen()) this.controller.update(time, delta);
   }
 
-  returnToFarm(): void {
-    this.scene.start(this.entryData.returnSceneKey, { spawnPoint: this.entryData.returnSpawn });
+returnToFarm(): void {
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.start(this.entryData.returnSceneKey, { spawnPoint: this.entryData.returnSpawn });
+    });
   }
 }

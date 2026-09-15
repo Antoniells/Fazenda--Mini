@@ -18,7 +18,8 @@ import {
   PLAYER_HOUSE_KEY,
   BRIDGE_KEY,
   BRIDGE_HORIZONTAL_FRAME,
-  BRIDGE_VERTICAL_FRAME,
+  BRIDGE_VERTICAL_WALL_TILE_FRAME,
+  BRIDGE_VERTICAL_POST_FRAME,
 } from '../data/tiles';
 import { createGroundShadow } from './shadow';
 import { pickGroundTileVariant } from './groundVariation';
@@ -230,24 +231,40 @@ export function buildExpansionChunkFence(scene: Phaser.Scene, tileSize: number, 
 }
 
 /**
- * Placa de "obra em andamento" (Fase 6 — Expansão): marca onde fica cada
- * trecho comprável, reaproveitando `Objects/Exterior/Construction area.png`
- * (caixa de ferramentas + capacete) — não é uma placa de verdade, mas é o
- * objeto mais próximo disso no pacote de assets, e a ideia de "terreno em
- * obras, aguardando liberação" combina com o que ele representa aqui.
+ * Escala da placa de "obra" nas pontes bloqueadas (ver `buildConstructionSign`).
+ * `Objects/Exterior/Construction area.png` (112x48) não é um ícone pequeno —
+ * é uma barricada de madeira inteira, mais larga que a própria ponte na
+ * escala padrão (`DISPLAY_SCALE * 0.5`, confirmado visualmente: sobrava dos
+ * dois lados da ponte VERTICAL, 96px de largura, criando um "muro" torto).
+ * Reduzida pra caber dentro da largura da ponte mais estreita.
+ */
+const CONSTRUCTION_SIGN_SCALE = 0.7;
+
+/**
+ * Placa de "obra em andamento" nas pontes bloqueadas (`BridgeSystem`),
+ * reaproveitando `Objects/Exterior/Construction area.png` (barricada de
+ * madeira com aviso de capacete/chave inglesa) — não é uma placa de
+ * verdade, mas é o objeto mais próximo disso no pacote de assets, e a ideia
+ * de "travessia interditada, obra em andamento" combina com o requisito de
+ * pagar pra desbloquear. Centralizada exatamente sobre a ponte (mesma
+ * âncora dela — `origin(0.5,0.5)`), em vez de "em pé" na célula como um
+ * objeto comum: colocada como um objeto normal (âncora na base), a
+ * barricada ficava mais larga que a ponte e desalinhada verticalmente com
+ * ela, parecendo dois "muros" atravessados um no outro.
  */
 export function buildConstructionSign(scene: Phaser.Scene, tileSize: number, col: number, row: number): Phaser.GameObjects.Image {
   const tile = tileSize * DISPLAY_SCALE;
   const x = col * tile + tile / 2;
-  const y = (row + 1) * tile;
-
-  const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.3, DISPLAY_SCALE * 0.5);
-  shadow.setDepth(STATIC_SHADOW_DEPTH);
+  const y = row * tile + tile / 2;
 
   const sign = scene.add.image(x, y, CONSTRUCTION_SIGN_KEY);
-  sign.setOrigin(0.5, 1);
-  sign.setScale(DISPLAY_SCALE * 0.5);
-  sign.setDepth(sign.y);
+  sign.setOrigin(0.5, 0.5);
+  sign.setScale(CONSTRUCTION_SIGN_SCALE);
+  // Acima da ponte (depth fixo BRIDGE_DEPTH=1, ver `buildBridge`) — qualquer
+  // valor de profundidade "normal" (y de um objeto de mundo, sempre bem
+  // maior que 1) já garante isso, sem precisar reordenar em relação ao
+  // personagem (a célula da ponte é sempre bloqueada, ninguém pisa nela).
+  sign.setDepth(y + 0.5);
 
   return sign;
 }
@@ -262,37 +279,123 @@ export function buildConstructionSign(scene: Phaser.Scene, tileSize: number, col
  */
 const BRIDGE_DEPTH = 1;
 
+function registerBridgeFrame(texture: Phaser.Textures.Texture, frame: { name: string; rect: { x: number; y: number; width: number; height: number } }): void {
+  if (texture.has(frame.name)) return;
+  const { name, rect } = frame;
+  texture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+}
+
+/** Largura total (px nativos) da parede norte/sul montada em `buildVerticalBridge` — mesma largura de `BRIDGE_VERTICAL_FRAME` original (48), só que sem nenhum poste embutido nela. */
+const BRIDGE_VERTICAL_WALL_WIDTH = 48;
+/**
+ * Offset (px nativos, a partir do centro) de cada poste. O direito fica
+ * onde já estava originalmente (perto da borda, 21.5px do centro — ver
+ * comentário de `BRIDGE_VERTICAL_POST_FRAME` em `data/tiles.ts`); o esquerdo
+ * agora é colocado na posição espelhada, encostado na borda esquerda
+ * também — pedido explícito do usuário ("mova até a borda da ponte").
+ */
+const BRIDGE_VERTICAL_RIGHT_POST_OFFSET = 21.5;
+const BRIDGE_VERTICAL_LEFT_POST_OFFSET = -BRIDGE_VERTICAL_RIGHT_POST_OFFSET;
+
+/**
+ * Parede norte/sul (Fase 9 — polimento): montada a partir de 2 peças, não
+ * de um recorte único como `BRIDGE_HORIZONTAL_FRAME` — ver o comentário de
+ * `BRIDGE_VERTICAL_WALL_TILE_FRAME`/`BRIDGE_VERTICAL_POST_FRAME` em
+ * `data/tiles.ts` pra entender por quê (o recorte único original tinha os
+ * 2 postes de reforço quase colados um no outro, perto do centro, e
+ * qualquer tentativa de "remendar"/mover um deles por cima deixava emenda
+ * visível na grade de juntas da madeira). Um `TileSprite` de 4px repete a
+ * ripa lisa (sem poste) pela largura toda sem nenhuma emenda por
+ * construção; os 2 postes são desenhados por cima, cada um na sua própria
+ * posição, sem nenhum vínculo um com o outro.
+ */
+function buildVerticalBridgeWall(scene: Phaser.Scene, x: number, y: number): void {
+  const texture = scene.textures.get(BRIDGE_KEY);
+  registerBridgeFrame(texture, BRIDGE_VERTICAL_WALL_TILE_FRAME);
+  registerBridgeFrame(texture, BRIDGE_VERTICAL_POST_FRAME);
+
+  const wallWidthPx = BRIDGE_VERTICAL_WALL_WIDTH * DISPLAY_SCALE;
+  const wallHeightPx = BRIDGE_VERTICAL_WALL_TILE_FRAME.rect.height * DISPLAY_SCALE;
+  const wall = scene.add.tileSprite(x, y, wallWidthPx, wallHeightPx, BRIDGE_KEY, BRIDGE_VERTICAL_WALL_TILE_FRAME.name);
+  wall.setOrigin(0.5, 0.5);
+  wall.setTileScale(DISPLAY_SCALE, DISPLAY_SCALE);
+  wall.setDepth(BRIDGE_DEPTH);
+
+  for (const offset of [BRIDGE_VERTICAL_LEFT_POST_OFFSET, BRIDGE_VERTICAL_RIGHT_POST_OFFSET]) {
+    const post = scene.add.image(x + offset * DISPLAY_SCALE, y, BRIDGE_KEY, BRIDGE_VERTICAL_POST_FRAME.name);
+    post.setOrigin(0.5, 0.5);
+    post.setScale(DISPLAY_SCALE);
+    post.setDepth(BRIDGE_DEPTH + 0.1);
+  }
+}
+
 /**
  * Desenha a ponte de transição de cena (`farmMap.bridges`) na célula
  * definida — sobre a parede do núcleo, cobrindo os tiles de cerca dali
- * (`BRIDGE_DEPTH` acima deles). Usa a variante VERTICAL do asset (corrimãos
- * nas laterais, tabuleiro de cima a baixo — pra atravessar andando na
- * vertical) nas paredes norte/sul, e a HORIZONTAL (corrimãos em cima/embaixo,
- * tabuleiro de um lado a outro — pra atravessar andando na horizontal) em
- * leste/oeste — confirmado visualmente no asset (`Bridge.png`), corrigindo
- * bug relatado de orientação trocada. Objeto plano de chão (como a própria
- * cerca), por isso `origin(0.5, 0.5)` centralizado na célula, e não
- * `origin(0.5, 1)` como objetos "em pé" (placas, árvores).
+ * (`BRIDGE_DEPTH` acima deles). Norte/sul montam a própria parede em
+ * `buildVerticalBridgeWall` (ripas finas de madeira, corrimão mais
+ * discreto — pedido explícito do usuário, preferido à alvenaria grossa).
+ * Leste/oeste usam `BRIDGE_HORIZONTAL_FRAME` (alvenaria, aprovado como
+ * está) — um recorte único de verdade, sem o problema de postes
+ * desalinhados. Objeto plano de chão (como a própria cerca), por isso
+ * `origin(0.5, 0.5)` centralizado na célula, e não `origin(0.5, 1)` como
+ * objetos "em pé" (placas, árvores).
  */
-export function buildBridge(scene: Phaser.Scene, tileSize: number, bridge: BridgeDefinition): Phaser.GameObjects.Image {
+export function buildBridge(scene: Phaser.Scene, tileSize: number, bridge: BridgeDefinition): void {
   const tile = tileSize * DISPLAY_SCALE;
   const isVerticalCrossing = bridge.direction === 'north' || bridge.direction === 'south';
-  const frame = isVerticalCrossing ? BRIDGE_VERTICAL_FRAME : BRIDGE_HORIZONTAL_FRAME;
-
-  const texture = scene.textures.get(BRIDGE_KEY);
-  if (!texture.has(frame.name)) {
-    texture.add(frame.name, 0, frame.rect.x, frame.rect.y, frame.rect.width, frame.rect.height);
-  }
 
   const x = bridge.col * tile + tile / 2;
   const y = bridge.row * tile + tile / 2;
 
-  const image = scene.add.image(x, y, BRIDGE_KEY, frame.name);
+  if (isVerticalCrossing) {
+    buildVerticalBridgeWall(scene, x, y);
+    return;
+  }
+
+  const texture = scene.textures.get(BRIDGE_KEY);
+  registerBridgeFrame(texture, BRIDGE_HORIZONTAL_FRAME);
+
+  const image = scene.add.image(x, y, BRIDGE_KEY, BRIDGE_HORIZONTAL_FRAME.name);
   image.setOrigin(0.5, 0.5);
   image.setScale(DISPLAY_SCALE);
   image.setDepth(BRIDGE_DEPTH);
+}
 
-  return image;
+/**
+ * Células (col, row) dos corrimões laterais de uma ponte — bloqueadas no
+ * `WalkableGrid` pra criar um "túnel" invisível, só a célula central
+ * (`bridge.col`/`bridge.row`, já tratada à parte por quem chama) fica
+ * andável (pedido explícito do usuário: a arte da ponte é mais larga que 1
+ * tile, o jogador não pode andar por cima do corrimão nem sair pela
+ * lateral). Medido pixel a pixel ao vivo (recorte/zoom + overlay de grid,
+ * ponte destravada): a arte sempre cobre exatamente 1 célula de cada lado
+ * do trecho que fica DENTRO do núcleo (o lado que fica fora do núcleo não
+ * importa pra colisão — vira outra cena).
+ *
+ * Norte/sul (`buildVerticalBridgeWall`, corrimão de ripas): o painel cobre
+ * 3 colunas (`col-1..col+1`) e ~1 célula pra dentro do núcleo além da
+ * própria borda (que já é bloqueada por inteiro) — daí bloquear
+ * `col-1`/`col+1` na linha logo depois da borda.
+ *
+ * Leste/oeste (`BRIDGE_HORIZONTAL_FRAME`, alvenaria): o mesmo raciocínio,
+ * só que girado 90° — o painel cobre 3 linhas (`row-1..row+1`) e ~1 célula
+ * pra dentro do núcleo além da própria borda, daí bloquear `row-1`/`row+1`
+ * na coluna logo depois da borda.
+ */
+export function bridgeRailingCells(bridge: BridgeDefinition): Array<[number, number]> {
+  const isVerticalCrossing = bridge.direction === 'north' || bridge.direction === 'south';
+  // Passo (em células) da borda pra DENTRO do núcleo — norte/oeste entram
+  // em coordenadas crescentes, sul/leste em decrescentes.
+  const interiorStep = bridge.direction === 'north' || bridge.direction === 'west' ? 1 : -1;
+
+  if (isVerticalCrossing) {
+    const row = bridge.row + interiorStep;
+    return [[bridge.col - 1, row], [bridge.col + 1, row]];
+  }
+
+  const col = bridge.col + interiorStep;
+  return [[col, bridge.row - 1], [col, bridge.row + 1]];
 }
 
 /**

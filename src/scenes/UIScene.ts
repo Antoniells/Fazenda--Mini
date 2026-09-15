@@ -12,15 +12,23 @@ export const HOTBAR_CHANGED_EVENT = 'hotbar-changed';
  * Garante que a `UIScene` esteja rodando por cima da cena de mapa atual —
  * chamada no início do `create()` de toda cena de mapa (`MainScene` e as
  * cenas externas, ver `scenes/ExternalMapScene.ts`). `launch` (não
- * `start`) roda a `UIScene` em PARALELO, sem parar a cena que chamou; o
- * guard `isActive` garante que ela só é criada (Hotbar/HUD instanciados)
- * na primeira vez — trocas de cena depois disso (`scene.start`) reiniciam
- * a cena de mapa, mas nunca a `UIScene`, que é exatamente o pedido
- * ("HUDs não podem sumir ao trocar de mapa").
+ * `start`) roda a `UIScene` em PARALELO, sem parar a cena que chamou.
+ *
+ * Correção de segurança pedida pelo usuário: `isActive()` sozinho não
+ * basta — numa transição rápida entre cenas, a `UIScene` pode estar
+ * registrada mas ainda não `active` (ou dormindo), e `isActive()` nesse
+ * meio-tempo devolve `false`, levando a chamar `launch` de novo e duplicar
+ * a instância (Hotbar/HUD repetidos). Em vez disso: `manager.keys` diz se
+ * a cena já existe DE VERDADE (registrada) — só usa `launch` se nunca
+ * existiu; se existe mas está dormindo (`isSleeping`), `wake` em vez de
+ * relançar.
  */
 export function ensureUIScene(scene: Phaser.Scene): void {
-  if (!scene.scene.isActive(UI_SCENE_KEY)) {
+  const manager = scene.scene.manager;
+  if (!manager.keys[UI_SCENE_KEY]) {
     scene.scene.launch(UI_SCENE_KEY);
+  } else if (manager.isSleeping(UI_SCENE_KEY)) {
+    scene.scene.wake(UI_SCENE_KEY);
   }
   scene.scene.bringToTop(UI_SCENE_KEY);
 }

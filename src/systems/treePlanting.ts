@@ -85,6 +85,11 @@ export class TreePlantingSystem implements PointerInputInterceptor {
     return this.active;
   }
 
+  /** Sprites das árvores plantadas pelo jogador (bolota → qualquer estágio) — pedido explícito do usuário: `MainScene.updateTreeOverlap` só recebia as árvores estáticas do mapa, então uma árvore plantada nunca ficava semitransparente ao personagem passar atrás dela. */
+  getPlantedTrees(): Phaser.GameObjects.Image[] {
+    return Array.from(this.treeVisuals.values()).map((v) => v.sprite);
+  }
+
   /** Alterna o modo de plantio. Sem bolotas no estoque, não entra no modo (só avisa no console). */
   toggle(): void {
     if (this.active) {
@@ -129,7 +134,6 @@ export class TreePlantingSystem implements PointerInputInterceptor {
     if (!this.inventory.useResource(ACORN.id)) return;
 
     resourceNodeRegistry.addNode(FARM_TREES_SCENE_KEY, { col, row, kind: 'tree', stage: 'sprout' });
-    this.grid.block(col, row);
     this.treeVisuals.set(cellKey(col, row), buildGrowingTree(this.scene, TILE_SIZE, col, row, 'sprout'));
     console.log(`Bolota plantada — vai crescer com o passar dos dias.`);
 
@@ -142,11 +146,12 @@ export class TreePlantingSystem implements PointerInputInterceptor {
    * ponte, mas o registro sobrevive) e depois de uma virada de dia (pra
    * mostrar o novo estágio sem precisar sair/voltar da Fazenda).
    */
-  private renderFromRegistry(): void {
+private renderFromRegistry(): void {
     for (const node of resourceNodeRegistry.getNodes(FARM_TREES_SCENE_KEY)) {
-      this.grid.block(node.col, node.row);
       this.treeVisuals.set(cellKey(node.col, node.row), buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage));
+      
       if (node.stage === 'mature') {
+        this.grid.block(node.col, node.row); // <-- Bloqueia SÓ se for madura!
         this.interactions.set(
           node.col,
           node.row,
@@ -164,5 +169,27 @@ export class TreePlantingSystem implements PointerInputInterceptor {
     }
     this.treeVisuals.clear();
     this.renderFromRegistry();
+  }
+
+  /** Faz os brotos e mudas balançarem ao jogador pisar em cima */
+  rustle(col: number, row: number): void {
+    const key = cellKey(col, row);
+    const visual = this.treeVisuals.get(key);
+    if (!visual || this.scene.tweens.isTweening(visual.sprite)) return;
+
+    const node = resourceNodeRegistry.getNodes(FARM_TREES_SCENE_KEY).find(n => n.col === col && n.row === row);
+    
+    // Só balança se NÃO for madura
+    if (node && node.stage !== 'mature') {
+      this.scene.tweens.add({
+        targets: visual.sprite,
+        angle: { from: 0, to: 8 },
+        duration: 120,
+        yoyo: true,
+        repeat: 1,
+        ease: 'Sine.easeInOut',
+        onComplete: () => visual.sprite.setAngle(0),
+      });
+    }
   }
 }
