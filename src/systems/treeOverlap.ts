@@ -35,6 +35,9 @@ export function coverageRatio(a: Phaser.Geom.Rectangle, b: Phaser.Geom.Rectangle
  * personagem está coberto por ela (mais próximo/coberto = mais transparente),
  * em vez de alternar abruptamente entre opaco e semitransparente.
  */
+/** Largura (px) de 1 tile do grid — a caixa de transparência é restrita a isso (o tronco), não a copa inteira, pra bater com a colisão real (1x1). */
+const TRUNK_WIDTH_PX = 32;
+
 export function updateTreeOverlap(player: Player, trees: Phaser.GameObjects.Image[]): void {
   const sprite = player.sprite;
   sprite.setDepth(sprite.y);
@@ -43,7 +46,13 @@ export function updateTreeOverlap(player: Player, trees: Phaser.GameObjects.Imag
 
   for (const tree of trees) {
     const treeInFront = tree.depth > sprite.depth;
-    const coverage = treeInFront ? coverageRatio(playerBounds, tree.getBounds()) : 0;
+    const treeBounds = tree.getBounds();
+
+    // Restringe a largura ao tamanho de 1 tile (32px) focado no tronco.
+    treeBounds.x += (treeBounds.width - TRUNK_WIDTH_PX) / 2;
+    treeBounds.width = TRUNK_WIDTH_PX;
+
+    const coverage = treeInFront ? coverageRatio(playerBounds, treeBounds) : 0;
     tree.setAlpha(Phaser.Math.Linear(1, MIN_ALPHA, coverage));
   }
 }

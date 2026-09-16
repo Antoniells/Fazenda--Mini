@@ -43,8 +43,8 @@ import {
   PLAYER_ACTIONS,
 } from '../data/player';
 import { CROPS, CARROT, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
-import { DECORATIONS, WELL } from '../data/decorations';
-import { HOE, SICKLE, AXE, PICKAXE } from '../data/tools';
+import { DECORATIONS, WELL, DecorationDefinition } from '../data/decorations';
+import { HOE, SICKLE, AXE, PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
 import {
   INVENTORY_UI_KEY,
   INVENTORY_UI_PATH,
@@ -75,6 +75,7 @@ import {
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_BUTTON_SHEET_PATH,
   CLOSE_X_ICON_FRAME,
+  CLOSE_X_ICON_PRESSED_FRAME,
   BACKPACK_ICON_KEY,
   BACKPACK_ICON_PATH,
   FISHING_ROD_ICON_KEY,
@@ -91,8 +92,11 @@ import { BridgeSystem } from '../systems/bridgeSystem';
 import { TreePlantingSystem, advanceFarmTreesDay } from '../systems/treePlanting';
 import { advanceForestDay } from './ForestScene';
 import { advanceQuarryDay } from './QuarryScene';
-import { ACORN, RESOURCES } from '../data/resources';
-import { PURCHASABLE_WEAPONS, WEAPONS } from '../data/weapons';
+import { ACORN } from '../data/resources';
+import { WEAPONS } from '../data/weapons';
+import { ARMORS } from '../data/armors';
+import { RECIPES } from '../data/recipes';
+import { SlotRef, resolveSlotVisual } from '../data/items';
 import { updateTreeOverlap } from '../systems/treeOverlap';
 import { GameClock, DAY_LENGTH_MS } from '../systems/gameClock';
 import { DayNightOverlay } from '../systems/dayNightOverlay';
@@ -108,10 +112,19 @@ import { registerShopInteractable } from '../systems/shopInteraction';
 import { registerSleepInteractable } from '../systems/sleepInteraction';
 import { TileCursor } from '../systems/tileCursor';
 import { DecorationPlacementSystem } from '../systems/decorationPlacement';
+import { DebugGridOverlay } from '../systems/debugGridOverlay';
 import { PauseMenu } from '../ui/pauseMenu';
 import { LockedMessage } from '../ui/lockedMessage';
 import { gameState } from '../systems/gameState';
-import { ensureUIScene, HOTBAR_CHANGED_EVENT, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen } from './UIScene';
+import {
+  ensureUIScene,
+  HOTBAR_CHANGED_EVENT,
+  isInventoryOpen,
+  toggleInventoryScreen,
+  closeInventoryScreen,
+  isCraftingMenuOpen,
+  closeCraftingMenu,
+} from './UIScene';
 import { setupWorldCamera } from '../systems/cameraSetup';
 import { ShopMenu, ShopItem, ShopTabDefinition } from '../ui/shopMenu';
 
@@ -131,6 +144,8 @@ const SLEEP_FADE_MS = 600;
 export class MainScene extends Phaser.Scene {
   private player!: Player;
   private controller!: PlayerController;
+  /** DEBUG TEMPORÁRIO — ver `systems/debugGridOverlay.ts`. */
+  private debugGridOverlay!: DebugGridOverlay;
   private trees!: Phaser.GameObjects.Image[];
   private grassTufts!: GrassTuftMap;
   private farmland!: Farmland;
@@ -213,6 +228,23 @@ export class MainScene extends Phaser.Scene {
 
     for (const weapon of Object.values(WEAPONS)) {
       this.load.spritesheet(weapon.textureKey, encodeURI(`/${weapon.texturePath}`), {
+        frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
+        frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
+      });
+    }
+
+    // Ferramentas de progressão e armaduras (Fase 8 — Crafting): só se obtêm
+    // fabricando na Bancada depois de comprar a Receita na Loja, mas o
+    // ícone precisa estar carregado desde já pra aparecer na aba de
+    // Receitas (ver `shopItems` abaixo).
+    for (const tool of [IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE]) {
+      this.load.spritesheet(tool.textureKey, encodeURI(`/${tool.texturePath}`), {
+        frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
+        frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
+      });
+    }
+    for (const armor of Object.values(ARMORS)) {
+      this.load.spritesheet(armor.textureKey, encodeURI(`/${armor.texturePath}`), {
         frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
         frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
       });
@@ -308,8 +340,22 @@ export class MainScene extends Phaser.Scene {
         CLOSE_X_ICON_FRAME.rect.y,
         CLOSE_X_ICON_FRAME.rect.width,
         CLOSE_X_ICON_FRAME.rect.height,
+        
+      );
+      
+    }
+    if (!closeButtonSheetTexture.has(CLOSE_X_ICON_PRESSED_FRAME.name)) {
+      closeButtonSheetTexture.add(
+        CLOSE_X_ICON_PRESSED_FRAME.name,
+        0,
+        CLOSE_X_ICON_PRESSED_FRAME.rect.x,
+        CLOSE_X_ICON_PRESSED_FRAME.rect.y,
+        CLOSE_X_ICON_PRESSED_FRAME.rect.width,
+        CLOSE_X_ICON_PRESSED_FRAME.rect.height,
       );
     }
+
+    
 
     const cropIconsTexture = this.textures.get(ALL_CROPS_ICONS_KEY);
     for (const crop of Object.values(CROPS)) {
@@ -409,21 +455,24 @@ export class MainScene extends Phaser.Scene {
         textureKey: ALL_CROPS_ICONS_KEY,
         iconFrame: CARROT.iconFrameName,
         tabFrame: TAB_FRAME_AGRICULTURE.name,
-        tabFrameLight: TAB_FRAME_AGRICULTURE_LIGHT.name,
+        tabFrameHover: TAB_FRAME_AGRICULTURE_LIGHT.name,
       },
+      // Categoria interna continua 'tools' (id usado por `ShopCategory`,
+      // sem texto visível na aba — só ícone/cor), mas o conteúdo agora é a
+      // aba de Receitas (Fase 8 — Crafting, ver `shopItems` abaixo).
       {
         category: 'tools',
         textureKey: HOE.textureKey,
         iconFrame: HOE.iconFrame,
         tabFrame: TAB_FRAME_TOOLS.name,
-        tabFrameLight: TAB_FRAME_TOOLS_LIGHT.name,
+        tabFrameHover: TAB_FRAME_TOOLS_LIGHT.name,
       },
       {
         category: 'construction',
         textureKey: WELL.textureKey,
         iconFrame: WELL.frameName,
         tabFrame: TAB_FRAME_CONSTRUCTION.name,
-        tabFrameLight: TAB_FRAME_CONSTRUCTION_LIGHT.name,
+        tabFrameHover: TAB_FRAME_CONSTRUCTION_LIGHT.name,
       },
     ];
 
@@ -442,20 +491,27 @@ export class MainScene extends Phaser.Scene {
         iconFrame: decoration.frameName,
         price: decoration.price,
       })),
-      ...PURCHASABLE_WEAPONS.map((weapon) => ({
-        id: weapon.id,
-        category: 'tools' as const,
-        textureKey: weapon.textureKey,
-        iconFrame: weapon.iconFrame,
-        price: weapon.price,
-        resourceCost: weapon.resourceCost
-          ? { resourceId: weapon.resourceCost.resourceId, resourceName: RESOURCES[weapon.resourceCost.resourceId].name, amount: weapon.resourceCost.amount }
-          : undefined,
-      })),
+      // Aba "Ferramentas" agora vende Receitas (Fase 8 — Crafting), não mais
+      // ferramentas/armas prontas: pedido explícito do usuário pra substituir
+      // a compra direta pelo fluxo Receita (moedas, na Loja) + fabricação
+      // (recursos, na Bancada de Trabalho — ver `data/recipes.ts`). Preço é
+      // só em moedas (`recipe.price`) — nunca `resourceCost`, os recursos são
+      // gastos na hora de fabricar, não na hora de comprar a receita.
+      ...Object.values(RECIPES).map((recipe) => {
+        const itemVisual = resolveSlotVisual({ category: recipe.category === 'armor' ? 'armor' : 'tool', id: recipe.itemId });
+        return {
+          id: recipe.id,
+          category: 'tools' as const,
+          textureKey: itemVisual?.textureKey ?? '',
+          iconFrame: itemVisual?.iconFrame ?? 0,
+          price: recipe.price,
+        };
+      }),
     ];
 
     this.shopMenu = new ShopMenu(this, shopTabs, shopItems, (itemId) => this.buyShopItem(itemId));
     registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
+    registerShopInteractable(this.shopMenu, farmMap.shopPosition[0]-1, farmMap.shopPosition[1], this.player, interactions);
 
     registerSleepInteractable(
       farmMap.houseDoorPosition[0],
@@ -489,11 +545,17 @@ export class MainScene extends Phaser.Scene {
     this.pauseMenu = new PauseMenu(this);
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
+    this.debugGridOverlay = new DebugGridOverlay(this, grid, tilePx, this.player); // DEBUG TEMPORÁRIO
     this.controller.addInputInterceptor(this.decorationPlacement);
     this.controller.addInputInterceptor(this.treePlanting);
 
     this.controller.addInputInterceptor({
       isActive: () => isInventoryOpen(),
+      handleClick: () => {},
+    });
+
+    this.controller.addInputInterceptor({
+      isActive: () => isCraftingMenuOpen(),
       handleClick: () => {},
     });
 
@@ -508,10 +570,17 @@ export class MainScene extends Phaser.Scene {
     });
 
     this.input.keyboard!.on('keydown-B', () => {
+      const decoration = this.resolveSelectedDecoration();
+      if (!decoration) return;
       if (this.shopMenu.isOpen()) this.shopMenu.close();
-      this.decorationPlacement.toggle(WELL);
+      this.decorationPlacement.toggle(decoration);
     });
-
+this.input.keyboard?.on('keydown-F2', () => {
+      console.log('Abrindo o Editor de Mapas...');
+      // Troque 'MapEditorScene' pela chave exata que você encontrou no Passo 1, se for diferente
+      this.scene.start('MapEditorScene'); 
+      return;
+    })
     this.input.keyboard!.on('keydown-ESC', () => {
       if (this.decorationPlacement.isActive()) {
         this.decorationPlacement.cancel();
@@ -519,6 +588,10 @@ export class MainScene extends Phaser.Scene {
       }
       if (isInventoryOpen()) {
         closeInventoryScreen();
+        return;
+      }
+      if (isCraftingMenuOpen()) {
+        closeCraftingMenu();
         return;
       }
       if (this.shopMenu.isOpen()) {
@@ -531,6 +604,7 @@ export class MainScene extends Phaser.Scene {
 
     this.input.keyboard!.on('keydown-E', () => {
       if (this.shopMenu.isOpen()) this.shopMenu.close();
+      if (isCraftingMenuOpen()) closeCraftingMenu();
       this.decorationPlacement.cancel();
       toggleInventoryScreen();
     });
@@ -561,9 +635,9 @@ export class MainScene extends Phaser.Scene {
   private buyShopItem(itemId: string): void {
     if (CROPS[itemId]) this.buySeed(itemId);
     else if (DECORATIONS[itemId]) this.buyDecoration(itemId);
-    else if (WEAPONS[itemId]) this.buySword(itemId);
+    else if (RECIPES[itemId]) this.buyRecipe(itemId);
 
-    this.shopMenu.refresh(this.inventory);
+    this.shopMenu.refresh(this.inventory.getCoins());
   }
 
   private buySeed(cropId: string): void {
@@ -592,40 +666,44 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  private buySword(swordId: string): void {
-    const sword = WEAPONS[swordId];
-    if (!sword) return;
+  /**
+   * Compra a Receita (Fase 8 — Crafting), não o item em si: só debita
+   * moedas (`recipe.price`) e marca em `Inventory.unlockRecipe` — os
+   * `ingredients` (recursos) só são gastos depois, ao fabricar de verdade
+   * na Bancada de Trabalho. Substitui `buySword`/compra direta de arma.
+   */
+  private buyRecipe(recipeId: string): void {
+    const recipe = RECIPES[recipeId];
+    if (!recipe) return;
 
-    if (this.inventory.hasTool(swordId)) {
-      console.log(`${sword.name} já comprada.`);
+    if (this.inventory.hasRecipe(recipeId)) {
+      console.log('Receita já desbloqueada.');
       return;
     }
 
-    const hasEnoughResource =
-      !sword.resourceCost || this.inventory.getResourceCount(sword.resourceCost.resourceId) >= sword.resourceCost.amount;
+    const itemVisual = resolveSlotVisual({ category: recipe.category === 'armor' ? 'armor' : 'tool', id: recipe.itemId });
+    const itemName = itemVisual?.name ?? recipe.itemId;
 
-    if (!hasEnoughResource) {
-      const resource = RESOURCES[sword.resourceCost!.resourceId];
-      console.log(`Recursos insuficientes para comprar ${sword.name} (precisa de ${sword.resourceCost!.amount}x ${resource.name}).`);
-      return;
+    if (this.inventory.spendCoins(recipe.price)) {
+      this.inventory.unlockRecipe(recipeId);
+      console.log(`Receita desbloqueada: ${itemName} (saldo: ${this.inventory.getCoins()}). Fabrique na Bancada de Trabalho.`);
+    } else {
+      console.log(`Moedas insuficientes para a receita de ${itemName} (precisa de ${recipe.price}).`);
     }
+  }
 
-    if (!this.inventory.spendCoins(sword.price)) {
-      console.log(`Moedas insuficientes para comprar ${sword.name} (precisa de ${sword.price}).`);
-      return;
-    }
-
-    if (sword.resourceCost) this.inventory.useResource(sword.resourceCost.resourceId, sword.resourceCost.amount);
-    this.inventory.unlockTool(swordId);
-    console.log(`Comprado: ${sword.name}! (saldo: ${this.inventory.getCoins()}).`);
+  /** Decoração do slot informado, se for da categoria `'decoration'` — usado tanto pelo atalho de teclado (B) quanto pela troca automática ao selecionar o slot (`handleHotbarChanged`), nenhum dos dois preso a uma decoração específica (Fase 9, antes só funcionava pro Poço). */
+  private resolveSelectedDecoration(slot: SlotRef | null = this.inventory.getSelectedSlot()): DecorationDefinition | undefined {
+    return slot?.category === 'decoration' ? DECORATIONS[slot.id] : undefined;
   }
 
   private handleHotbarChanged(_index: number): void {
     const selectedSlot = this.inventory.getSelectedSlot();
+    const decoration = this.resolveSelectedDecoration(selectedSlot);
 
-    if (selectedSlot && selectedSlot.category === 'decoration' && selectedSlot.id === WELL.id) {
+    if (decoration) {
       if (!this.decorationPlacement.isActive()) {
-        this.decorationPlacement.toggle(WELL);
+        this.decorationPlacement.toggle(decoration);
       }
     } else {
       this.decorationPlacement.cancel();
@@ -668,7 +746,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private isInputLocked(): boolean {
-    return isInventoryOpen() || this.isSleeping || this.pauseMenu.isOpen();
+    return isInventoryOpen() || isCraftingMenuOpen() || this.isSleeping || this.pauseMenu.isOpen();
   }
 
   private setupDebugTimeSkip(): void {
@@ -702,6 +780,7 @@ export class MainScene extends Phaser.Scene {
     const allTrees = [...this.trees, ...this.treePlanting.getPlantedTrees()];
     updateTreeOverlap(this.player, allTrees);
     this.decorationPlacement.updateOcclusion();
+    this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts` quando não precisar mais.
     this.farmlandRenderer.renderAll(this.farmland);
 
     if (!this.isSleeping && !this.pauseMenu.isOpen()) {
@@ -715,6 +794,6 @@ export class MainScene extends Phaser.Scene {
     
     this.dayNightOverlay.setNightAlpha(this.gameClock.getNightAlpha());
 
-    if (this.shopMenu.isOpen()) this.shopMenu.refresh(this.inventory);
+    if (this.shopMenu.isOpen()) this.shopMenu.refresh(this.inventory.getCoins());
   }
 }

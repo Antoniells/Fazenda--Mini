@@ -229,7 +229,25 @@ export const CLOSE_TAB_BG_FRAME = { name: 'close-tab-bg', rect: { x: 221, y: 201
  */
 export const CLOSE_BUTTON_SHEET_KEY = 'ui-hud-icons';
 export const CLOSE_BUTTON_SHEET_PATH = 'UI/HUD.png';
-export const CLOSE_X_ICON_FRAME = { name: 'close-x-icon', rect: { x: 116, y: 20, width: 8, height: 8 } };
+export const CLOSE_X_ICON_FRAME = { 
+  name: 'close-x-icon', 
+  rect: { 
+    x: 274, 
+    y: 65, 
+    width: 13, 
+    height: 13 
+  } 
+};
+
+export const CLOSE_X_ICON_PRESSED_FRAME = {
+  name: 'close-x-icon-pressed',
+  rect: { 
+    x: 274, 
+    y: 82, 
+    width: 13, 
+    height: 13 
+  }
+};
 
 /**
  * `Icons/RPG icons/Extras/Bags.png` (112x16, grid uniforme de 16x16): 7

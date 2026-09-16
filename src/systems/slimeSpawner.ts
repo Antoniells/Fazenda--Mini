@@ -39,7 +39,7 @@ export class SlimeSpawner {
       const cell = randomWalkableCell(cols, rows, grid);
       if (!cell) continue;
       const x = cell.col * tile + tile / 2;
-      const y = cell.row * tile + tile / 2;
+      const y = (cell.row + 1) * tile; // Agora a âncora (pés) fica no FUNDO do bloco, igual ao player!
       // Adicionamos o "grid" e o "tile" para o Slime saber onde pisar
       this.slimes.push(new Slime(scene, x, y, () => this.dropLoot(), grid, tile));
     }

@@ -25,6 +25,7 @@ import {
   CLOSE_TAB_BG_FRAME,
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_X_ICON_FRAME,
+  CLOSE_X_ICON_PRESSED_FRAME,
   EXTRAS_UI_KEY,
   GLOBAL_CURSOR_CORNER_NAMES,
   GLOBAL_CURSOR_CORNER_RECTS,
@@ -77,7 +78,7 @@ const TAB_SELECTOR_PADDING = 2;
 
 const CLOSE_MARK_SCALE = 1.8;
 const CLOSE_BOOK_OVERLAP = 30;
-const CLOSE_X_TARGET_PX = 22;
+const CLOSE_X_TARGET_PX = 30;
 const CLOSE_X_OFFSET_X = CLOSE_BOOK_OVERLAP + (CLOSE_TAB_BG_FRAME.rect.width * CLOSE_MARK_SCALE - CLOSE_BOOK_OVERLAP) / 2;
 
 /** Área de papel em branco de cada página — ver comentário idêntico em `ShopMenu`. */
@@ -421,16 +422,32 @@ export class InventoryScreen implements PointerInputInterceptor {
     this.closeButton.setDepth(closeDepth);
     this.closeButton.setInteractive({ useHandCursor: true });
     this.closeButton.disableInteractive();
-    this.closeButton.on(
-      'pointerdown',
-      (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
-        if (!this.isOpen_) return;
-        event.stopPropagation();
-        this.close();
-      },
-    );
+this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+      if (!this.isOpen_) return;
+      event.stopPropagation();
+      
+      // 1. Muda a arte instantaneamente
+      this.closeButtonMark.setFrame(CLOSE_X_ICON_PRESSED_FRAME.name); 
 
-    this.closeButtonMark = scene.add.image(closeX + CLOSE_X_OFFSET_X, centerY, CLOSE_BUTTON_SHEET_KEY, CLOSE_X_ICON_FRAME.name);
+      // 2. O relógio nativo do sistema (setTimeout) conta 100ms e fecha a tela!
+      setTimeout(() => {
+        if (this.isOpen_) {
+          this.closeButtonMark.setFrame(CLOSE_X_ICON_FRAME.name); 
+          this.close(); 
+        }
+      }, 90);
+    });
+
+    const ajusteX = -16; // Valores negativos puxam para a esquerda
+    const ajusteY = -8;  // Valores negativos sobem, positivos descem
+    
+    this.closeButtonMark = scene.add.image(
+      closeX + CLOSE_X_OFFSET_X + ajusteX, 
+      centerY + ajusteY, 
+      CLOSE_BUTTON_SHEET_KEY, 
+      CLOSE_X_ICON_FRAME.name
+    );
+    
     this.closeButtonMark.setOrigin(0.5, 0.5);
     this.closeButtonMark.setScale(computeFitScale(this.closeButtonMark, CLOSE_X_TARGET_PX));
     this.closeButtonMark.setScrollFactor(0);

@@ -100,13 +100,16 @@ if (this.state === 'chase') {
 
     if (this.wanderTarget) this.moveToward(this.wanderTarget.x, this.wanderTarget.y, delta);
   }
-/** Verifica se a "caixa de colisão" inteira do slime pode pisar naquele ponto */
-  private canWalkTo(x: number, y: number): boolean {
-    // Cria uma "caixa" de 24px de largura por 16px de altura, focada na base do slime
-    const left = Math.floor((x - 8) / this.tilePx);
-    const right = Math.floor((x + 8) / this.tilePx);
-    const top = Math.floor((y - 26) / this.tilePx);
-    const bottom = Math.floor((y - 1) / this.tilePx); // -1 pra não travar na linha milimétrica de baixo
+  /** Verifica apenas a célula exata que o centro do corpo do Slime vai ocupar (grid 1x1 — Fase 9, pedido explícito do usuário). */
+private canWalkTo(x: number, y: number): boolean {
+    // Caixa de colisão de 28x28 (Tamanho do tile de 32px com 2px de folga de cada lado)
+    // O eixo Y do Slime é nos pés, então o centro dele é y - 16.
+    const left = Math.floor((x - 14) / this.tilePx);
+    const right = Math.floor((x + 14) / this.tilePx);
+    
+    // Topo da cabeça (y - 32 + folga) até a base dos pés (y + folga)
+    const top = Math.floor((y - 30) / this.tilePx);
+    const bottom = Math.floor((y - 2) / this.tilePx);
 
     return this.grid.isWalkable(left, top) &&
            this.grid.isWalkable(right, top) &&

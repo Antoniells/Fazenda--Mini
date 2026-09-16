@@ -46,7 +46,8 @@ export abstract class Enemy {
     this.hp = stats.maxHp;
 
     // Cria a sombra antes do sprite com a mesma escala do player
-    this.shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
+    // Mude a criação da sombra para subtrair 20 no eixo Y
+    this.shadow = createGroundShadow(scene, x, y - 20, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
     this.shadow.setDepth(y - 0.1);
 
     this.sprite = scene.add.sprite(x, y, textureKey, frame);
@@ -125,7 +126,8 @@ update(time: number, delta: number, playerX: number, playerY: number): void {
     this.sprite.setDepth(this.sprite.y);
     
     // Atualiza a posição e a profundidade da sombra
-    this.shadow.setPosition(this.sprite.x, this.sprite.y -22);
+    // Atualiza a posição da sombra para y - 20
+    this.shadow.setPosition(this.sprite.x, this.sprite.y - 20);
     this.shadow.setDepth(this.sprite.y - 0.1);
   }
 }

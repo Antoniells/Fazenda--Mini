@@ -224,6 +224,32 @@ export class Inventory {
     this.ensureSlotted('tool', toolId);
   }
 
+  /** Igual a `unlockTool`, mas para a categoria `'armor'` (Fase 8 — Crafting: fabricar uma armadura na Bancada de Trabalho, ver `ui/craftingMenu.ts`). */
+  unlockArmor(armorId: string): void {
+    this.ensureSlotted('armor', armorId);
+  }
+
+  /**
+   * Receitas já compradas na Loja (Fase 8 — Crafting/Bancada de Trabalho):
+   * diferente de `slots` (Hotbar/Inventário), uma receita comprada não
+   * ocupa slot nenhum — é só uma permissão permanente pra fabricar aquele
+   * item na Bancada, consultada por quantidade ilimitada de vezes (cada
+   * fabricação gasta `RecipeDefinition.ingredients`, não a receita em si).
+   * Mesma ideia de `gameState.unlockedBridges` (`systems/bridgeSystem.ts`),
+   * só que por partida (`Inventory`), não global.
+   */
+  private readonly unlockedRecipes = new Set<string>();
+
+  /** Desbloqueia uma receita (compra na Loja) — chamado por `MainScene.buyRecipe`. */
+  unlockRecipe(recipeId: string): void {
+    this.unlockedRecipes.add(recipeId);
+  }
+
+  /** Se o jogador já comprou essa receita — usado pra não vender a mesma receita duas vezes. */
+  hasRecipe(recipeId: string): boolean {
+    return this.unlockedRecipes.has(recipeId);
+  }
+
   /** Índice do slot da Hotbar atualmente selecionado (0-7). */
   getSelectedHotbarIndex(): number {
     return this.selectedHotbarIndex;

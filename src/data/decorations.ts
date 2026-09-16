@@ -51,6 +51,29 @@ export const WELL: DecorationDefinition = {
   footprint: { width: 2, height: 1 },
 };
 
+/**
+ * `Objects/Work Benches/Workbench.png` (32x32, um único sprite de bancada
+ * com machado e pano de trabalho): recorte pixel a pixel (mesmo processo do
+ * Poço) achou o conteúdo real em `x:8, y:6, w:16, h:18` — cabe numa célula
+ * (16px), só a base/pezinhos passam 2px do topo do tile de baixo, igual
+ * várias outras decorações verticais já no jogo. Fase 8 — Crafting: onde o
+ * jogador fabrica as Receitas (`data/recipes.ts`) compradas na Loja, usando
+ * os recursos do `Inventory` — a interação/lógica da Bancada em si é um
+ * passo futuro, isto aqui só a deixa comprável/posicionável como qualquer
+ * outra decoração (mesmo fluxo do Poço).
+ */
+export const WORKBENCH: DecorationDefinition = {
+  id: 'workbench',
+  name: 'Bancada de Trabalho',
+  textureKey: 'decor-workbench',
+  texturePath: 'Objects/Work Benches/Workbench.png',
+  frameName: 'decor-workbench-icon',
+  frameRect: { x: 8, y: 6, width: 16, height: 18 },
+  price: 60,
+  footprint: { width: 1, height: 1 },
+};
+
 export const DECORATIONS: Record<string, DecorationDefinition> = {
   [WELL.id]: WELL,
+  [WORKBENCH.id]: WORKBENCH,
 };

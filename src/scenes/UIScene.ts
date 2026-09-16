@@ -3,6 +3,10 @@ import { gameState } from '../systems/gameState';
 import { Hotbar } from '../ui/hotbar';
 import { TimeMoneyHud } from '../ui/timeMoneyHud';
 import { InventoryScreen } from '../ui/inventoryScreen';
+import { CraftingMenu } from '../ui/craftingMenu';
+import { OPEN_CRAFTING_MENU_EVENT } from '../systems/decorationPlacement';
+import { RECIPES } from '../data/recipes';
+import { resolveSlotVisual } from '../data/items';
 
 export const UI_SCENE_KEY = 'UIScene';
 /** Emitido (via `scene.game.events`) sempre que o slot ativo da Hotbar muda — quem mutou o `Inventory` é sempre quem emite, ver `UIScene`/`MainScene`. Outras cenas (ex.: `MainScene`, pra reagir com posicionamento de decoração) escutam este evento em vez de conhecer a `UIScene`. */
@@ -14,18 +18,30 @@ export const HOTBAR_CHANGED_EVENT = 'hotbar-changed';
  * cenas externas, ver `scenes/ExternalMapScene.ts`). `launch` (não
  * `start`) roda a `UIScene` em PARALELO, sem parar a cena que chamou.
  *
- * Correção de segurança pedida pelo usuário: `isActive()` sozinho não
- * basta — numa transição rápida entre cenas, a `UIScene` pode estar
- * registrada mas ainda não `active` (ou dormindo), e `isActive()` nesse
- * meio-tempo devolve `false`, levando a chamar `launch` de novo e duplicar
- * a instância (Hotbar/HUD repetidos). Em vez disso: `manager.keys` diz se
- * a cena já existe DE VERDADE (registrada) — só usa `launch` se nunca
- * existiu; se existe mas está dormindo (`isSleeping`), `wake` em vez de
- * relançar.
+ * `UIScene` está listada em `config/gameConfig.ts` (`scene: [...]`), então
+ * o Phaser já registra a chave em `manager.keys` no boot do jogo, ANTES de
+ * ela ser lançada pela primeira vez — `manager.keys[UI_SCENE_KEY]` sozinho
+ * não diz se ela já rodou `create()` algum dia, só se já foi registrada.
+ * Checar isso (versão anterior) fazia o primeiro `ensureUIScene` nunca
+ * chamar `launch`, e a HUD nunca aparecia.
+ *
+ * `isActive()` sozinho (só true quando `status === RUNNING`) também não
+ * basta: numa transição rápida entre cenas, a `UIScene` pode estar no meio
+ * de `START`/`LOADING`/`CREATING` (launch anterior ainda em andamento) e
+ * `isActive()` devolve `false` nesse meio-tempo, levando a chamar `launch`
+ * de novo e duplicar a instância (Hotbar/HUD repetidos).
+ *
+ * Por isso o `status` bruto da cena decide: só chama `launch` se ela nunca
+ * rodou (`INIT`, o estado logo após o registro em `gameConfig`) ou já foi
+ * totalmente parada (`SHUTDOWN`) — nunca durante um `launch` já em curso.
  */
 export function ensureUIScene(scene: Phaser.Scene): void {
   const manager = scene.scene.manager;
-  if (!manager.keys[UI_SCENE_KEY]) {
+  const uiScene = manager.keys[UI_SCENE_KEY];
+  const status = uiScene?.sys.settings.status;
+  const neverStartedOrStopped = status === undefined || status === Phaser.Scenes.INIT || status === Phaser.Scenes.SHUTDOWN;
+
+  if (neverStartedOrStopped) {
     scene.scene.launch(UI_SCENE_KEY);
   } else if (manager.isSleeping(UI_SCENE_KEY)) {
     scene.scene.wake(UI_SCENE_KEY);
@@ -66,6 +82,24 @@ export function closeInventoryScreen(): void {
   sharedInventoryScreen?.close();
 }
 
+/** Mesma ideia de `sharedInventoryScreen`, para a Bancada de Trabalho (Fase 8 — Crafting, ver `ui/craftingMenu.ts`). */
+let sharedCraftingMenu: CraftingMenu | null = null;
+
+/** Se a Bancada de Trabalho está aberta no momento — usado por qualquer cena de mapa para bloquear movimento/clique no mundo enquanto ela está em primeiro plano. */
+export function isCraftingMenuOpen(): boolean {
+  return sharedCraftingMenu?.isOpen() ?? false;
+}
+
+/** Alterna a Bancada de Trabalho — chamado ao interagir com uma decoração `workbench` posicionada. */
+export function toggleCraftingMenu(): void {
+  sharedCraftingMenu?.toggle(gameState.inventory);
+}
+
+/** Fecha a Bancada de Trabalho (ex.: tecla ESC) — no-op se já estiver fechada. */
+export function closeCraftingMenu(): void {
+  sharedCraftingMenu?.close();
+}
+
 /**
  * Cena de UI persistente (Sistema de Cenas): antes, `Hotbar` e
  * `TimeMoneyHud` eram criados dentro de `MainScene.create()` — quando essa
@@ -85,6 +119,7 @@ export class UIScene extends Phaser.Scene {
   private hotbar!: Hotbar;
   private timeMoneyHud!: TimeMoneyHud;
   private inventoryScreen!: InventoryScreen;
+  private craftingMenu!: CraftingMenu;
 
   constructor() {
     super(UI_SCENE_KEY);
@@ -103,12 +138,59 @@ export class UIScene extends Phaser.Scene {
     this.inventoryScreen = new InventoryScreen(this, (index) => this.requestHotbarSelect(index));
     sharedInventoryScreen = this.inventoryScreen;
 
+    this.craftingMenu = new CraftingMenu(this, (recipeId) => this.craftItem(recipeId));
+    sharedCraftingMenu = this.craftingMenu;
+
+    // Bancada de Trabalho posicionada no mundo (Fase 8 — Crafting, pedido
+    // explícito do usuário): `PlacedDecorationInteractable` dispara este
+    // evento GLOBAL (`scene.game.events`, não `scene.events`) ao interagir
+    // com ela — evita `systems/decorationPlacement.ts` (mundo) precisar
+    // importar `scenes/UIScene.ts` (interface) diretamente, na direção
+    // errada da arquitetura. Reaproveita `toggleCraftingMenu` (mesma função
+    // exportada que qualquer cena já usaria) em vez de duplicar a lógica.
+    const onOpenCraftingMenu = (): void => toggleCraftingMenu();
+    this.game.events.on(OPEN_CRAFTING_MENU_EVENT, onOpenCraftingMenu);
+
     this.setupHotbarKeys();
     this.setupHotbarWheelScroll();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (sharedInventoryScreen === this.inventoryScreen) sharedInventoryScreen = null;
+      if (sharedCraftingMenu === this.craftingMenu) sharedCraftingMenu = null;
+      this.game.events.off(OPEN_CRAFTING_MENU_EVENT, onOpenCraftingMenu);
     });
+  }
+
+  /**
+   * Fabrica o item de uma receita já desbloqueada (Fase 8 — Crafting):
+   * único ponto que de fato debita `ingredients` e dá o item ao jogador —
+   * o `CraftingMenu` só pede (`onCraft`), nunca muta o `Inventory` sozinho,
+   * mesmo padrão de `requestHotbarSelect`/`MainScene.buyRecipe`. Revalida
+   * tudo de novo aqui (receita desbloqueada, recursos suficientes) em vez
+   * de confiar cegamente no clique — o `CraftingMenu` já filtra/escurece
+   * isso na tela, mas a mutação real não pode depender só da UI concordar.
+   */
+  private craftItem(recipeId: string): void {
+    const recipe = RECIPES[recipeId];
+    if (!recipe) return;
+    if (!gameState.inventory.hasRecipe(recipeId)) return;
+
+    const hasAllIngredients = recipe.ingredients.every(
+      (ingredient) => gameState.inventory.getResourceCount(ingredient.resourceId) >= ingredient.amount,
+    );
+    if (!hasAllIngredients) {
+      console.log('Recursos insuficientes para fabricar.');
+      return;
+    }
+
+    for (const ingredient of recipe.ingredients) gameState.inventory.useResource(ingredient.resourceId, ingredient.amount);
+    if (recipe.category === 'armor') gameState.inventory.unlockArmor(recipe.itemId);
+    else gameState.inventory.unlockTool(recipe.itemId);
+
+    const itemVisual = resolveSlotVisual({ category: recipe.category === 'armor' ? 'armor' : 'tool', id: recipe.itemId });
+    console.log(`Fabricado: ${itemVisual?.name ?? recipe.itemId}!`);
+
+    this.craftingMenu.refresh(gameState.inventory);
   }
 
   /** Único ponto que muta o slot selecionado — qualquer gatilho (teclado/scroll aqui, clique na linha de cima do Inventário em `MainScene`) passa por aqui. */
@@ -141,6 +223,7 @@ export class UIScene extends Phaser.Scene {
     this.timeMoneyHud.refreshCoins(gameState.inventory.getCoins());
     this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString());
     if (this.inventoryScreen.isOpen()) this.inventoryScreen.refresh(gameState.inventory);
+    if (this.craftingMenu.isOpen()) this.craftingMenu.refresh(gameState.inventory);
   }
 
   update(): void {

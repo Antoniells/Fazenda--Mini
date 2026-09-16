@@ -10,7 +10,7 @@ import { WATERING_CAN_ICON_KEY, WATERING_CAN_ICON_PATH } from './ui';
  * pra `WaterBar` (`WATERING_CAN_ICON_KEY`) em vez de carregar o mesmo PNG
  * de novo com outra chave.
  */
-export type ToolId = 'hoe' | 'water' | 'sickle' | 'axe' | 'pickaxe';
+export type ToolId = 'hoe' | 'water' | 'sickle' | 'axe' | 'pickaxe' | 'axe-iron' | 'axe-gold' | 'pickaxe-iron' | 'pickaxe-gold';
 
 export interface ToolDefinition {
   id: ToolId;
@@ -21,6 +21,9 @@ export interface ToolDefinition {
 }
 
 const TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/1. Wood';
+/** Mesmas pastas de tier já usadas em `data/weapons.ts` (Ferro/Ouro) — o pacote também tem `Axe.png`/`Pickaxe.png` em cada uma. */
+const IRON_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/3. Iron';
+const GOLD_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/4. Gold';
 
 export const HOE: ToolDefinition = {
   id: 'hoe',
@@ -64,10 +67,55 @@ export const PICKAXE: ToolDefinition = {
   iconFrame: 0,
 };
 
+/**
+ * Ferramentas de progressão (Fase 8 — Upgrade de Ferramentas): diferente
+ * das 5 acima (dadas de graça no início, nunca compradas), estas só
+ * existem via Receita + Bancada de Trabalho (`data/recipes.ts`) — não têm
+ * `price`/`resourceCost` aqui porque essa economia agora vive inteira na
+ * própria `RecipeDefinition`, não no item. Mesma convenção de tier
+ * (Madeira/Ferro/Ouro) e mesma folha 32x16 (só o frame 0) já usada pelas
+ * Espadas em `data/weapons.ts`.
+ */
+export const IRON_AXE: ToolDefinition = {
+  id: 'axe-iron',
+  name: 'Machado de Ferro',
+  textureKey: 'tool-axe-iron',
+  texturePath: `${IRON_TOOLS_BASE_PATH}/Axe.png`,
+  iconFrame: 0,
+};
+
+export const GOLD_AXE: ToolDefinition = {
+  id: 'axe-gold',
+  name: 'Machado de Ouro',
+  textureKey: 'tool-axe-gold',
+  texturePath: `${GOLD_TOOLS_BASE_PATH}/Axe.png`,
+  iconFrame: 0,
+};
+
+export const IRON_PICKAXE: ToolDefinition = {
+  id: 'pickaxe-iron',
+  name: 'Picareta de Ferro',
+  textureKey: 'tool-pickaxe-iron',
+  texturePath: `${IRON_TOOLS_BASE_PATH}/Pickaxe.png`,
+  iconFrame: 0,
+};
+
+export const GOLD_PICKAXE: ToolDefinition = {
+  id: 'pickaxe-gold',
+  name: 'Picareta de Ouro',
+  textureKey: 'tool-pickaxe-gold',
+  texturePath: `${GOLD_TOOLS_BASE_PATH}/Pickaxe.png`,
+  iconFrame: 0,
+};
+
 export const TOOLS: Record<ToolId, ToolDefinition> = {
   hoe: HOE,
   water: WATERING_CAN_TOOL,
   sickle: SICKLE,
   axe: AXE,
   pickaxe: PICKAXE,
+  'axe-iron': IRON_AXE,
+  'axe-gold': GOLD_AXE,
+  'pickaxe-iron': IRON_PICKAXE,
+  'pickaxe-gold': GOLD_PICKAXE,
 };

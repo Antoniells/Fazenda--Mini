@@ -10,6 +10,14 @@ import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
 import { coverageRatio } from './treeOverlap';
 import { FarmlandRenderer } from './farmlandRenderer';
+import { gameState } from './gameState';
+import { AXE, PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
+
+/** Nome do evento global (Fase 8 — Crafting) disparado ao interagir com a Bancada de Trabalho — ouvido pela `UIScene`, que é quem realmente sabe abrir o `CraftingMenu` (ver `scenes/UIScene.ts`). Um evento em `scene.game.events` (não `scene.events`) evita este módulo (`systems/`) precisar importar de `scenes/`, na direção errada da arquitetura. */
+export const OPEN_CRAFTING_MENU_EVENT = 'open-crafting-menu';
+
+/** Ferramentas (qualquer tier — ver `data/tools.ts`) que ainda removem a Bancada em vez de abrir a Bancada — mesma ideia de Machado/Picareta já servirem pra "desfazer" recursos do mundo (árvore, pedra). */
+const WORKBENCH_REMOVAL_TOOL_IDS = new Set<string>([AXE.id, PICKAXE.id, IRON_AXE.id, GOLD_AXE.id, IRON_PICKAXE.id, GOLD_PICKAXE.id]);
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
@@ -32,6 +40,7 @@ const PLACED_SHADOW_DEPTH = -0.4; // Mesma faixa das sombras estáticas de mapBu
  */
 class PlacedDecorationInteractable implements Interactable {
   constructor(
+    private readonly scene: Phaser.Scene,
     private readonly system: DecorationPlacementSystem,
     private readonly player: Player,
     private readonly col: number,
@@ -48,6 +57,23 @@ class PlacedDecorationInteractable implements Interactable {
         this.system.refillWateringCan(this.col, this.row);
       });
       return; // <-- O return impede que o poço seja destruído
+    }
+
+    // Bancada de Trabalho (Fase 8 — Crafting, pedido explícito do usuário):
+    // mesma exceção do Poço, mas com uma saída a mais pra não travar o
+    // jogador — sem isso, uma vez posicionada ela nunca mais sairia da
+    // fazenda (igual o Poço hoje). Machado/Picareta (qualquer tier)
+    // continuam removendo-a normalmente; qualquer outra seleção (ou nenhuma)
+    // abre o Crafting.
+    if (this.decorationId === 'workbench') {
+      const selected = gameState.inventory.getSelectedSlot();
+      const isRemovalTool = selected?.category === 'tool' && WORKBENCH_REMOVAL_TOOL_IDS.has(selected.id);
+      if (isRemovalTool) {
+        this.system.removeAt(this.col, this.row);
+        return;
+      }
+      this.scene.game.events.emit(OPEN_CRAFTING_MENU_EVENT);
+      return;
     }
 
     // Se for outra decoração qualquer, ela é removida e volta pro estoque
@@ -195,7 +221,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     image.setScale(DISPLAY_SCALE);
     image.setDepth(y);
 
-    const interactable = new PlacedDecorationInteractable(this, this.player, col, row, decoration.id);
+    const interactable = new PlacedDecorationInteractable(this.scene, this, this.player, col, row, decoration.id);
     for (let dy = 0; dy < height; dy++) {
       for (let dx = 0; dx < width; dx++) {
         this.grid.block(col + dx, row + dy);

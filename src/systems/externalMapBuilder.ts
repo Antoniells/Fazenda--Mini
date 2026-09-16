@@ -65,17 +65,15 @@ export function buildExternalTree(scene: Phaser.Scene, tileSize: number, col: nu
   const x = col * tile + tile / 2;
   const y = (row + 1) * tile;
 
-  const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
+  const shadow = createGroundShadow(scene, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
   shadow.setDepth(STATIC_SHADOW_DEPTH);
 
 let tree: Phaser.GameObjects.Image;
   if (species === 'birch') {
     registerFrame(scene, BIRCH_TREE_KEY, { name: BIRCH_TREE_FRAME_NAME, rect: BIRCH_TREE_FRAME });
-    // Adicionando + 6 no Y
-    tree = scene.add.image(x, y + 6, BIRCH_TREE_KEY, BIRCH_TREE_FRAME_NAME);
+    tree = scene.add.image(x, y, BIRCH_TREE_KEY, BIRCH_TREE_FRAME_NAME);
   } else {
-    // Adicionando + 6 no Y
-    tree = scene.add.image(x, y + 6, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
+    tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
   }
   tree.setOrigin(0.5, 1);
   tree.setScale(DISPLAY_SCALE);
@@ -105,12 +103,11 @@ export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: num
 
   let shadow: Phaser.GameObjects.Image | undefined;
 if (stage === 'mature') {
-    shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
+    shadow = createGroundShadow(scene, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
     shadow.setDepth(STATIC_SHADOW_DEPTH);
   }
 
-  // Adicionando + 6 no Y para a base da árvore descer em relação à sombra
-  const sprite = scene.add.image(x, y + 6, PINE_TREE_KEY, frameName);
+  const sprite = scene.add.image(x, y, PINE_TREE_KEY, frameName);
   sprite.setOrigin(0.5, 1);
   sprite.setScale(DISPLAY_SCALE);
   sprite.setDepth(sprite.y);

@@ -389,13 +389,27 @@ export function bridgeRailingCells(bridge: BridgeDefinition): Array<[number, num
   // em coordenadas crescentes, sul/leste em decrescentes.
   const interiorStep = bridge.direction === 'north' || bridge.direction === 'west' ? 1 : -1;
 
+  // Pontes Norte/Sul continuam com 2 blocos de colisão por lado
   if (isVerticalCrossing) {
-    const row = bridge.row + interiorStep;
-    return [[bridge.col - 1, row], [bridge.col + 1, row]];
+    const rowInner = bridge.row + interiorStep;
+    const rowWall = bridge.row; 
+    
+    return [
+      [bridge.col - 1, rowWall],  [bridge.col + 1, rowWall],
+      [bridge.col - 1, rowInner], [bridge.col + 1, rowInner]
+    ];
   }
 
-  const col = bridge.col + interiorStep;
-  return [[col, bridge.row - 1], [col, bridge.row + 1]];
+  // Pontes Leste/Oeste (Esquerda/Direita) ganham 3 blocos de colisão por lado
+  const colWall = bridge.col; 
+  const colInner1 = bridge.col + interiorStep;
+  const colInner2 = bridge.col + (interiorStep * 2); // <- Os novos quadradinhos!
+  
+  return [
+    [colWall, bridge.row - 1],   [colWall, bridge.row + 1],  
+    [colInner1, bridge.row - 1], [colInner1, bridge.row + 1], 
+    [colInner2, bridge.row - 1], [colInner2, bridge.row + 1]  
+  ];
 }
 
 /**
@@ -414,10 +428,10 @@ export function buildFarmDecorations(
     const x = col * tile + tile / 2;
     const y = (row + 1) * tile;
 
-    const shadow = createGroundShadow(scene, x, y, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
+    const shadow = createGroundShadow(scene, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
     shadow.setDepth(STATIC_SHADOW_DEPTH);
 
-    const tree = scene.add.image(x, y + 6, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
+    const tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
     tree.setOrigin(0.5, 1);
     tree.setScale(DISPLAY_SCALE);
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra
@@ -483,13 +497,13 @@ export function buildShopStand(scene: Phaser.Scene, map: FarmMapData): Phaser.Ga
   const tile = map.tileSize * DISPLAY_SCALE;
   const [col, row] = map.shopPosition;
 
-  const x = col * tile + tile / 2;
-  const y = (row + 1) * tile;
+  const ajusteX = 0;  // Valores positivos movem para a direita, negativos para a esquerda
+  const ajusteY = -54; // Valores positivos movem para cima (porque estamos subtraindo na fórmula abaixo)
 
-  // Removida a linha da sombra aqui
+  // Aplicando os ajustes no X e Y da imagem
+  const stand = scene.add.image((col * tile) + ajusteX, (row * tile) - ajusteY, SHOP_STAND_KEY);
 
-  const stand = scene.add.image(x, y, SHOP_STAND_KEY);
-  stand.setOrigin(0.5, 1);
+    stand.setOrigin(0.5, 1);
   stand.setScale(DISPLAY_SCALE);
   stand.setDepth(stand.y-10);
 
@@ -509,13 +523,16 @@ export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.
   const tile = map.tileSize * DISPLAY_SCALE;
   const { col0, row0, rows } = map.housePosition;
 
-  const house = scene.add.image(col0 * tile, row0 * tile, PLAYER_HOUSE_KEY);
+  // Ajustes visuais em pixels (mude os valores para alinhar perfeitamente)
+  const ajusteX = -18;  // Valores positivos movem para a direita, negativos para a esquerda
+  const ajusteY = 6; // Valores positivos movem para cima (porque estamos subtraindo na fórmula abaixo)
+
+  // Aplicando os ajustes no X e Y da imagem
+  const house = scene.add.image((col0 * tile) + ajusteX, (row0 * tile) - ajusteY, PLAYER_HOUSE_KEY);
+  
   house.setOrigin(0, 0);
   house.setScale(DISPLAY_SCALE);
-  // Profundidade fixa pela base (linha de baixo) da casa — mesma lógica das
-  // árvores/Caixa de Remessas, só que calculada a partir do retângulo
-  // inteiro, não de uma única célula-âncora.
-  house.setDepth((row0 + rows) * tile);
+  house.setDepth((row0 + rows - 2) * tile);
 
   return house;
 }
@@ -538,8 +555,9 @@ export function buildFarmlandFence(scene: Phaser.Scene, map: FarmMapData): void 
   const tile = map.tileSize * DISPLAY_SCALE;
   const { col0, row0, colEnd, rowEnd, gate } = getFarmlandFenceLayout(map);
 
-  const skip = new Set<string>([
+const skip = new Set<string>([
     `${gate[0]},${gate[1]}`,
+    `${gate[0] - 1},${gate[1]}`, // <-- Novo bloco pulado (à esquerda da entrada)
     `${map.shippingBinPosition[0]},${map.shippingBinPosition[1]}`,
   ]);
 

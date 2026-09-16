@@ -10,7 +10,8 @@ import { TileCursor } from '../systems/tileCursor';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
 import { InteractionRegistry } from '../systems/interaction';
-import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen } from './UIScene';
+import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isCraftingMenuOpen, closeCraftingMenu } from './UIScene';
+import { DebugGridOverlay } from '../systems/debugGridOverlay';
 
 /** Dados que chegam de `scene.start(key, data)` ao atravessar a ponte da Fazenda (ver `systems/bridgeSystem.ts`). */
 export interface ExternalMapEntryData {
@@ -115,6 +116,8 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   protected entryData!: ExternalMapEntryData;
   protected player!: Player;
   protected controller!: PlayerController;
+  /** DEBUG TEMPORÁRIO — ver `systems/debugGridOverlay.ts`. `protected` pra `ForestScene` poder plugar `setEnemyProvider`. */
+  protected debugGridOverlay!: DebugGridOverlay;
   /** Trava contra reentrância (mesmo bug/fix de `BridgeSystem.isTransitioning`): sem isso, pisar várias vezes na célula da ponte durante o `fadeOut` de `returnToFarm` disparava `scene.start` mais de uma vez. */
   protected isTransitioning = false;
 
@@ -127,6 +130,11 @@ export abstract class ExternalMapScene extends Phaser.Scene {
 
   init(data: ExternalMapEntryData): void {
     this.entryData = data;
+    // O Phaser reaproveita a mesma instância da cena entre `scene.start()`
+    // (não recria a classe) — sem isso, a trava de reentrância ligada em
+    // `returnToFarm()` continuava `true` pra sempre depois da primeira
+    // viagem, travando qualquer transição seguinte por esta mesma ponte.
+    this.isTransitioning = false;
   }
 
   preload(): void {
@@ -200,11 +208,16 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
     // faltava aqui, por isso o personagem aparecia minúsculo nas cenas novas.
     this.player.sprite.setScale(DISPLAY_SCALE);
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
+    this.debugGridOverlay = new DebugGridOverlay(this, grid, tilePx, this.player); // DEBUG TEMPORÁRIO
     // Inventário (Fase 8 — Interface): agora pode abrir em qualquer mapa, não
     // só na Fazenda — mesma técnica de "roubar" o clique enquanto aberto já
     // usada lá (ver `scenes/MainScene.ts`).
     this.controller.addInputInterceptor({
       isActive: () => isInventoryOpen(),
+      handleClick: () => {},
+    });
+    this.controller.addInputInterceptor({
+      isActive: () => isCraftingMenuOpen(),
       handleClick: () => {},
     });
     setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
@@ -216,9 +229,16 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
 
     ensureUIScene(this);
 
-    this.input.keyboard!.on('keydown-E', () => toggleInventoryScreen());
+    this.input.keyboard!.on('keydown-E', () => {
+      if (isCraftingMenuOpen()) closeCraftingMenu();
+      toggleInventoryScreen();
+    });
     this.input.keyboard!.on('keydown-ESC', () => {
-      if (isInventoryOpen()) closeInventoryScreen();
+      if (isInventoryOpen()) {
+        closeInventoryScreen();
+        return;
+      }
+      if (isCraftingMenuOpen()) closeCraftingMenu();
     });
 
     this.buildMapContent({ tilePx, grid, interactions, player: this.player });
@@ -241,10 +261,11 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
   protected buildMapContent(_ctx: { tilePx: number; grid: WalkableGrid; interactions: InteractionRegistry; player: Player }): void {}
 
   update(time: number, delta: number): void {
-    // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário está
-    // aberto (ver `MainScene.isInputLocked`) — aqui não há Menu de
-    // Pausa/Dormir ainda, então o Inventário é a única causa possível.
-    if (!isInventoryOpen()) this.controller.update(time, delta);
+    // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário/Bancada
+    // está aberto (ver `MainScene.isInputLocked`) — aqui não há Menu de
+    // Pausa/Dormir ainda, então esses dois são as únicas causas possíveis.
+    if (!isInventoryOpen() && !isCraftingMenuOpen()) this.controller.update(time, delta);
+    this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts`.
   }
 
 returnToFarm(): void {

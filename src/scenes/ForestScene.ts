@@ -159,6 +159,7 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // registra AQUI de onde vêm os inimigos vivos, já que só a Floresta
     // tem `SlimeSpawner` por ora.
     this.controller.setEnemyProvider(() => this.slimeSpawner.getAliveEnemies());
+    this.debugGridOverlay.setEnemyProvider(() => this.slimeSpawner.getAliveEnemies()); // DEBUG TEMPORÁRIO
 
     // Regra padrão (pedido explícito do usuário): tufo/cogumelo balançam ao
     // jogador pisar em cima em QUALQUER cena, não só a Fazenda — mesmo

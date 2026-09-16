@@ -58,7 +58,6 @@ export class PropertyExpansionSystem {
       // (`BridgeSystem`). A célula continua bloqueada e clicável (a compra
       // do trecho ainda funciona, só sem marcador visual).
       const [signCol, signRow] = chunk.signPosition;
-      grid.block(signCol, signRow);
       interactions.set(signCol, signRow, new ExpansionSignInteractable(this, chunk));
     }
 
@@ -107,7 +106,6 @@ export class PropertyExpansionSystem {
     this.unblockCoreWall(chunk.direction);
 
     const [signCol, signRow] = chunk.signPosition;
-    this.grid.unblock(signCol, signRow);
     this.interactions.remove(signCol, signRow);
 
     console.log(`${biomeLabel} desbloqueada! (saldo: ${this.inventory.getCoins()}).`);

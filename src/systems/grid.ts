@@ -75,14 +75,15 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   }
 
   blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
-  blocked.add(key(map.shopPosition[0], map.shopPosition[1]-1));
+  blocked.add(key(map.shopPosition[0], map.shopPosition[1]));
+  blocked.add(key(map.shopPosition[0]-1, map.shopPosition[1]));
 
   // Casa do jogador (Fase 9): bloco sólido inteiro — a única célula com
   // interação própria é a porta (`houseDoorPosition`, registrada à parte
   // em `systems/sleepInteraction.ts`), as demais só impedem passagem.
   const { col0: houseCol0, row0: houseRow0, cols: houseCols, rows: houseRows } = map.housePosition;
-  for (let row = houseRow0; row < houseRow0 + houseRows; row++) {
-    for (let col = houseCol0; col < houseCol0 + houseCols; col++) {
+for (let row = houseRow0 + 3; row < houseRow0 + houseRows -1; row++) {
+    for (let col = houseCol0; col < houseCol0 + houseCols -1; col++) {
       blocked.add(key(col, row));
     }
   }
@@ -102,6 +103,7 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
     blocked.add(key(fence.colEnd, row));
   }
   blocked.delete(gateKey);
+  blocked.delete(key(fence.gate[0] - 1, fence.gate[1]));
 
   // Trechos de expansão (Fase 6): perímetro externo permanente de cada um
   // (a área interna já nasce andável — só a parede do núcleo, bloqueada

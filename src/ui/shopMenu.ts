@@ -9,14 +9,9 @@ import {
   CLOSE_TAB_BG_FRAME,
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_X_ICON_FRAME,
-  EXTRAS_UI_KEY,
-  GLOBAL_CURSOR_CORNER_NAMES,
-  GLOBAL_CURSOR_CORNER_RECTS,
+  CLOSE_X_ICON_PRESSED_FRAME,
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
-import { Inventory } from '../systems/inventory';
-
-type CornerKey = keyof typeof GLOBAL_CURSOR_CORNER_NAMES;
 
 const BOOK_SCALE = 2.2;
 const SLOT_SCALE = 1.7;
@@ -65,32 +60,25 @@ const TAB_ICON_TARGET_PX = 28;
 /** Centro da porção da bandeirola que fica PRA FORA do livro (não a que fica em cima da capa), pra não desenhar o ícone em cima da borda de madeira. */
 const TAB_ICON_OFFSET_X = 2;
 const TAB_ICON_OFFSET_Y = -18;
-
-/**
- * Seletor da aba ativa: reaproveita os mesmos 4 cantinhos brancos/azulados
- * (`GLOBAL_CURSOR_CORNER_*`, de `UI/Extras.png`) já usados pelo `TileCursor`
- * fora da lavoura — pedido explícito do usuário ("mesmo estilo visual dos
- * grids"). Como a bandeirola é um pentágono (ponta entalhada), o seletor é
- * só a caixa (AABB) dela via `getBounds()` — não acompanha a ponta, mas é a
- * mesma simplificação de "moldura retangular" que o próprio jogo já usa.
- */
-const TAB_SELECTOR_SCALE = 1.5;
-/** Quantos px o seletor fica por FORA da borda da bandeirola (não colado nela). */
-const TAB_SELECTOR_PADDING = 2;
+const TAB_ACTIVE_SHIFT_X = 15;
 
 /**
  * Botão de fechar (lado direito): fundo é o "marcador de página" de couro
  * de `Book.png` (`CLOSE_TAB_BG_FRAME`), mesma técnica de ancoragem das
  * abas espelhada (origin pela esquerda). Depth MAIOR que o do livro —
  * pedido explícito do usuário — desenha por CIMA da capa. O ícone "X"
- * (`CLOSE_X_ICON_FRAME`, de `UI/HUD.png`) fica centralizado na parte do
+ * (`CLOSE_X_ICON_FRAME`, de `UI/button.png`) fica centralizado na parte do
  * marcador que sai pra fora do livro, com depth um pouco maior que o do
  * marcador (só decorativo, pra ficar por cima dele).
  */
 const CLOSE_MARK_SCALE = 1.8;
 const CLOSE_BOOK_OVERLAP = 30;
-/** `CLOSE_X_ICON_FRAME` agora é o glifo real do X (8x8, ver `data/ui.ts`) — alvo menor que o do placeholder anterior (que precisava "inflar" um selo de 16x24 pra ficar visível). */
-const CLOSE_X_TARGET_PX = 22;
+// Maior que antes pra ajudar a destacar do marcador de couro por trás — o
+// recorte placeholder de `CLOSE_X_ICON_FRAME` (ver `data/ui.ts`) é um
+// "selo" marrom/laranja (mesma família de cor do couro), não um X vermelho
+// isolado; baixo contraste é esperado até o usuário trocar pela coordenada
+// definitiva.
+const CLOSE_X_TARGET_PX = 30;
 /** Centro da porção visível do marcador (mesma ideia do `TAB_ICON_OFFSET_X`, só que a partir da esquerda). */
 const CLOSE_X_OFFSET_X = CLOSE_BOOK_OVERLAP + (CLOSE_TAB_BG_FRAME.rect.width * CLOSE_MARK_SCALE - CLOSE_BOOK_OVERLAP) / 2;
 
@@ -126,8 +114,6 @@ export interface ShopItem {
   /** Frame do ícone: número (spritesheet, culturas) ou nome (frame recortado à mão, decorações). */
   iconFrame: number | string;
   price: number;
-  /** Custo misto (Fase 8 — Progressão, pedido explícito do usuário): além das moedas, também exige X unidades de um recurso do `Inventory` (ex.: espadas). `undefined` = só moedas, igual antes. */
-  resourceCost?: { resourceId: string; resourceName: string; amount: number };
 }
 
 /** Uma aba da Loja — ícone representativo da categoria (não precisa vir de um item à venda nela, ex.: "Ferramentas" ainda não vende nada). */
@@ -137,8 +123,7 @@ export interface ShopTabDefinition {
   iconFrame: number | string;
   /** Nome do frame da bandeirola desta categoria em `SHOP_TAB_RIBBONS_KEY` (ver `data/ui.ts`, `TAB_FRAME_*`). */
   tabFrame: string;
-  /** Nome do frame CLARO da mesma bandeirola (ver `data/ui.ts`, `TAB_FRAME_*_LIGHT`) — usado no hover (`pointerover`/`pointerout`). */
-  tabFrameLight: string;
+  tabFrameHover: string;
 }
 
 interface ShopTab {
@@ -153,7 +138,6 @@ interface ShopTab {
 interface ShopSlot {
   itemId: string;
   price: number;
-  resourceCost?: { resourceId: string; resourceName: string; amount: number };
   frame: Phaser.GameObjects.Image;
   icon: Phaser.GameObjects.Image;
   priceText: Phaser.GameObjects.Text;
@@ -194,8 +178,6 @@ interface ShopSlot {
 export class ShopMenu {
   private readonly book: Phaser.GameObjects.Image;
   private readonly tabs: ShopTab[] = [];
-  /** 4 cantinhos do seletor da aba ativa (ver comentário de `TAB_SELECTOR_SCALE`) — reposicionados em `positionTabSelector`. */
-  private readonly tabSelector: Record<CornerKey, Phaser.GameObjects.Image>;
   private readonly slots: ShopSlot[] = [];
   private readonly emptyText: Phaser.GameObjects.Text;
   private readonly closeButton: Phaser.GameObjects.Image;
@@ -204,8 +186,6 @@ export class ShopMenu {
   private activeCategory: ShopCategory;
   private isOpen_ = false;
   private lastCoins = 0;
-  /** Guardado só pra `selectCategory` poder chamar `refresh` de novo ao trocar de aba, sem precisar que quem chama passe o `Inventory` outra vez. */
-  private lastInventory: Inventory | null = null;
 
   constructor(scene: Phaser.Scene, tabDefs: ShopTabDefinition[], items: ShopItem[], onBuy: (itemId: string) => void) {
     const texture = scene.textures.get(INVENTORY_PANEL_KEY);
@@ -281,48 +261,10 @@ export class ShopMenu {
           this.selectCategory(tabDef.category);
         },
       );
-      // Hover (pedido explícito do usuário): troca pra variante clara da
-      // MESMA bandeirola (mesma forma/tamanho, só a cor — ver
-      // `TAB_FRAME_*_LIGHT` em `data/ui.ts`), sem afetar posição/depth.
-      background.on('pointerover', () => {
-        if (!this.isOpen_) return;
-        background.setTexture(SHOP_TAB_RIBBONS_KEY, tabDef.tabFrameLight);
-      });
-      background.on('pointerout', () => {
-        if (!this.isOpen_) return;
-        background.setTexture(SHOP_TAB_RIBBONS_KEY, tabDef.tabFrame);
-      });
 
       this.tabs.push({ category: tabDef.category, background, icon, baseX: tabX, y: tabY });
       tabY += TAB_DISPLAY_THICKNESS + TAB_GAP_Y;
     }
-
-    // Seletor branco da aba ativa — 4 cantinhos (mesma técnica do
-    // `TileCursor`, ver comentário de `TAB_SELECTOR_SCALE`), por CIMA de
-    // tudo (bandeirola + ícone). Posicionado de verdade em
-    // `positionTabSelector` (chamado por `renderActiveCategory`).
-    const cursorTexture = scene.textures.get(EXTRAS_UI_KEY);
-    for (const key of Object.keys(GLOBAL_CURSOR_CORNER_NAMES) as CornerKey[]) {
-      const name = GLOBAL_CURSOR_CORNER_NAMES[key];
-      if (!cursorTexture.has(name)) {
-        const rect = GLOBAL_CURSOR_CORNER_RECTS[key];
-        cursorTexture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
-      }
-    }
-    const makeSelectorCorner = (key: CornerKey, originX: number, originY: number): Phaser.GameObjects.Image => {
-      const corner = scene.add.image(0, 0, EXTRAS_UI_KEY, GLOBAL_CURSOR_CORNER_NAMES[key]);
-      corner.setOrigin(originX, originY);
-      corner.setScale(TAB_SELECTOR_SCALE);
-      corner.setScrollFactor(0);
-      corner.setDepth(tabDepth + 2);
-      return corner;
-    };
-    this.tabSelector = {
-      topLeft: makeSelectorCorner('topLeft', 0, 0),
-      topRight: makeSelectorCorner('topRight', 1, 0),
-      bottomLeft: makeSelectorCorner('bottomLeft', 0, 1),
-      bottomRight: makeSelectorCorner('bottomRight', 1, 1),
-    };
 
     // Botão de fechar na lateral DIREITA do livro — mesma técnica das abas,
     // espelhada (origin pela esquerda, nasce um pouco pra dentro do livro e
@@ -338,18 +280,33 @@ export class ShopMenu {
     this.closeButton.setDepth(closeDepth);
     this.closeButton.setInteractive({ useHandCursor: true });
     this.closeButton.disableInteractive();
-    this.closeButton.on(
-      'pointerdown',
-      (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
-        if (!this.isOpen_) return;
-        event.stopPropagation();
-        this.close();
-      },
-    );
+// 1. Ao APERTAR o botão: muda para a arte do X clicado
+this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+      if (!this.isOpen_) return;
+      event.stopPropagation();
+      
+      // 1. Muda a arte instantaneamente
+      this.closeButtonMark.setFrame(CLOSE_X_ICON_PRESSED_FRAME.name); 
 
-    // Ícone "X" — só decorativo (a interatividade já é do `closeButton`),
-    // centralizado na parte visível do marcador.
-    this.closeButtonMark = scene.add.image(closeX + CLOSE_X_OFFSET_X, centerY, CLOSE_BUTTON_SHEET_KEY, CLOSE_X_ICON_FRAME.name);
+      // 2. O relógio nativo do sistema (setTimeout) conta 100ms e fecha a tela!
+      setTimeout(() => {
+        if (this.isOpen_) {
+          this.closeButtonMark.setFrame(CLOSE_X_ICON_FRAME.name); 
+          this.close(); 
+        }
+      }, 90);
+    });
+
+    const ajusteX = -16; // Valores negativos puxam para a esquerda
+    const ajusteY = -8;  // Valores negativos sobem, positivos descem
+    
+    this.closeButtonMark = scene.add.image(
+      closeX + CLOSE_X_OFFSET_X + ajusteX, 
+      centerY + ajusteY, 
+      CLOSE_BUTTON_SHEET_KEY, 
+      CLOSE_X_ICON_FRAME.name
+    );
+    
     this.closeButtonMark.setOrigin(0.5, 0.5);
     this.closeButtonMark.setScale(computeFitScale(this.closeButtonMark, CLOSE_X_TARGET_PX));
     this.closeButtonMark.setScrollFactor(0);
@@ -423,7 +380,7 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
       priceText.setScrollFactor(0);
       priceText.setDepth(3002);
 
-      this.slots.push({ itemId: '', price: 0, resourceCost: undefined, frame, icon, priceText });
+      this.slots.push({ itemId: '', price: 0, frame, icon, priceText });
     }
 
     this.emptyText = scene.add.text(centerX, centerY, 'Em breve', {
@@ -459,20 +416,13 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
     else this.open();
   }
 
-  /**
-   * Escurece os ícones dos itens que o jogador não tem saldo/recurso para
-   * comprar no momento. Recebe o `Inventory` inteiro (não só as moedas)
-   * desde a Fase 8 — Combate: o custo misto das espadas (`resourceCost`)
-   * também precisa ser checado, não só `coins`.
-   */
-  refresh(inventory: Inventory): void {
-    this.lastCoins = inventory.getCoins();
-    this.lastInventory = inventory;
+  /** Escurece os ícones dos itens que o jogador não tem saldo para comprar no momento. */
+  refresh(coins: number): void {
+    this.lastCoins = coins;
     for (const slot of this.slots) {
       if (!slot.itemId) continue;
-      const canAffordCoins = this.lastCoins >= slot.price;
-      const canAffordResource = !slot.resourceCost || inventory.getResourceCount(slot.resourceCost.resourceId) >= slot.resourceCost.amount;
-      slot.icon.setAlpha(canAffordCoins && canAffordResource ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
+      const affordable = coins >= slot.price;
+      slot.icon.setAlpha(affordable ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
     }
   }
 
@@ -481,27 +431,25 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
     if (category === this.activeCategory) return;
     this.activeCategory = category;
     this.renderActiveCategory();
-    if (this.lastInventory) this.refresh(this.lastInventory);
+    this.refresh(this.lastCoins);
   }
 
   /** Redesenha o pool de slots com os itens da categoria ativa — sobra fica vazia/invisível; sem itens, mostra "Em breve". */
   private renderActiveCategory(): void {
     const items = this.itemsByCategory.get(this.activeCategory) ?? [];
 
-    // Posições fixas (sem "puxar" a aba ativa pra fora) — só o seletor
-    // branco (`positionTabSelector`) indica qual está ativa.
+    // Aba ativa: "puxada" pra fora (mais pra esquerda) em relação às inativas.
     for (const tab of this.tabs) {
-      tab.background.setPosition(tab.baseX, tab.y);
-      tab.icon.setPosition(tab.baseX + TAB_ICON_OFFSET_X, tab.y + TAB_ICON_OFFSET_Y);
+      const x = tab.category === this.activeCategory ? tab.baseX - TAB_ACTIVE_SHIFT_X : tab.baseX;
+      tab.background.setPosition(x, tab.y);
+      tab.icon.setPosition(x + TAB_ICON_OFFSET_X, tab.y + TAB_ICON_OFFSET_Y);
     }
-    this.positionTabSelector();
 
     this.slots.forEach((slot, index) => {
       const item = items[index];
       if (!item) {
         slot.itemId = '';
         slot.price = 0;
-        slot.resourceCost = undefined;
         slot.icon.setVisible(false);
         slot.priceText.setVisible(false);
         return;
@@ -509,44 +457,17 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
 
       slot.itemId = item.id;
       slot.price = item.price;
-      slot.resourceCost = item.resourceCost;
       slot.icon.setTexture(item.textureKey, item.iconFrame);
       // Ícones de origens diferentes (semente, decoração) têm tamanhos
       // nativos bem diferentes (ex.: o Poço, 28x38 vs 16x16 padrão) — sem
       // isso o Poço vazava pra fora do slot.
       slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
-      // Custo misto (Fase 8 — Combate): 2ª linha menor com o recurso exigido
-      // — as demais categorias nunca têm `resourceCost`, continuam com 1
-      // linha só, mesmo tamanho de fonte de antes.
-      if (item.resourceCost) {
-        slot.priceText.setFontSize(9);
-        slot.priceText.setText(`${item.price}\n${item.resourceCost.amount} ${item.resourceCost.resourceName}`);
-      } else {
-        slot.priceText.setFontSize(11);
-        slot.priceText.setText(`${item.price}`);
-      }
+      slot.priceText.setText(`${item.price}`);
       slot.icon.setVisible(true);
       slot.priceText.setVisible(true);
     });
 
     this.emptyText.setVisible(items.length === 0);
-  }
-
-  /** Move os 4 cantinhos do seletor branco para a caixa (AABB) da aba ativa — ver comentário de `TAB_SELECTOR_SCALE`. */
-  private positionTabSelector(): void {
-    const activeTab = this.tabs.find((tab) => tab.category === this.activeCategory);
-    if (!activeTab) return;
-
-    const bounds = activeTab.background.getBounds();
-    const left = bounds.left - TAB_SELECTOR_PADDING;
-    const top = bounds.top - TAB_SELECTOR_PADDING;
-    const right = bounds.right + TAB_SELECTOR_PADDING;
-    const bottom = bounds.bottom + TAB_SELECTOR_PADDING;
-
-    this.tabSelector.topLeft.setPosition(left, top);
-    this.tabSelector.topRight.setPosition(right, top);
-    this.tabSelector.bottomLeft.setPosition(left, bottom);
-    this.tabSelector.bottomRight.setPosition(right, bottom);
   }
 
 private setElementsVisible(visible: boolean): void {
@@ -557,7 +478,6 @@ private setElementsVisible(visible: boolean): void {
       if (visible) tab.background.setInteractive();
       else tab.background.disableInteractive();
     }
-    for (const corner of Object.values(this.tabSelector)) corner.setVisible(visible);
 
     this.closeButton.setVisible(visible);
     if (visible) this.closeButton.setInteractive();

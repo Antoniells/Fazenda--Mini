@@ -236,21 +236,35 @@ export class PlayerController {
     return best;
   }
 
-/** Verifica o Grid e também a distância física real dos inimigos para a célula alvo */
-  private canWalkTo(col: number, row: number): boolean {
+  /** Verifica o Grid e também se a célula alvo é a mesma célula que um inimigo ocupa (grid 1x1 — Fase 9, pedido explícito do usuário). */
+private canWalkTo(col: number, row: number): boolean {
     if (!this.grid.isWalkable(col, row)) return false;
-    
-    // Calcula o centro do tile que o jogador quer pisar
-    const targetX = col * this.tilePx + this.tilePx / 2;
-    const targetY = row * this.tilePx + this.tilePx / 2;
 
     const enemies = this.enemyProvider?.() ?? [];
-    for (const enemy of enemies) {
-      // Se um inimigo estiver a menos de 26 pixels do centro desse tile, o tile fica bloqueado!
-      const dist = Phaser.Math.Distance.Between(targetX, targetY, enemy.x, enemy.y);
-      if (dist < 28) return false;
-    }
     
+    // Caixa exata do bloco que o jogador está tentando pisar
+    const targetRect = new Phaser.Geom.Rectangle(col * this.tilePx, row * this.tilePx, this.tilePx, this.tilePx);
+
+    for (const enemy of enemies) {
+      // Caixa de 32x32 que acompanha o Slime perfeitamente
+      const enemyRect = new Phaser.Geom.Rectangle(
+        enemy.x - (this.tilePx / 2), 
+        enemy.y - 16 - (this.tilePx / 2), 
+        this.tilePx, 
+        this.tilePx
+      );
+
+      // Encolhemos a colisão do slime em 2 pixels de cada lado (margem de tolerância)
+      // para o jogador não "travar" na quina do inimigo se passar raspando.
+      enemyRect.x += 2;
+      enemyRect.y += 2;
+      enemyRect.width -= 4;
+      enemyRect.height -= 4;
+
+      // Se o bloco que o jogador quer pisar cruzar com a caixa do Slime, bloqueia o passo!
+      if (Phaser.Geom.Intersects.RectangleToRectangle(targetRect, enemyRect)) return false;
+    }
+
     return true;
   }
 
