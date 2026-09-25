@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { FarmMapData } from '../data/maps/farmMap';
 import { GRASS_DETAILS_KEY, GRASS_DETAILS, GrassDetailDefinition } from '../data/grassDetails';
+import { GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '../data/tiles';
 import { hash2D } from './groundVariation';
 import { DirtZone } from './dirtPaths';
 import { DISPLAY_SCALE } from './mapBuilder';
@@ -16,6 +17,32 @@ import { DISPLAY_SCALE } from './mapBuilder';
 const DETAIL_CHANCE = 0.05;
 /** Profundidade fixa dos detalhes "achatados" (cogumelo/pedrinha/florzinha): acima do chão (-1) e do caminho de terra (mesma camada), abaixo de tudo ordenado por Y (personagem, árvores). */
 const DETAIL_DEPTH = -0.6;
+
+/**
+ * IDs numéricos de tile (`FarmMapData.ground[row][col]`, GID do
+ * `GRASS_TILESET_KEY` — ver `MapEditorScene.GROUND_TILESETS`) que contam
+ * como "Grama de verdade" pra fins de espalhar detalhe — os dois únicos
+ * índices que `systems/groundVariation.pickGroundTileVariant` de fato gera
+ * (tom claro/escuro da grama plana). Qualquer outro valor pintado no editor
+ * na MESMA camada de chão — piso/solo (`SOIL_TILESET_KEY`, GID 2000+),
+ * água (`WATER_KEY`, GID 3000+), ou até outro tile do próprio tileset de
+ * grama que não seja um desses dois (ex.: as peças de caminho de terra,
+ * `data/tiles.ts` `DIRT_BLOB_*`) — NÃO deve receber tufo/cogumelo/pedrinha/
+ * florzinha por cima.
+ */
+export const GRASS_TILE_IDS: readonly number[] = [GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX];
+
+/**
+ * `map.ground` é opcional (ver doc do campo em `data/maps/farmMap.ts`): sem
+ * ele autorado, o chão desta célula é sempre gerado por
+ * `pickGroundTileVariant`/`pickDirtBlobTile` — o caminho de terra já é
+ * filtrado à parte por `dirtZone.has(...)` em `buildGrassDetails`, então
+ * "sem dado autorado" significa sempre grama de verdade aqui.
+ */
+function isGrassTile(map: FarmMapData, col: number, row: number): boolean {
+  const tileId = map.ground?.[row]?.[col];
+  return tileId === undefined || GRASS_TILE_IDS.includes(tileId);
+}
 
 function buildExcludeSet(map: FarmMapData): Set<string> {
   const exclude = new Set<string>();
@@ -107,7 +134,7 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
   for (let row = 0; row < map.rows; row++) {
     for (let col = 0; col < map.cols; col++) {
       const key = cellKey(col, row);
-      if (exclude.has(key) || dirtZone.has(col, row)) continue;
+      if (exclude.has(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
 
       // Offset diferente do usado em `groundVariation`/`dirtPaths` na mesma
       // célula, pra não correlacionar com a variação de tom da grama nem

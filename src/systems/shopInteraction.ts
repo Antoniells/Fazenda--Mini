@@ -11,6 +11,9 @@ import { ShopMenu } from '../ui/shopMenu';
  * interação adjacente (ver `PlayerController`).
  */
 export class ShopInteractable implements Interactable {
+  /** Responde à tecla F (`PlayerController.handleInteractKey`), além do clique — pedido explícito do usuário. */
+  readonly keyInteractable = true;
+
   constructor(
     private readonly player: Player,
     private readonly shopMenu: ShopMenu,

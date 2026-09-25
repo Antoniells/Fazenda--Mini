@@ -6,6 +6,11 @@ import { WalkableGrid } from './grid';
 import { buildBridge, buildConstructionSign, bridgeRailingCells } from './mapBuilder';
 import { LockedMessage } from '../ui/lockedMessage';
 import { gameState } from './gameState';
+import { onPlayerStepped } from './sceneEvents';
+import { playEffect } from './soundEffects';
+import { SPEND_MONEY_SOUND } from '../data/audio';
+import { OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialoguePanel';
+import { isDialogueOpen } from '../scenes/UIScene';
 
 /**
  * DEBUG (Sistema de Cenas): `false` — pedido explícito do usuário pra
@@ -17,6 +22,9 @@ export const DEBUG_BRIDGES_START_UNLOCKED = false;
 
 /** Chave (`scene.start`) da cena principal — usada para calcular por onde o jogador reaparece nela ao voltar de uma ponte (ver `crossInto`). */
 const MAIN_SCENE_KEY = 'MainScene';
+
+/** A que distância (em células, de qualquer lado) de uma ponte bloqueada o card de compra abre sozinho. */
+const OFFER_RANGE_CELLS = 3;
 
 /** Ao interagir com a ponte (bloqueada ou não) — ver `BridgeSystem.tryCross`. */
 class BridgeInteractable implements Interactable {
@@ -53,6 +61,8 @@ export class BridgeSystem {
   private readonly lockSigns = new Map<string, Phaser.GameObjects.Image>();
   /** Trava contra reentrância (bug relatado pelo usuário): sem isso, pisar na célula da ponte várias vezes durante os 300ms de `fadeOut` disparava `crossInto`/`scene.start` mais de uma vez, travando a troca de cena. */
   private isTransitioning = false;
+  /** Pontes bloqueadas cujo card de compra já foi oferecido nesta aproximação (`handlePlayerStep`). */
+  private readonly offered = new Set<string>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -73,7 +83,7 @@ export class BridgeSystem {
       for (const [col, row] of bridgeRailingCells(bridge)) this.grid.block(col, row);
 
       // NOVA LÓGICA: Verifica se a ponte já está no gameState global!
-      if (DEBUG_BRIDGES_START_UNLOCKED || gameState.unlockedBridges.has(this.key(bridge))) {
+      if (DEBUG_BRIDGES_START_UNLOCKED || gameState.unlockedBridges.has(this.key(bridge)) || this.isFree(bridge)) {
         this.unlockBridge(bridge);
       } else {
         this.lockSigns.set(this.key(bridge), buildConstructionSign(scene, map.tileSize, bridge.col, bridge.row));
@@ -86,26 +96,61 @@ export class BridgeSystem {
     // (emitido por `PlayerController.update` a cada célula nova) — é o
     // único jeito de saber que o jogador REALMENTE chegou na célula da
     // ponte, não importa se foi por clique ou pelas setas/WASD.
-    scene.events.on('player-stepped', (col: number, row: number) => this.handlePlayerStep(col, row));
+    onPlayerStepped(scene, (col, row) => this.handlePlayerStep(col, row));
   }
 
   private key(bridge: BridgeDefinition): string {
     return `${bridge.col},${bridge.row}`;
   }
 
+  /** Ponte SEM requisito (moedas/itens): é uma estrada, não uma obra — nasce aberta, sem placa nem interação (o Vilarejo). */
+  private isFree(bridge: BridgeDefinition): boolean {
+    return !bridge.requirement.coins && (bridge.requirement.items ?? []).length === 0;
+  }
+
   isUnlocked(bridge: BridgeDefinition): boolean {
     return gameState.unlockedBridges.has(this.key(bridge));
   }
 
-  /** Chamado pela ponte (`BridgeInteractable`) ao interagir — só acontece enquanto ela ainda está bloqueada (depois de destravada, a própria interação é removida, ver `unlockBridge`). */
+  /** Chamado pela ponte (`BridgeInteractable`) ao interagir — só acontece enquanto ela ainda está bloqueada (depois de destravada, a própria interação é removida, ver `unlockBridge`). Abre o card de compra. */
   tryCross(bridge: BridgeDefinition): void {
-    if (this.tryPayRequirement(bridge)) {
-      this.unlockBridge(bridge);
-      console.log(`Ponte para ${bridge.destinationName} desbloqueada! Atravesse a ponte para entrar.`);
+    this.offerPurchase(bridge);
+  }
+
+  /**
+   * Card de compra da ponte (pedido explícito — a placa na borda do mapa era difícil de clicar, ex.: a da Praia fica por baixo da Hotbar): o
+   * mesmo painel de conversa (`ui/dialoguePanel.ts`), com o preço, quanto o jogador tem e os botões "Comprar" (apagado se faltar moeda) e
+   * "Fechar". Abre sozinho ao chegar perto (`handlePlayerStep`) e também ao clicar na placa. Comprar paga e libera a ponte na hora.
+   */
+  private offerPurchase(bridge: BridgeDefinition): void {
+    if (isDialogueOpen() || this.isUnlocked(bridge)) return;
+
+    const price = bridge.requirement.coins ?? 0;
+    const have = this.inventory.getCoins();
+    const lines = [`Preço: ${price} moedas`, `Você tem: ${have} moedas`];
+    for (const item of bridge.requirement.items ?? []) lines.push(`${item.amount}x ${item.label}`);
+    if (have < price) lines.push(`Faltam ${price - have} moedas.`);
+
+    const payload: DialoguePayload = {
+      speaker: `Ponte para ${bridge.destinationName}`,
+      subtitle: 'Passagem bloqueada',
+      text: `Esta passagem leva a ${bridge.destinationName}, mas a ponte ainda não foi construída. Quer pagar pela obra agora?`,
+      details: lines,
+      actions: [{ label: `Comprar (${price})`, enabled: have >= price, onSelect: () => this.buy(bridge) }],
+    };
+    this.scene.game.events.emit(OPEN_DIALOGUE_EVENT, payload);
+  }
+
+  /** Paga (o painel já fechou) e libera a ponte; a travessia em si só acontece ao pisar nela. */
+  private buy(bridge: BridgeDefinition): void {
+    if (!this.tryPayRequirement(bridge)) {
+      this.offerPurchase(bridge); // O saldo mudou desde que o card abriu: reabre com o real.
       return;
     }
-
-    this.lockedMessage.show(`Bloqueado: ${bridge.destinationName}`, this.describeRequirement(bridge));
+    this.unlockBridge(bridge);
+    playEffect(this.scene, SPEND_MONEY_SOUND); // Mesmo som das compras na Loja.
+    this.lockedMessage.show(`Ponte liberada: ${bridge.destinationName}`, 'Atravesse a ponte para entrar.');
+    console.log(`Ponte para ${bridge.destinationName} desbloqueada! Atravesse a ponte para entrar.`);
   }
 
   /** Libera a célula da ponte no grid e tira a placa/interação de bloqueio — a travessia em si só acontece de verdade quando o jogador pisar nela (`handlePlayerStep`). */
@@ -120,7 +165,25 @@ export class BridgeSystem {
   /** Pedido explícito do usuário: a troca de cena só dispara quando o jogador pisa de fato na célula de uma ponte já destravada. */
   private handlePlayerStep(col: number, row: number): void {
     const bridge = this.map.bridges.find((b) => b.col === col && b.row === row);
-    if (bridge && this.isUnlocked(bridge) && !this.isTransitioning) this.crossInto(bridge);
+    if (bridge && this.isUnlocked(bridge) && !this.isTransitioning) {
+      this.crossInto(bridge);
+      return;
+    }
+
+    // Chegou perto de uma ponte ainda bloqueada: oferece a compra UMA vez (se fechar o card, só volta a oferecer depois de se afastar e voltar).
+    for (const locked of this.map.bridges) {
+      if (this.isUnlocked(locked)) continue;
+      const key = this.key(locked);
+      const distance = Math.max(Math.abs(col - locked.col), Math.abs(row - locked.row));
+      if (distance <= OFFER_RANGE_CELLS) {
+        if (!this.offered.has(key)) {
+          this.offered.add(key);
+          this.offerPurchase(locked);
+        }
+      } else if (distance > OFFER_RANGE_CELLS + 1) {
+        this.offered.delete(key);
+      }
+    }
   }
 
   /** Tenta pagar o requisito (moedas hoje — itens específicos ainda não têm estoque real pra checar, ver `BridgeRequirement`). `false` sem gastar nada se faltar algo. */
@@ -128,17 +191,6 @@ export class BridgeSystem {
     const { coins } = bridge.requirement;
     if (coins && !this.inventory.spendCoins(coins)) return false;
     return true;
-  }
-
-  private describeRequirement(bridge: BridgeDefinition): string {
-    const parts: string[] = [];
-    if (bridge.requirement.coins) {
-      parts.push(`${bridge.requirement.coins} moedas (você tem ${this.inventory.getCoins()})`);
-    }
-    for (const item of bridge.requirement.items ?? []) {
-      parts.push(`${item.amount}x ${item.label}`);
-    }
-    return parts.length > 0 ? `Requisito: ${parts.join(' + ')}` : 'Ainda não disponível.';
   }
 
   /** Célula andável logo dentro do núcleo, ao lado da parede desta ponte — ver doc da classe. */

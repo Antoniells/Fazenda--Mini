@@ -21,6 +21,7 @@ import { Enemy } from '../entities/Enemy';
 export class DebugGridOverlay {
   private readonly graphics: Phaser.GameObjects.Graphics;
   private enemyProvider: (() => Enemy[]) | null = null;
+  private isVisible = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -30,6 +31,17 @@ export class DebugGridOverlay {
   ) {
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(5000); // Acima do mundo/personagens, abaixo de qualquer HUD (que fica em telas/scrollFactor(0) à parte).
+  scene.input.keyboard?.on('keydown-B', (event: KeyboardEvent) => {
+      if (event.altKey) {
+        this.isVisible = !this.isVisible;
+        this.graphics.setVisible(this.isVisible);
+        
+        // Se desligou, limpa os desenhos que ficaram na tela
+        if (!this.isVisible) {
+          this.graphics.clear();
+        }
+      }
+    });
   }
 
   /** Plugado pela cena dona dos inimigos (só a Floresta, por ora) — mesmo padrão de `PlayerController.setEnemyProvider`. */
@@ -37,7 +49,9 @@ export class DebugGridOverlay {
     this.enemyProvider = provider;
   }
 
-  update(): void {
+update(): void {
+    if (!this.isVisible) return; // <-- 3. ADICIONADO AQUI
+
     this.graphics.clear();
 
     const view = this.scene.cameras.main.worldView;

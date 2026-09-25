@@ -47,8 +47,8 @@ Nunca gerar elementos visuais via HTML, CSS, SVG, emojis ou formas desenhadas pr
 ## Escopo tecnológico
 
 - TypeScript + Phaser + Vite para o desenvolvimento do jogo.
-- Electron será integrado **apenas na Fase 10** do roadmap, para empacotamento desktop. Não instalar ou configurar Electron antes disso.
-- A arquitetura do jogo deve ser escrita de forma independente da camada de empacotamento, para que a integração futura com Electron não exija reescrever a lógica principal.
+- Electron foi integrado na Fase 10 (empacotamento desktop): processo principal e preload em `electron/`, detalhes em [docs/TECHNICAL.md](docs/TECHNICAL.md#integração-com-electron-fase-10).
+- A arquitetura do jogo continua independente da camada de empacotamento: nada em `src/` importa Electron. Tudo que é específico de desktop (arquivos de save, tela cheia) chega ao jogo por adaptadores (`systems/storageAdapter.ts`, `systems/displayMode.ts`) que caem no comportamento de navegador quando a ponte do Electron não existe.
 
 ## Escopo de design
 

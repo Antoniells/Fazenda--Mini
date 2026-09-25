@@ -1,5 +1,5 @@
 import { WOOD, STONE } from './resources';
-import { IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from './tools';
+import { STONE_AXE, STONE_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from './tools';
 import { IRON_SWORD, GOLD_SWORD } from './weapons';
 import { WOOD_ARMOR, IRON_ARMOR } from './armors';
 
@@ -36,6 +36,8 @@ export interface RecipeDefinition {
 }
 
 /**
+ * Progressão de Machado/Picareta (Madeira > Pedra > Ferro > Ouro, `data/toolProgression.ts`): fabricar o tier
+ * seguinte exige TER o anterior e o SUBSTITUI no mesmo slot (não vira item novo) — ver `Inventory.upgradeTool`.
  * Ferramentas de progressão (Machado/Picareta): sem preço/custo anterior
  * pra herdar (diferente das Espadas, são as primeiras receitas dessas
  * ferramentas), então usa a mesma escala de moedas/recursos já validada
@@ -43,6 +45,28 @@ export interface RecipeDefinition {
  * abaixo) — tier Ferro mais barato que Ouro, custo em Pedra (tema de
  * mineração) com um pouco de Madeira.
  */
+export const RECIPE_AXE_STONE: RecipeDefinition = {
+  id: 'recipe-axe-stone',
+  itemId: STONE_AXE.id,
+  category: 'tool',
+  price: 200,
+  ingredients: [
+    { resourceId: STONE.id, amount: 8 },
+    { resourceId: WOOD.id, amount: 8 },
+  ],
+};
+
+export const RECIPE_PICKAXE_STONE: RecipeDefinition = {
+  id: 'recipe-pickaxe-stone',
+  itemId: STONE_PICKAXE.id,
+  category: 'tool',
+  price: 200,
+  ingredients: [
+    { resourceId: STONE.id, amount: 10 },
+    { resourceId: WOOD.id, amount: 5 },
+  ],
+};
+
 export const RECIPE_AXE_IRON: RecipeDefinition = {
   id: 'recipe-axe-iron',
   itemId: IRON_AXE.id,
@@ -132,6 +156,8 @@ export const RECIPE_ARMOR_IRON: RecipeDefinition = {
 };
 
 export const RECIPES: Record<string, RecipeDefinition> = {
+  [RECIPE_AXE_STONE.id]: RECIPE_AXE_STONE,
+  [RECIPE_PICKAXE_STONE.id]: RECIPE_PICKAXE_STONE,
   [RECIPE_AXE_IRON.id]: RECIPE_AXE_IRON,
   [RECIPE_AXE_GOLD.id]: RECIPE_AXE_GOLD,
   [RECIPE_PICKAXE_IRON.id]: RECIPE_PICKAXE_IRON,

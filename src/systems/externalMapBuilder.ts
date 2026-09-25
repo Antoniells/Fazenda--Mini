@@ -12,6 +12,7 @@ import {
   ROCK_KEY,
   ROCK_FRAME_1,
   ROCK_FRAME_2,
+  ROCK_FRAME_3,
   ROCK_BIG_SCALE_MULT,
   ORE_KEY,
   ORE_IRON_FRAME,
@@ -22,7 +23,7 @@ import {
 } from '../data/tiles';
 import { createGroundShadow } from './shadow';
 import { DISPLAY_SCALE } from './mapBuilder';
-import { TreeStage } from './resourceNodeRegistry';
+import { TreeStage, TreeSpecies } from './resourceNodeRegistry';
 import { WalkableGrid } from './grid';
 import { hash2D } from './groundVariation';
 import { GRASS_DETAILS } from '../data/grassDetails';
@@ -57,8 +58,6 @@ export function registerFrame(
   }
 }
 
-export type TreeSpecies = 'pine' | 'birch';
-
 /** Árvore decorativa (Floresta) — mesma técnica de `mapBuilder.buildFarmDecorations`, generalizada para aceitar qualquer espécie/posição (não só `farmMap.treePositions` com Pinheiro fixo). */
 export function buildExternalTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, species: TreeSpecies): Phaser.GameObjects.Image {
   const tile = tileSize * DISPLAY_SCALE;
@@ -89,13 +88,21 @@ let tree: Phaser.GameObjects.Image;
  * `data/tiles.ts`) — só adulta ganha sombra (as fases jovens são pequenas
  * demais pra precisar de uma, mesmo critério visual de qualquer decoração
  * baixa). Usada tanto pelo respawn selvagem (`ForestScene`) quanto por
- * bolotas plantadas na Fazenda (`systems/treePlanting.ts`).
+ * bolotas plantadas na Fazenda (`systems/treePlanting.ts`). `species: 'birch'`
+ * (Floresta) só tem a arte adulta — ignora `stage` e usa sempre o frame da
+ * bétula.
  */
-export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, stage: TreeStage): WorldResourceVisual {
+export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, stage: TreeStage, species: TreeSpecies = 'pine'): WorldResourceVisual {
   registerFrame(scene, PINE_TREE_KEY, { name: PINE_SPROUT_FRAME_NAME, rect: PINE_SPROUT_FRAME });
   registerFrame(scene, PINE_TREE_KEY, { name: PINE_YOUNG_FRAME_NAME, rect: PINE_YOUNG_FRAME });
 
-  const frameName = stage === 'sprout' ? PINE_SPROUT_FRAME_NAME : stage === 'young' ? PINE_YOUNG_FRAME_NAME : PINE_TREE_FRAME_NAME;
+  let textureKey = PINE_TREE_KEY;
+  let frameName = stage === 'sprout' ? PINE_SPROUT_FRAME_NAME : stage === 'young' ? PINE_YOUNG_FRAME_NAME : PINE_TREE_FRAME_NAME;
+  if (species === 'birch') {
+    registerFrame(scene, BIRCH_TREE_KEY, { name: BIRCH_TREE_FRAME_NAME, rect: BIRCH_TREE_FRAME });
+    textureKey = BIRCH_TREE_KEY;
+    frameName = BIRCH_TREE_FRAME_NAME;
+  }
 
   const tile = tileSize * DISPLAY_SCALE;
   const x = col * tile + tile / 2;
@@ -107,7 +114,7 @@ if (stage === 'mature') {
     shadow.setDepth(STATIC_SHADOW_DEPTH);
   }
 
-  const sprite = scene.add.image(x, y, PINE_TREE_KEY, frameName);
+  const sprite = scene.add.image(x, y, textureKey, frameName);
   sprite.setOrigin(0.5, 1);
   sprite.setScale(DISPLAY_SCALE);
   sprite.setDepth(sprite.y);
@@ -118,11 +125,11 @@ if (stage === 'mature') {
 /**
  * Pedra pequena ou rocha grande (`big`, Fase 7 — mesmo asset numa escala
  * maior, ver comentário de `ROCK_BIG_SCALE_MULT` em `data/tiles.ts`) —
- * alterna entre as 2 variações disponíveis (`variant` 0 ou 1) pra não
+ * alterna entre as 3 variações disponíveis (`variant` 0, 1 ou 2) pra não
  * repetir sempre a mesma.
  */
-export function buildRock(scene: Phaser.Scene, tileSize: number, col: number, row: number, variant: 0 | 1 = 0, big = false): WorldResourceVisual {
-  const frame = variant === 0 ? ROCK_FRAME_1 : ROCK_FRAME_2;
+export function buildRock(scene: Phaser.Scene, tileSize: number, col: number, row: number, variant: 0 | 1 | 2 = 0, big = false): WorldResourceVisual {
+  const frame = variant === 0 ? ROCK_FRAME_1 : variant === 1 ? ROCK_FRAME_2 : ROCK_FRAME_3;
   registerFrame(scene, ROCK_KEY, frame);
 
   const tile = tileSize * DISPLAY_SCALE;
@@ -216,17 +223,19 @@ const WILD_FOLIAGE_IDS = ['mushroom', 'flower', 'tuft'];
  * do `WalkableGrid` da cena (já exclui borda/água/árvores/pedras/ponte) em
  * vez dos dados específicos da Fazenda. Chamado no FIM de `buildMapContent`,
  * depois de todo obstáculo já ter bloqueado sua célula no grid.
+ * `excludedCells`: células andáveis que NÃO recebem detalhe (ex.: o corredor da ponte de volta).
  */
-export function buildWildFoliage(scene: Phaser.Scene, tileSize: number, grid: WalkableGrid): GrassTuftMap {
+export function buildWildFoliage(scene: Phaser.Scene, tileSize: number, grid: WalkableGrid, excludedCells: ReadonlyArray<[number, number]> = []): GrassTuftMap {
   const details = GRASS_DETAILS.filter((detail) => WILD_FOLIAGE_IDS.includes(detail.id));
   registerGrassDetailFrames(scene, details);
+  const excluded = new Set(excludedCells.map(([col, row]) => `${col},${row}`));
 
   const tile = tileSize * DISPLAY_SCALE;
   const rustling: GrassTuftMap = new Map();
 
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
-      if (!grid.isWalkable(col, row)) continue;
+      if (!grid.isWalkable(col, row) || excluded.has(`${col},${row}`)) continue;
       // Offset diferente do usado em qualquer outra decisão hash na mesma
       // célula, pra não correlacionar com variação de chão/outros sistemas.
       if (hash2D(col * 911 + 271, row * 1013 + 349) >= WILD_FOLIAGE_CHANCE) continue;

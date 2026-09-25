@@ -13,9 +13,9 @@ import {
   COIN_PLAQUE_DIGIT_CENTER_Y,
 } from '../data/ui';
 
-const SCALE = 2.4;
-const MARGIN_TOP = 12;
-const MARGIN_RIGHT = 12;
+const SCALE = 2.6;
+const MARGIN_TOP = 20;
+const MARGIN_RIGHT = 20;
 /** Espaço entre as duas placas empilhadas — pequeno o bastante pra lerem como uma peça só. */
 const PLAQUE_GAP = 2;
 
@@ -174,6 +174,7 @@ export class TimeMoneyHud {
   /** Atualiza o saldo, um dígito por janelinha (alinhado à direita — janelinhas sobrando à esquerda ficam em branco). */
   refreshCoins(coins: number): void {
     if (coins === this.lastCoins) return;
+    const gained = this.lastCoins !== null && coins > this.lastCoins;
     this.lastCoins = coins;
 
     const digits = String(coins).split('');
@@ -183,6 +184,15 @@ export class TimeMoneyHud {
 
     for (let index = 0; index < slotCount; index++) {
       this.digitTexts[index].setText(index >= startIndex ? visibleDigits[index - startIndex] : '');
+    }
+
+    // Ganhou moedas: os dígitos dão um pulinho dourado (Stardew/Terraria — o dinheiro "brilha" ao entrar).
+    if (gained) {
+      for (const digit of this.digitTexts) {
+        this.scene.tweens.killTweensOf(digit);
+        digit.setScale(1.5);
+        this.scene.tweens.add({ targets: digit, scale: 1, duration: 260, ease: 'Back.easeOut' });
+      }
     }
   }
 }

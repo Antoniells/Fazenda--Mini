@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DecorationDefinition } from '../data/decorations';
+import { DecorationDefinition, DECORATIONS } from '../data/decorations';
 import { FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
@@ -11,18 +11,36 @@ import { createGroundShadow } from './shadow';
 import { coverageRatio } from './treeOverlap';
 import { FarmlandRenderer } from './farmlandRenderer';
 import { gameState } from './gameState';
-import { AXE, PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
+import { resourceNodeRegistry } from './resourceNodeRegistry';
+import { FARM_RESOURCES_KEY } from './farmResources';
+import { HOE } from '../data/tools';
+import { getToolTierInfo, isToolOfFamily } from '../data/toolProgression';
+import { spawnLoot } from './lootDrops';
+import { playBreakEffect } from './breakEffect';
+import { playSprinklerWater } from './sprinklerWater';
+import { farmChestId, discardChest, isChestEmpty } from './chestStorage';
+import { OPEN_CHEST_MENU_EVENT, OpenChestMenuPayload } from './furniturePlacement';
+import { popText } from './floatingText';
+import { sprinklerReachCells } from './sprinklers';
+import { playEffect, playRandomEffect } from './soundEffects';
+import { OBJECT_BREAK_SOUND, ORE_HIT_SOUNDS, PLACE_SOUND, WATER_SOUND } from '../data/audio';
 
 /** Nome do evento global (Fase 8 — Crafting) disparado ao interagir com a Bancada de Trabalho — ouvido pela `UIScene`, que é quem realmente sabe abrir o `CraftingMenu` (ver `scenes/UIScene.ts`). Um evento em `scene.game.events` (não `scene.events`) evita este módulo (`systems/`) precisar importar de `scenes/`, na direção errada da arquitetura. */
 export const OPEN_CRAFTING_MENU_EVENT = 'open-crafting-menu';
 
-/** Ferramentas (qualquer tier — ver `data/tools.ts`) que ainda removem a Bancada em vez de abrir a Bancada — mesma ideia de Machado/Picareta já servirem pra "desfazer" recursos do mundo (árvore, pedra). */
-const WORKBENCH_REMOVAL_TOOL_IDS = new Set<string>([AXE.id, PICKAXE.id, IRON_AXE.id, GOLD_AXE.id, IRON_PICKAXE.id, GOLD_PICKAXE.id]);
+/** Machado/Picareta (qualquer tier — `data/toolProgression.ts`) ainda removem a Bancada em vez de abrir a Bancada — mesma ideia de já servirem pra "desfazer" recursos do mundo (árvore, pedra). */
+const isWorkbenchRemovalTool = (toolId: string): boolean => getToolTierInfo(toolId) !== null;
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
 const GHOST_ALPHA = 0.6;
 const GHOST_DEPTH = 950; // Acima do mundo, abaixo dos HUDs (1000+) — mesma faixa do TileCursor.
+/** Grid de alcance do aspersor (mesmo visual do grid de colisão de `debugGridOverlay.ts`, só que verde): logo abaixo do fantasma. */
+const COVERAGE_DEPTH = GHOST_DEPTH - 1;
+const COVERAGE_FILL = 0x22cc44;
+const COVERAGE_FILL_ALPHA = 0.35;
+const COVERAGE_LINE = 0x9dffb5;
+const COVERAGE_LINE_ALPHA = 0.7;
 const PLACED_SHADOW_DEPTH = -0.4; // Mesma faixa das sombras estáticas de mapBuilder.ts.
 
 /**
@@ -67,12 +85,48 @@ class PlacedDecorationInteractable implements Interactable {
     // abre o Crafting.
     if (this.decorationId === 'workbench') {
       const selected = gameState.inventory.getSelectedSlot();
-      const isRemovalTool = selected?.category === 'tool' && WORKBENCH_REMOVAL_TOOL_IDS.has(selected.id);
+      const isRemovalTool = selected?.category === 'tool' && isWorkbenchRemovalTool(selected.id);
       if (isRemovalTool) {
-        this.system.removeAt(this.col, this.row);
+        // O golpe da ferramenta na mão (Picareta ou Machado) e a Bancada se despedaça.
+        const action = isToolOfFamily(selected.id, 'pickaxe') ? 'pickaxe' : 'axe';
+        this.player.performAction(action, () => this.system.removeAt(this.col, this.row, false, true));
         return;
       }
       this.scene.game.events.emit(OPEN_CRAFTING_MENU_EVENT);
+      return;
+    }
+
+    // Baú na Fazenda (pedido explícito — o baú também pode ficar fora da casa): Picareta quebra (só vazio, senão os itens sumiriam) e
+    // qualquer outra coisa na mão abre a tela de transferência (`ui/chestMenu.ts`, por evento). O estoque tem id próprio (`farmChestId`).
+    if (DECORATIONS[this.decorationId]?.isChest) {
+      const chestId = farmChestId(this.col, this.row);
+      const selected = gameState.inventory.getSelectedSlot();
+      if (selected?.category === 'tool' && isToolOfFamily(selected.id, 'pickaxe')) {
+        if (!isChestEmpty(chestId)) {
+          this.system.warnChestNotEmpty(this.col, this.row);
+          return;
+        }
+        this.player.performAction('pickaxe', () => this.system.removeAt(this.col, this.row, false, true));
+        return;
+      }
+      const payload: OpenChestMenuPayload = { chestId, onPickUp: () => this.system.removeAt(this.col, this.row) };
+      this.scene.game.events.emit(OPEN_CHEST_MENU_EVENT, payload);
+      return;
+    }
+
+    // Aspersor: fica travando o terreno pra enxada (`Farmland.setTillLocked`) — com a enxada na mão o clique NÃO faz nada. Só um golpe
+    // de PICARETA (qualquer tier) o tira do chão: ele cai como item no chão pra ser recolhido, e o terreno volta a poder ser arado.
+    if (DECORATIONS[this.decorationId]?.locksTilling) {
+      const selected = gameState.inventory.getSelectedSlot();
+      if (selected?.category === 'tool' && selected.id === HOE.id) {
+        console.log('Há um aspersor neste bloco — a enxada não age aqui. Bata nele com a Picareta pra tirá-lo.');
+        return;
+      }
+      if (selected?.category !== 'tool' || !isToolOfFamily(selected.id, 'pickaxe')) {
+        console.log('Selecione a Picareta pra tirar o aspersor do chão.');
+        return;
+      }
+      this.player.performAction('pickaxe', () => this.system.removeAt(this.col, this.row, true, true));
       return;
     }
 
@@ -86,7 +140,14 @@ interface PlacedDecoration {
   image: Phaser.GameObjects.Image;
   shadow: Phaser.GameObjects.Image;
   decorationId: string;
+  /** Célula-âncora (canto superior-esquerdo do footprint). */
+  col: number;
+  row: number;
   footprint: { width: number; height: number };
+  /** O que estava registrado em cada célula ANTES da construção (ex.: o canteiro, `PlotInteractable`, no caso do aspersor) — devolvido ao remover, senão a célula perderia a interação pra sempre. */
+  replaced: Map<string, Interactable | undefined>;
+  /** A animação da manhã está tocando agora (não deixa duas rodarem juntas). */
+  animating: boolean;
 }
 
 /**
@@ -106,6 +167,10 @@ interface PlacedDecoration {
 export class DecorationPlacementSystem implements PointerInputInterceptor {
   private readonly placed = new Map<string, PlacedDecoration>();
   private readonly ghost: Phaser.GameObjects.Image;
+  /** Grid verde dos terrenos que o aspersor em posicionamento vai regar (só desenhado com uma decoração de `waterReach` ativa). */
+  private readonly coverage: Phaser.GameObjects.Graphics;
+  /** Célula/decoração do último desenho do grid — só redesenha quando muda. */
+  private coverageKey = '';
   private readonly farmlandCells: Set<string>;
   private activeDecoration: DecorationDefinition | null = null;
 
@@ -119,6 +184,8 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     private readonly player: Player,
     private readonly farmlandRenderer: FarmlandRenderer,
     firstDecoration: DecorationDefinition,
+    /** Célula onde NÃO se pode construir (ex.: uma cerca — inclusive a destruída, que fica andável até ser consertada). */
+    private readonly isBlockedCell: (col: number, row: number) => boolean = () => false,
   ) {
     this.farmlandCells = new Set(map.farmlandArea.map(([col, row]) => `${col},${row}`));
 
@@ -128,6 +195,9 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     this.ghost.setDepth(GHOST_DEPTH);
     this.ghost.setAlpha(GHOST_ALPHA);
     this.ghost.setVisible(false);
+
+    this.coverage = scene.add.graphics();
+    this.coverage.setDepth(COVERAGE_DEPTH);
 
     // worldX/worldY — com a câmera podendo rolar (Fase 6, Expansão), x/y
     // são coordenadas de tela, não do mundo.
@@ -152,6 +222,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
 
     this.activeDecoration = decoration;
     this.ghost.setTexture(decoration.textureKey, decoration.frameName);
+    this.ghost.setScale(DISPLAY_SCALE * (decoration.displayScaleMultiplier ?? 1));
     this.ghost.setVisible(true);
   }
 
@@ -159,6 +230,36 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
   cancel(): void {
     this.activeDecoration = null;
     this.ghost.setVisible(false);
+    this.clearCoverage();
+  }
+
+  private clearCoverage(): void {
+    this.coverage.clear();
+    this.coverageKey = '';
+  }
+
+  /**
+   * Aspersor (`waterReach`) em posicionamento: pinta de verde os terrenos que ele vai regar a partir de (`col`,`row`) — as células vêm
+   * de `sprinklerReachCells` (a MESMA regra da rega de verdade, só onde existe terreno de plantio), então o que aparece é exatamente o
+   * que será regado. Outras decorações não mostram nada.
+   */
+  private drawCoverage(col: number, row: number, decoration: DecorationDefinition): void {
+    if (!decoration.waterReach) {
+      this.clearCoverage();
+      return;
+    }
+    const key = `${decoration.id}:${col},${row}`;
+    if (key === this.coverageKey) return;
+    this.coverageKey = key;
+
+    this.coverage.clear();
+    this.coverage.fillStyle(COVERAGE_FILL, COVERAGE_FILL_ALPHA);
+    this.coverage.lineStyle(1, COVERAGE_LINE, COVERAGE_LINE_ALPHA);
+    for (const cell of sprinklerReachCells(decoration, col, row)) {
+      if (!gameState.farmland.getPlot(cell.col, cell.row)) continue;
+      this.coverage.fillRect(cell.col * this.tilePx, cell.row * this.tilePx, this.tilePx, this.tilePx);
+      this.coverage.strokeRect(cell.col * this.tilePx, cell.row * this.tilePx, this.tilePx, this.tilePx);
+    }
   }
 
   private handlePointerMove(x: number, y: number): void {
@@ -176,16 +277,35 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     // generalizado, que pra `width: 1, height: 1` dá exatamente o resultado
     // de antes desta fase.
     this.ghost.setPosition(col * this.tilePx + (width * this.tilePx) / 2, (row + height) * this.tilePx);
-    this.ghost.setTint(this.canPlaceAt(col, row, decoration.footprint) ? GHOST_VALID_TINT : GHOST_INVALID_TINT);
+    this.ghost.setTint(this.canPlaceAt(col, row, decoration) ? GHOST_VALID_TINT : GHOST_INVALID_TINT);
+    this.drawCoverage(col, row, decoration);
   }
 
-  /** Verdadeiro só se TODAS as células do footprint, a partir de (`col`,`row`), estiverem livres (andáveis e fora da lavoura). */
-  private canPlaceAt(col: number, row: number, footprint: { width: number; height: number }): boolean {
+  /**
+   * Verdadeiro só se TODAS as células do footprint, a partir de (`col`,`row`), estiverem livres e válidas pra esta decoração:
+   * por padrão andáveis e FORA da lavoura; as de `placement: 'farmland'` (aspersor) são o contrário — só DENTRO da lavoura, em
+   * terreno ainda não arado e sem nada plantado/construído (a célula do canteiro fica andável até ser ocupada).
+   */
+  private canPlaceAt(col: number, row: number, decoration: DecorationDefinition): boolean {
+    const { footprint } = decoration;
+    if (decoration.placement === 'house' && !decoration.outdoor) return false; // Móvel: só dentro da casa (`systems/furniturePlacement.ts`) — exceto o que também pode ficar fora (`outdoor`, o Baú).
+    const onFarmland = decoration.placement === 'farmland';
+
     for (let dy = 0; dy < footprint.height; dy++) {
       for (let dx = 0; dx < footprint.width; dx++) {
         const c = col + dx;
         const r = row + dy;
-        if (!this.grid.isWalkable(c, r) || this.farmlandCells.has(`${c},${r}`)) return false;
+        if (!this.grid.isWalkable(c, r) || this.isBlockedCell(c, r)) return false;
+        // Broto e muda são ANDÁVEIS: sem esta checagem uma construção nascia em cima de um deles e, quando ele crescesse (ou fosse cortado),
+        // bloqueava/liberava a célula por baixo dela e roubava a interação — ficava uma construção fantasma sem colisão.
+        if (resourceNodeRegistry.hasNodeAt(FARM_RESOURCES_KEY, c, r)) return false;
+
+        const inFarmland = this.farmlandCells.has(`${c},${r}`);
+        if (onFarmland) {
+          if (!inFarmland || gameState.farmland.getPlot(c, r)?.state !== 'untilled') return false;
+        } else if (inFarmland) {
+          return false;
+        }
       }
     }
     return true;
@@ -198,10 +318,11 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
 
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
-    if (!this.canPlaceAt(col, row, decoration.footprint)) return;
+    if (!this.canPlaceAt(col, row, decoration)) return;
     if (!this.inventory.useDecoration(decoration.id)) return;
 
     this.placeAt(decoration, col, row);
+    playEffect(this.scene, PLACE_SOUND);
 
     // Sem mais estoque, sai do modo — não tem sentido continuar "segurando"
     // uma decoração que o jogador não tem mais.
@@ -213,23 +334,52 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     const x = col * this.tilePx + (width * this.tilePx) / 2;
     const y = (row + height) * this.tilePx;
 
-    const shadow = createGroundShadow(this.scene, x, y, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
+    const scaleMultiplier = decoration.displayScaleMultiplier ?? 1;
+    const shadow = createGroundShadow(this.scene, x, y, DISPLAY_SCALE * 1.1 * scaleMultiplier, DISPLAY_SCALE * 0.5 * scaleMultiplier);
     shadow.setDepth(PLACED_SHADOW_DEPTH);
 
-    const image = this.scene.add.image(x, y, decoration.textureKey, decoration.frameName);
-    image.setOrigin(0.5, 1);
-    image.setScale(DISPLAY_SCALE);
+    // Decoração animada: posicionada, ela fica no quadro de REPOUSO (o 1º da animação — o `frameName` é só o ícone, um recorte mais justo).
+    const frames = decoration.animationFrames;
+    const image = this.scene.add.image(x, y, decoration.textureKey, frames?.[0]?.name ?? decoration.frameName);
+    image.setOrigin(0.5, frames ? decoration.animationOriginY ?? 1 : 1);
+    image.setScale(DISPLAY_SCALE * (decoration.displayScaleMultiplier ?? 1));
     image.setDepth(y);
 
+    // Animação em LOOP (a que não é "uma vez por manhã"): troca de frame; o timer se remove sozinho quando a imagem some (removida ou cena fechada).
+    if (frames && frames.length > 1 && !decoration.animatesEachMorning) {
+      let frameIndex = 0;
+      const timer = this.scene.time.addEvent({
+        delay: decoration.animationFrameMs ?? 120,
+        loop: true,
+        callback: () => {
+          if (!image.active) {
+            timer.remove();
+            return;
+          }
+          frameIndex = (frameIndex + 1) % frames.length;
+          image.setFrame(frames[frameIndex].name);
+        },
+      });
+    }
+
     const interactable = new PlacedDecorationInteractable(this.scene, this, this.player, col, row, decoration.id);
+    const replaced = new Map<string, Interactable | undefined>();
     for (let dy = 0; dy < height; dy++) {
       for (let dx = 0; dx < width; dx++) {
+        const cellKey = `${col + dx},${row + dy}`;
+        replaced.set(cellKey, this.interactions.get(col + dx, row + dy));
         this.grid.block(col + dx, row + dy);
         this.interactions.set(col + dx, row + dy, interactable);
+        if (decoration.locksTilling) gameState.farmland.setTillLocked(col + dx, row + dy, true);
       }
     }
 
-    this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id, footprint: { width, height } });
+    this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id, col, row, footprint: { width, height }, replaced, animating: false });
+    // Bug corrigido (Scene Persistence) — grava também no registro
+    // persistente (`gameState`, sobrevive a uma troca de cena de verdade),
+    // já que `this.placed` some junto com o `Phaser.GameObjects.Image`
+    // assim que a cena é destruída (ver `restorePlacements`).
+    gameState.placedDecorations.set(`${col},${row}`, { decorationId: decoration.id, col, row });
   }
 
   /**
@@ -239,25 +389,101 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
    * unidade ao estoque. Desbloqueia e desregistra TODAS as células do
    * footprint original, não só a âncora.
    */
-  removeAt(col: number, row: number): void {
+  removeAt(col: number, row: number, dropAsLoot = false, breakEffect = false): void {
     const key = `${col},${row}`;
     const entry = this.placed.get(key);
     if (!entry) return;
 
-    entry.image.destroy();
-    entry.shadow.destroy();
+    // Com golpe de ferramenta: a construção se despedaça (animação + som); senão some na hora, como antes.
+    if (breakEffect) {
+      playBreakEffect(this.scene, entry.image, entry.shadow);
+      playEffect(this.scene, OBJECT_BREAK_SOUND);
+      if (DECORATIONS[entry.decorationId]?.locksTilling) playRandomEffect(this.scene, ORE_HIT_SOUNDS); // O aspersor é de metal: um tinido junto.
+    } else {
+      entry.image.destroy();
+      entry.shadow.destroy();
+    }
     this.placed.delete(key);
+    gameState.placedDecorations.delete(key);
 
     const { width, height } = entry.footprint;
     for (let dy = 0; dy < height; dy++) {
       for (let dx = 0; dx < width; dx++) {
         this.grid.unblock(col + dx, row + dy);
-        this.interactions.remove(col + dx, row + dy);
+        const previous = entry.replaced.get(`${col + dx},${row + dy}`);
+        if (previous) this.interactions.set(col + dx, row + dy, previous); // Devolve o canteiro (o aspersor o tinha substituído).
+        else this.interactions.remove(col + dx, row + dy);
+        gameState.farmland.setTillLocked(col + dx, row + dy, false);
       }
     }
 
+    if (DECORATIONS[entry.decorationId]?.isChest) discardChest(farmChestId(col, row)); // Só chega aqui vazio (Picareta/Recolher conferem antes).
+
+    if (dropAsLoot) {
+      // O item "cai" no chão onde a construção estava e o jogador o recolhe (mesmo loot das árvores/pedras).
+      spawnLoot(this.scene, this.player, col * this.tilePx + this.tilePx / 2, row * this.tilePx + this.tilePx * 0.75, { category: 'decoration', id: entry.decorationId, amount: 1 });
+      console.log(`Removido: 1 ${entry.decorationId} caiu no chão.`);
+      return;
+    }
     this.inventory.addDecorations(entry.decorationId, 1);
     console.log(`Removido: 1 ${entry.decorationId} (estoque: ${this.inventory.getDecorationCount(entry.decorationId)}).`);
+  }
+
+  /** Aviso flutuante em cima do baú: a Picareta não quebra um baú com itens (eles sumiriam). */
+  warnChestNotEmpty(col: number, row: number): void {
+    popText(this.scene, col * this.tilePx + this.tilePx / 2, row * this.tilePx, 'Esvazie o baú antes', { color: '#ff8a8a' });
+  }
+
+  /**
+   * Toca UMA vez a animação das construções com `animatesEachMorning` (o aspersor jorrando) — chamado pela `MainScene` uma vez por
+   * dia, de manhã. A imagem passa pelos quadros da sequência e termina no de repouso. Uma que já está tocando não reinicia.
+   */
+  playMorningAnimations(): void {
+    for (const entry of this.placed.values()) {
+      const decoration = DECORATIONS[entry.decorationId];
+      // Aspersor (`waterReach`): água sobre os terrenos que ele regou, toda manhã (`systems/sprinklerWater.ts`).
+      if (decoration?.waterReach) {
+        playSprinklerWater(this.scene, gameState.farmland, sprinklerReachCells(decoration, entry.col, entry.row), entry.col, entry.row, this.tilePx);
+      }
+      const frames = decoration?.animatesEachMorning ? decoration.animationFrames : undefined;
+      if (!decoration || !frames || frames.length < 2 || entry.animating) continue;
+
+      entry.animating = true;
+      let frameIndex = 0;
+      const timer = this.scene.time.addEvent({
+        delay: decoration.animationFrameMs ?? 120,
+        repeat: frames.length - 1,
+        callback: () => {
+          if (!entry.image.active) {
+            timer.remove();
+            return;
+          }
+          entry.image.setFrame(frames[frameIndex].name);
+          frameIndex += 1;
+          if (frameIndex >= frames.length) entry.animating = false;
+        },
+      });
+    }
+  }
+
+  /**
+   * Bug corrigido (Scene Persistence) — chamado uma vez por `MainScene`
+   * logo após construir este sistema (que sempre nasce com `this.placed`
+   * vazio): recria as construções que já estavam colocadas numa sessão
+   * anterior desta MESMA aba, lidas de `gameState.placedDecorations`
+   * (sobrevive à destruição da cena antiga, ver `systems/gameState.ts`).
+   * Reaproveita `placeAt` diretamente (nunca `handleClick`/`toggle`) — não
+   * deve descontar estoque de novo nem entrar no modo de posicionamento, só
+   * recriar o visual/bloqueio/interação exatamente como da primeira vez. Um
+   * id que não exista mais em `DECORATIONS` (ex.: removido de propósito do
+   * jogo) é ignorado silenciosamente, em vez de quebrar a cena inteira.
+   */
+  restorePlacements(): void {
+    for (const { decorationId, col, row } of gameState.placedDecorations.values()) {
+      const decoration = DECORATIONS[decorationId];
+      if (!decoration) continue;
+      this.placeAt(decoration, col, row);
+    }
   }
 
   /**
@@ -269,6 +495,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
    */
   refillWateringCan(col: number, row: number): void {
     this.inventory.refillWateringCan();
+    playEffect(this.scene, WATER_SOUND);
     this.farmlandRenderer.spawnWaterSplash(col, row);
     console.log(`Regador reabastecido no Poço (cargas: ${this.inventory.getWateringCanCharges()}).`);
   }

@@ -131,8 +131,10 @@ export class FarmlandRenderer {
     // `Farmland.isWatered` reflete "foi regada hoje" (Fase 9) — fica molhada
     // o dia inteiro depois de uma rega, só seca de novo na virada do dia
     // seguinte (`Farmland.onNewDay`), mesma condição que rege o crescimento
-    // e a sobrevivência da plantação.
-    const isWatered = plot.state === 'growing' && !!plot.cropId && farmland.isWatered(plot);
+    // e a sobrevivência da plantação. Solo arado e vazio também fica molhado
+    // quando a flag está ligada: só acontece ao colher em dia de chuva
+    // (`Farmland.harvest`) — o solo não "seca" com a chuva caindo.
+    const isWatered = ((plot.state === 'growing' && !!plot.cropId) || plot.state === 'tilled') && farmland.isWatered(plot);
     const autotile = isWatered ? SOIL_WET_AUTOTILE : SOIL_DRY_AUTOTILE;
     soil.setFrame(autotile[variant]);
 
@@ -273,6 +275,11 @@ private renderCrop(plot: Plot): void {
       frameRate: 12,
       repeat: 0,
     });
+  }
+
+  /** Centro da célula, em coordenadas de mundo — onde a colheita "cai" (ver `systems/lootDrops.ts`). */
+  getCellCenter(col: number, row: number): { x: number; y: number } {
+    return { x: col * this.tilePx + this.tilePx / 2, y: row * this.tilePx + this.tilePx * 0.75 };
   }
 
   /** Respingo d'água temporário ao regar (`Objects/Props/Sprash.png`, já azul — sem precisar de tingimento). */

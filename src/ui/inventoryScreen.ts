@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
+import { playClick } from '../systems/soundEffects';
 import { Inventory, HOTBAR_SIZE, INVENTORY_SIZE } from '../systems/inventory';
 import { resolveSlotVisual } from '../data/items';
 import { CROPS, ALL_CROPS_ICONS_KEY, CropDefinition } from '../data/crops';
-import { PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES } from '../data/player';
+import { PLAYER_ANIM_FRAMES, getPlayerAssets } from '../data/player';
+import { gameState } from '../systems/gameState';
 import {
   INVENTORY_PANEL_KEY,
   INVENTORY_SLOT_FRAME_NAME,
@@ -35,6 +37,7 @@ import {
   FISHING_ROD_ICON_FRAME,
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
+import { Tooltip } from './tooltip';
 import { PointerInputInterceptor } from '../systems/playerController';
 
 type CornerKey = keyof typeof GLOBAL_CURSOR_CORNER_NAMES;
@@ -59,9 +62,13 @@ const ITEMS_PER_PAGE = GRID_COLS * GRID_ROWS;
 /** Fração da célula (16px nativos) que um ícone "normal" (16x16) preenche. */
 const ICON_FILL_RATIO = 0.8;
 const ICON_TARGET_PX = 16 * SLOT_SCALE * ICON_FILL_RATIO;
+/** Ícone da armadura equipada (slot "boneco de papel"): um pouco menor que o padrão (pedido explícito do usuário). */
+const EQUIPPED_ARMOR_ICON_TARGET_PX = ICON_TARGET_PX * 0.75;
 /** Realce do slot da Hotbar atualmente selecionado, na aba Mochila (mesmo tom já usado antes desta reformulação). */
 const SELECTED_HOTBAR_TINT = 0xffe9b3;
 const UNSELECTED_TINT = 0xffffff;
+/** Realce do slot da armadura vestida (azulado, diferente do creme do slot ativo da Hotbar). */
+const EQUIPPED_ARMOR_TINT = 0xcfe6ff;
 
 const TAB_SCALE = 2.0;
 const TAB_ROTATION = Math.PI / 2;
@@ -111,7 +118,7 @@ interface EquipmentSlotDefinition {
 }
 const EQUIPMENT_SLOTS: EquipmentSlotDefinition[] = [
   { type: 'hat', label: 'Chapéu', offsetX: 0, offsetY: -52 },
-  { type: 'shirt', label: 'Camisa', offsetX: -46, offsetY: -16 },
+  { type: 'shirt', label: 'Armadura', offsetX: -46, offsetY: -16 },
   { type: 'pants', label: 'Calça', offsetX: 46, offsetY: -16 },
   { type: 'boots', label: 'Botas', offsetX: -30, offsetY: 48 },
   { type: 'accessory', label: 'Acessório', offsetX: 30, offsetY: 48 },
@@ -198,7 +205,7 @@ const TAB_DEFS: InventoryTabDefinition[] = [
   {
     category: 'agriculture',
     textureKey: ALL_CROPS_ICONS_KEY,
-    iconFrame: Object.values(CROPS)[0]?.iconFrameName ?? '',
+    iconFrame: Object.values(CROPS)[0]?.cropFrameName ?? '',
     tabFrame: TAB_FRAME_AGRICULTURE.name,
     tabFrameLight: TAB_FRAME_AGRICULTURE_LIGHT.name,
   },
@@ -222,6 +229,8 @@ interface InventorySlot {
   x: number;
   y: number;
   onClick: (() => void) | null;
+  /** Nome do item no slot (balão do `Tooltip` ao passar o mouse); `''` = slot vazio, sem balão. Atualizado a cada `renderActiveCategory`. */
+  name: string;
 }
 
 /** O que um slot do grid mostra, resolvido a partir do `Inventory`/`CROPS` — ver `computeContent`. */
@@ -230,6 +239,8 @@ interface InventorySlotContent {
   iconFrame: number | string;
   badge: string;
   tint: number;
+  /** Nome mostrado no balão (`Tooltip`) ao passar o mouse; `''` = nada a mostrar. */
+  name: string;
   onClick: (() => void) | null;
   /** Só relevante na aba Agricultura (Fase 9 — diário de descobertas): mostra "?" em vez do ícone quando `false`. `true` em qualquer outra aba (não afeta o comportamento de antes). */
   discovered: boolean;
@@ -270,10 +281,15 @@ export class InventoryScreen implements PointerInputInterceptor {
   private currentInventory: Inventory | null = null;
   /** Slot que está sendo arrastado no momento (Fase 9 — drag and drop), `null` quando não há arrasto em andamento. */
   private dragSourceIndex: number | null = null;
+  /** Ponteiro sob o qual o balão do `Tooltip` se posiciona quando o redesenho (não um evento do mouse) pede pra atualizá-lo. */
+  private readonly activePointer: Phaser.Input.Pointer;
+  /** Por slot: o ponteiro está em cima da moldura / do ícone (o ícone cobre o centro da moldura, então cada um recebe o hover da sua própria área) — `pointerover`/`pointerout` ligam e desligam. */
+  private readonly frameHovered: boolean[] = new Array(ITEMS_PER_PAGE).fill(false);
+  private readonly iconHovered: boolean[] = new Array(ITEMS_PER_PAGE).fill(false);
 
   // Página direita da aba Mochila (Fase 9 — personagem + equipamento).
   private readonly characterSprite: Phaser.GameObjects.Image;
-  private readonly equipmentSlots: Array<{ frame: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text }> = [];
+  private readonly equipmentSlots: Array<{ type: EquipmentSlotType; frame: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text; icon: Phaser.GameObjects.Image }> = [];
 
   // Página direita da aba Agricultura (Fase 9 — diário de descobertas).
   // `NineSlice` (correção urgente pedida pelo usuário — ver doc de
@@ -288,7 +304,8 @@ export class InventoryScreen implements PointerInputInterceptor {
   /** Cantinhos de destaque (mesma técnica de `tabSelector`) ao redor do slot selecionado no grid da Agricultura — referência visual pedida pelo usuário. */
   private readonly gridSelector: Record<CornerKey, Phaser.GameObjects.Image>;
 
-  constructor(scene: Phaser.Scene, private readonly onSelectHotbarSlot: (index: number) => void) {
+  constructor(scene: Phaser.Scene, private readonly onSelectHotbarSlot: (index: number) => void, private readonly tooltip: Tooltip) {
+    this.activePointer = scene.input.activePointer;
     const panelTexture = scene.textures.get(INVENTORY_PANEL_KEY);
     if (!panelTexture.has(INVENTORY_SLOT_FRAME_NAME)) {
       panelTexture.add(
@@ -372,6 +389,7 @@ export class InventoryScreen implements PointerInputInterceptor {
         (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
           if (!this.isOpen_) return;
           event.stopPropagation();
+          playClick(scene);
           this.selectCategory(tabDef.category);
         },
       );
@@ -425,6 +443,7 @@ export class InventoryScreen implements PointerInputInterceptor {
 this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
       if (!this.isOpen_) return;
       event.stopPropagation();
+      playClick(scene);
       
       // 1. Muda a arte instantaneamente
       this.closeButtonMark.setFrame(CLOSE_X_ICON_PRESSED_FRAME.name); 
@@ -483,6 +502,14 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       frame.setScrollFactor(0);
       frame.setDepth(3001);
 
+      // "Clique" no slot (selecionar a Hotbar, vestir a armadura...). A moldura também é interativa em
+      // slots sem ação (só pro balão do nome) — esses não fazem "clique".
+      const activateSlot = (): void => {
+        if (!this.isOpen_ || !this.slots[index].onClick) return;
+        playClick(scene);
+        this.slots[index].onClick?.();
+      };
+
       frame.setInteractive({ useHandCursor: true });
       frame.disableInteractive();
       frame.on(
@@ -490,9 +517,10 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
         (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
           if (!this.isOpen_) return;
           event.stopPropagation();
-          this.slots[index].onClick?.();
+          activateSlot();
         },
       );
+      this.attachSlotHover(frame, index, this.frameHovered);
 
       const icon = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
       icon.setOrigin(0.5, 0.5);
@@ -504,32 +532,77 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       // selecionar-Hotbar, igual antes) — só fica interativo/arrastável
       // quando a aba Mochila está ativa E o slot tem algo dentro
       // (`renderActiveCategory` decide isso a cada frame).
+      //
+      // "Juice" (pedido explícito): pop de escala/opacidade ao pegar, e um
+      // tween suave ao soltar — tanto no caso de encaixe válido (volta à
+      // escala normal) quanto inválido (some volta pro slot de origem).
+      // `dragBaseScale` guarda a escala "de repouso" (a que `computeFitScale`
+      // calculou pra esse ícone) capturada no instante do pickup, porque o
+      // pop escala RELATIVO a ela (não um valor fixo) — cada ícone pode ter
+      // uma escala de repouso diferente dependendo do tamanho nativo do
+      // frame. `renderActiveCategory` só solta o controle de posição/escala
+      // de volta pro ícone quando `dragSourceIndex` volta a `null` — por
+      // isso só é zerado no `onComplete` do tween de retorno, não na hora
+      // do `dragend`: senão o redesenho de todo frame reposicionaria/
+      // reescalaria o ícone instantaneamente, cortando o tween no meio.
+      let dragBaseScale = 1;
       icon.setInteractive({ useHandCursor: true });
       icon.disableInteractive();
       scene.input.setDraggable(icon, true);
+      this.attachSlotHover(icon, index, this.iconHovered);
+      // O ícone (arrastável) fica POR CIMA da moldura e leva o clique sozinho — sem isto, clicar no item
+      // nunca chegava na moldura. Soltar sem ter arrastado conta como clique no slot.
+      let dragged = false;
+      icon.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        dragged = false;
+        if (this.isOpen_) event.stopPropagation();
+      });
+      icon.on('pointerup', () => {
+        if (!dragged) activateSlot();
+      });
       icon.on('dragstart', () => {
+        dragged = true;
+        this.clearHover(); // Arrastando: o balão some (o ícone segue o cursor por conta própria).
         this.dragSourceIndex = index;
         icon.setDepth(3500);
+        dragBaseScale = icon.scaleX;
+        scene.tweens.killTweensOf(icon);
+        scene.tweens.add({
+          targets: icon,
+          scale: dragBaseScale * 1.2,
+          alpha: 0.85,
+          duration: 100,
+          ease: 'Quad.easeOut',
+        });
       });
       icon.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
         icon.setPosition(dragX, dragY);
       });
       icon.on('dragend', () => {
         const sourceIndex = this.dragSourceIndex;
-        this.dragSourceIndex = null;
         icon.setDepth(3002);
         if (sourceIndex === null || !this.currentInventory) return;
 
         const targetIndex = this.slots.findIndex((slot) => Phaser.Geom.Rectangle.Contains(slot.frame.getBounds(), icon.x, icon.y));
-        if (targetIndex !== -1 && targetIndex !== sourceIndex) {
-          this.currentInventory.swapSlots(sourceIndex, targetIndex);
-        }
-        // Sempre reposiciona na célula fixa — se o swap não aconteceu (alvo
-        // inválido ou solto fora de qualquer slot), volta pro lugar de
-        // origem; se aconteceu, `renderActiveCategory` (chamado todo frame
-        // por `UIScene.update`) já redesenha o conteúdo novo no lugar certo
-        // no próximo frame de qualquer forma.
-        icon.setPosition(this.slots[index].x, this.slots[index].y);
+        const validDrop = targetIndex !== -1 && targetIndex !== sourceIndex;
+        if (validDrop) this.currentInventory.swapSlots(sourceIndex, targetIndex);
+
+        // Encaixe válido: tween curto e rápido (já "encaixou"). Inválido:
+        // tween mais longo com "Back.easeOut" — um pequeno ricochete ao
+        // pousar de volta na origem, mais perceptível como "devolvido".
+        scene.tweens.killTweensOf(icon);
+        scene.tweens.add({
+          targets: icon,
+          x: this.slots[index].x,
+          y: this.slots[index].y,
+          scale: dragBaseScale,
+          alpha: 1,
+          duration: validDrop ? 100 : 180,
+          ease: validDrop ? 'Quad.easeOut' : 'Back.easeOut',
+          onComplete: () => {
+            this.dragSourceIndex = null;
+          },
+        });
       });
 
       const badgeText = scene.add.text(x + slotWidth / 2 - 2, y + slotHeight / 2 - 2, '', {
@@ -550,7 +623,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       questionMark.setDepth(3002);
       questionMark.setVisible(false);
 
-      this.slots.push({ frame, icon, badgeText, questionMark, x, y, onClick: null });
+      this.slots.push({ frame, icon, badgeText, questionMark, x, y, onClick: null, name: '' });
     }
 
     // Página direita — Mochila: personagem parado (mesmo frame usado como
@@ -559,7 +632,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     const rightCenterX = bookLeft + PAGE_RECT.right.x * BOOK_SCALE + rightPageWidth / 2;
     const rightCenterY = bookTop + PAGE_RECT.top * BOOK_SCALE + pageHeight / 2;
 
-    this.characterSprite = scene.add.image(rightCenterX, rightCenterY, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown.start);
+    this.characterSprite = scene.add.image(rightCenterX, rightCenterY, getPlayerAssets(gameState.profile.characterId).idleKey, PLAYER_ANIM_FRAMES.idleDown.start);
     this.characterSprite.setOrigin(0.5, 0.5);
     this.characterSprite.setScale(CHARACTER_SPRITE_SCALE);
     this.characterSprite.setScrollFactor(0);
@@ -580,7 +653,33 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       label.setScrollFactor(0);
       label.setDepth(3002);
 
-      this.equipmentSlots.push({ frame, label });
+      // Ícone do que está vestido (hoje só a armadura, no slot "shirt"): clicar tira.
+      const icon = scene.add.image(ex, ey, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
+      icon.setOrigin(0.5, 0.5);
+      icon.setScrollFactor(0);
+      icon.setDepth(3003);
+      icon.setVisible(false);
+      icon.setInteractive({ useHandCursor: true });
+      icon.disableInteractive();
+      icon.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        if (!this.isOpen_ || !this.currentInventory) return;
+        event.stopPropagation();
+        const equipped = this.currentInventory.getEquippedArmorId();
+        if (!equipped) return;
+        playClick(scene);
+        this.currentInventory.toggleArmor(equipped);
+      });
+      icon.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        const equipped = this.currentInventory?.getEquippedArmorId();
+        const name = equipped ? resolveSlotVisual({ category: 'armor', id: equipped })?.name : '';
+        if (name) this.tooltip.show(`${name} (clique para tirar)`, pointer);
+      });
+      icon.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        if (this.tooltip.isVisible()) this.tooltip.follow(pointer);
+      });
+      icon.on('pointerout', () => this.tooltip.hide());
+
+      this.equipmentSlots.push({ type: def.type, frame, label, icon });
     }
 
     // Página direita — Agricultura: painel de detalhe do item selecionado
@@ -698,11 +797,45 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
   close(): void {
     this.isOpen_ = false;
     this.setElementsVisible(false);
+    this.clearHover();
   }
 
   toggle(inventory: Inventory): void {
     if (this.isOpen_) this.close();
     else this.open(inventory);
+  }
+
+  /**
+   * Balão com o nome do item (`Tooltip`): liga `pointerover` (mostra), `pointermove`
+   * (acompanha o ponteiro) e `pointerout` (esconde) do `target` ao slot `index`.
+   * `hovered` é a lista (moldura ou ícone) que registra se o ponteiro está nele.
+   */
+  private attachSlotHover(target: Phaser.GameObjects.Image, index: number, hovered: boolean[]): void {
+    target.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+      hovered[index] = true;
+      this.updateTooltip(pointer);
+    });
+    target.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (this.tooltip.isVisible()) this.tooltip.follow(pointer);
+    });
+    target.on('pointerout', (pointer: Phaser.Input.Pointer) => {
+      hovered[index] = false;
+      this.updateTooltip(pointer);
+    });
+  }
+
+  /** Mostra o nome do slot sob o ponteiro (se houver e a tela estiver aberta/sem arrasto), senão esconde o balão. */
+  private updateTooltip(pointer: Phaser.Input.Pointer): void {
+    const index = this.slots.findIndex((_slot, i) => this.frameHovered[i] || this.iconHovered[i]);
+    const name = this.isOpen_ && this.dragSourceIndex === null && index !== -1 ? this.slots[index].name : '';
+    if (name) this.tooltip.show(name, pointer);
+    else this.tooltip.hide();
+  }
+
+  private clearHover(): void {
+    this.frameHovered.fill(false);
+    this.iconHovered.fill(false);
+    this.tooltip.hide();
   }
 
   /** Chamado a cada frame enquanto aberta (ver `UIScene.update`) — mantém a aba Mochila e o realce da Hotbar sempre em dia com o `Inventory` ao vivo. */
@@ -734,16 +867,33 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
         const onClick = index < HOTBAR_SIZE ? () => this.onSelectHotbarSlot(index) : null;
 
         if (!visual || !ref) {
-          content.push({ textureKey: '', iconFrame: '', badge: '', tint, onClick, discovered: true, slotIndex: index });
+          content.push({ textureKey: '', iconFrame: '', badge: '', tint, name: '', onClick, discovered: true, slotIndex: index });
           continue;
         }
 
+        // Armadura: clicar veste/tira (em vez de selecionar o slot da Hotbar) — a vestida ganha "E" e um tom azulado.
+        const isArmor = ref.category === 'armor';
+        const armorEquipped = isArmor && inventory.getEquippedArmorId() === ref.id;
+
         let badge = '';
-        if (ref.category === 'seed') badge = String(inventory.getSeedCount(ref.id));
+        if (armorEquipped) badge = 'E';
+        else if (ref.category === 'seed') badge = String(inventory.getSeedCount(ref.id));
         else if (ref.category === 'decoration') badge = String(inventory.getDecorationCount(ref.id));
         else if (ref.category === 'resource') badge = String(inventory.getResourceCount(ref.id));
+        // 'crop' (bug corrigido, item 3): estoque ATUAL na Bolsa — diferente
+        // do "Total já coletado" (histórico) mostrado na aba Descobertas.
+        else if (ref.category === 'crop') badge = String(inventory.getCount(ref.id));
 
-        content.push({ textureKey: visual.textureKey, iconFrame: visual.iconFrame, badge, tint, onClick, discovered: true, slotIndex: index });
+        content.push({
+          textureKey: visual.textureKey,
+          iconFrame: visual.iconFrame,
+          badge,
+          tint: armorEquipped ? EQUIPPED_ARMOR_TINT : tint,
+          name: armorEquipped ? `${visual.name} (equipada)` : visual.name,
+          onClick: isArmor ? () => inventory.toggleArmor(ref.id) : onClick,
+          discovered: true,
+          slotIndex: index,
+        });
       }
       return content;
     }
@@ -756,9 +906,15 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
         const discovered = inventory.hasHarvested(crop.id);
         return {
           textureKey: ALL_CROPS_ICONS_KEY,
-          iconFrame: crop.iconFrameName,
-          badge: discovered ? String(inventory.getCount(crop.id)) : '',
+          // Fruto colhido (pedido explícito, item 4) — não o saquinho de
+          // semente: esta aba é sobre o que já foi colhido, não plantado.
+          iconFrame: crop.cropFrameName,
+          // "Total já coletado" (pedido explícito, item 3) — histórico, não
+          // o estoque atual (que cai a zero ao vender tudo na Caixa de Remessas).
+          badge: discovered ? String(inventory.getTotalHarvested(crop.id)) : '',
           tint: UNSELECTED_TINT,
+          // Mesma regra do painel de detalhe: cultura ainda não descoberta aparece como "???".
+          name: discovered ? crop.name : '???',
           onClick: () => this.selectCropDetail(crop.id),
           discovered,
         };
@@ -784,6 +940,16 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     this.slots.forEach((slot, index) => {
       const entry: InventorySlotContent | undefined = content[index];
       slot.onClick = entry?.onClick ?? null;
+      slot.name = entry?.name ?? '';
+
+      // A moldura precisa estar interativa pra receber o hover do balão: com ação de clique (como antes) OU com um item dentro.
+      const frameInteractive = this.isOpen_ && (!!slot.onClick || !!slot.name);
+      if (frameInteractive) {
+        if (!slot.frame.input?.enabled) slot.frame.setInteractive();
+      } else if (slot.frame.input?.enabled) {
+        slot.frame.disableInteractive();
+        this.frameHovered[index] = false; // Desativar não dispara `pointerout`.
+      }
 
       // Slot "não descoberto" (Fase 9): troca pra textura do slot ESCURO de
       // verdade (`INVENTORY_SLOT_DARK_FRAME_NAME`) em vez de tingir o slot
@@ -793,12 +959,22 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       slot.frame.setTexture(INVENTORY_PANEL_KEY, isDark ? INVENTORY_SLOT_DARK_FRAME_NAME : INVENTORY_SLOT_FRAME_NAME);
       slot.frame.setTint(entry ? entry.tint : UNSELECTED_TINT);
       // O drag pode ter movido o ícone pra fora da célula — sempre volta
-      // pro lugar fixo antes de decidir o que mostrar nele (ver `dragend`).
-      slot.icon.setPosition(slot.x, slot.y);
+      // pro lugar fixo antes de decidir o que mostrar nele (ver `dragend`),
+      // EXCETO enquanto esse ícone está sendo arrastado/animado de volta
+      // (`dragSourceIndex` — ver o tween de "Juice" em `dragstart`/`dragend`
+      // acima): sem essa exceção, este reset instantâneo rodando todo frame
+      // brigaria com o `drag`/tween, fazendo o ícone "pular" de volta pro
+      // slot em vez de seguir o cursor livremente.
+      const isBeingDragged = index === this.dragSourceIndex;
+      if (!isBeingDragged) slot.icon.setPosition(slot.x, slot.y);
 
       const draggable = isBackpack && !!entry?.textureKey;
-      if (draggable) slot.icon.setInteractive();
-      else slot.icon.disableInteractive();
+      if (draggable) {
+        slot.icon.setInteractive();
+      } else if (slot.icon.input?.enabled) {
+        slot.icon.disableInteractive();
+        this.iconHovered[index] = false;
+      }
 
       if (!entry || !entry.textureKey || isDark) {
         slot.icon.setVisible(false);
@@ -808,7 +984,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       }
 
       slot.icon.setTexture(entry.textureKey, entry.iconFrame);
-      slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
+      if (!isBeingDragged) slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
       slot.icon.setVisible(true);
       slot.badgeText.setText(entry.badge);
       slot.badgeText.setVisible(!!entry.badge);
@@ -816,11 +992,24 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     });
 
     this.emptyText.setVisible(content.length === 0);
+    this.updateTooltip(this.activePointer); // O conteúdo do slot sob o mouse pode ter mudado (troca de slot, aba).
 
     this.characterSprite.setVisible(isBackpack);
+    const equippedArmorId = inventory.getEquippedArmorId();
     for (const equipmentSlot of this.equipmentSlots) {
       equipmentSlot.frame.setVisible(isBackpack);
       equipmentSlot.label.setVisible(isBackpack);
+
+      const armorVisual = equipmentSlot.type === 'shirt' && isBackpack && equippedArmorId ? resolveSlotVisual({ category: 'armor', id: equippedArmorId }) : null;
+      equipmentSlot.icon.setVisible(!!armorVisual);
+      if (armorVisual) {
+        equipmentSlot.icon.setTexture(armorVisual.textureKey, armorVisual.iconFrame);
+        equipmentSlot.icon.setScale(computeFitScale(equipmentSlot.icon, EQUIPPED_ARMOR_ICON_TARGET_PX));
+        if (!equipmentSlot.icon.input?.enabled) equipmentSlot.icon.setInteractive();
+      } else if (equipmentSlot.icon.input?.enabled) {
+        equipmentSlot.icon.disableInteractive();
+        this.tooltip.hide();
+      }
     }
 
     this.renderAgricultureDetail(inventory, isAgriculture);
@@ -851,12 +1040,13 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
 
     const discovered = inventory.hasHarvested(crop.id);
     if (discovered) {
-      this.detailIcon.setTexture(ALL_CROPS_ICONS_KEY, crop.iconFrameName);
+      // Fruto colhido (pedido explícito, item 4) + total histórico (item 3) — ver `computeContent`.
+      this.detailIcon.setTexture(ALL_CROPS_ICONS_KEY, crop.cropFrameName);
       this.detailIcon.setScale(computeFitScale(this.detailIcon, DETAIL_ICON_TARGET_PX));
       this.detailIcon.setVisible(true);
       this.detailQuestionMark.setVisible(false);
       this.detailName.setText(crop.name);
-      this.detailStatus.setText(`Colhido: ${inventory.getCount(crop.id)}`);
+      this.detailStatus.setText(`Total colhido: ${inventory.getTotalHarvested(crop.id)}`);
     } else {
       this.detailIcon.setVisible(false);
       this.detailQuestionMark.setVisible(true);
@@ -934,6 +1124,8 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     for (const equipmentSlot of this.equipmentSlots) {
       equipmentSlot.frame.setVisible(visible && equipmentSlot.frame.visible);
       equipmentSlot.label.setVisible(visible && equipmentSlot.label.visible);
+      equipmentSlot.icon.setVisible(visible && equipmentSlot.icon.visible);
+      if (!visible) equipmentSlot.icon.disableInteractive();
     }
 
     // Página direita — Agricultura (Fase 9): mesma ideia.

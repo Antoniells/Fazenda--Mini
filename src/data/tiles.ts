@@ -99,6 +99,8 @@ export const FENCE_CORNER_BOTTOM_RIGHT_INDEX = 13;
 export const FENCE_EDGE_V_INDEX = 5;
 /** Trecho de cerca horizontal (linha 3, coluna 0). */
 export const FENCE_EDGE_H_INDEX = 15;
+/** Cerca DESTRUÍDA (ver `systems/farmFences.ts`): o 2º quadro da folha (índice 1) — só dois cepos de tábua quebrada, sem os postes. */
+export const FENCE_BROKEN_INDEX = 1;
 
 export const PINE_TREE_KEY = 'pine-tree';
 export const PINE_TREE_PATH = 'Objects/Tree/Common/No Shadow/Pine Tree.png';
@@ -121,7 +123,8 @@ export const PINE_YOUNG_FRAME_NAME = 'pine-tree-young';
 export const PINE_YOUNG_FRAME = { x: 68, y: 14, width: 23, height: 32 };
 
 export const SOIL_TILESET_KEY = 'tilled-soil';
-export const SOIL_TILESET_PATH = 'Tileset/Tilled Soil and wet soil.png';
+/** Cópia de `Tilled Soil and wet soil.png` SEM os pontinhos escuros do miolo (o 9-slice original traz um quarto de ponto em cada canto de tile, que numa área arada vira uma grade de "furos"); o original continua na pasta. */
+export const SOIL_TILESET_PATH = 'Tileset/Tilled Soil and wet soil (sem pontos).png';
 
 /**
  * Autotile 9-slice + `isolated` do solo arado (melhoria visual — bordas se
@@ -326,14 +329,21 @@ export const BIRCH_TREE_FRAME = { x: 96, y: 0, width: 32, height: 48 };
 
 /**
  * Pedras/rochas decorativas (Floresta/Pedreira): `Exterior/Deep Forest/deep
- * forest stones.png` tem 2 variações de monte de pedra arredondado, bounds
+ * forest stones.png` tem 3 variações de monte de pedra arredondado, bounds
  * confirmados pixel a pixel (a folha tem mais 2 elementos depois, não
  * usados aqui).
+ *
+ * O retângulo original de `ROCK_FRAME_2` (x:37,y:3,22x29) na verdade continha DUAS pedras diferentes desenhadas uma embaixo da
+ * outra — uma lisa em cima, outra com musgo embaixo (pedido explícito do usuário, que mandou um print apontando isso). Separadas
+ * varrendo linha a linha: y=16-17 é o único par de linhas 100% transparentes no meio do retângulo — o corte exato entre as duas.
  */
 export const ROCK_KEY = 'rock-boulder';
 export const ROCK_PATH = 'Objects/Exterior/Deep Forest/deep forest stones.png';
 export const ROCK_FRAME_1 = { name: 'rock-boulder-1', rect: { x: 6, y: 1, width: 24, height: 31 } };
-export const ROCK_FRAME_2 = { name: 'rock-boulder-2', rect: { x: 37, y: 3, width: 22, height: 29 } };
+/** Pedra lisa (metade de cima do antigo `ROCK_FRAME_2`) — também usada como ícone de "Pedra" (`data/resources.ts`). */
+export const ROCK_FRAME_2 = { name: 'rock-boulder-2', rect: { x: 37, y: 3, width: 22, height: 13 } };
+/** Pedra com musgo (metade de baixo do antigo `ROCK_FRAME_2`). */
+export const ROCK_FRAME_3 = { name: 'rock-boulder-3', rect: { x: 37, y: 18, width: 22, height: 14 } };
 /**
  * "Rocha Grande" (Pedreira, Fase 7 — Coleta de Recursos): mesmo asset do
  * boulder normal, só que desenhada numa escala maior (`ROCK_BIG_SCALE_MULT`,
@@ -344,10 +354,14 @@ export const ROCK_FRAME_2 = { name: 'rock-boulder-2', rect: { x: 37, y: 3, width
  */
 export const ROCK_BIG_SCALE_MULT = 1.6;
 
-/** Ícone de madeira (loot do Machado, Fase 7): `Objects/Props/wood.png` (64x16) tem 4 variações de cor/dano lado a lado — só a primeira é usada. Bounds confirmados pixel a pixel. */
+/**
+ * Ícone de madeira (loot do Machado, Fase 7 — o drop no chão, o slot do Inventário e a Caixa de Remessas):
+ * `Icons/RPG icons/Extras/Wood.png` (64x48) é uma folha de ícones 16x16 (4 colunas x 3 linhas, variações de
+ * cor/sombra do mesmo tronco) — só o primeiro (célula inteira 0,0) é usado.
+ */
 export const WOOD_KEY = 'wood-pile';
-export const WOOD_PATH = 'Objects/Props/wood.png';
-export const WOOD_FRAME = { name: 'wood-pile-icon', rect: { x: 0, y: 0, width: 16, height: 13 } };
+export const WOOD_PATH = 'Icons/RPG icons/Extras/Wood.png';
+export const WOOD_FRAME = { name: 'wood-pile-icon', rect: { x: 0, y: 0, width: 16, height: 16 } };
 
 /**
  * Veios de minério (Pedreira): `Exterior/Mine and Dungeon/stone with
@@ -377,6 +391,14 @@ export const CAVE_ENTRANCE_PATH = 'Tileset/Tileset Grass Cliff Tileset Summer.pn
 export const CAVE_ENTRANCE_FRAME = { name: 'cave-entrance', rect: { x: 224, y: 0, width: 48, height: 32 } };
 
 /**
+ * Ícone de Ferro (recompensa da horda, ver `data/horde.ts`): a barra de ferro (cinza, 3ª coluna da 1ª linha) de
+ * `Icons/RPG icons/Extras/Bars and ores.png` (256x64, grade de ícones 16x16).
+ */
+export const IRON_KEY = 'iron-bar';
+export const IRON_PATH = 'Icons/RPG icons/Extras/Bars and ores.png';
+export const IRON_FRAME = { name: 'iron-bar-icon', rect: { x: 32, y: 0, width: 16, height: 16 } };
+
+/**
  * Água plana (pequeno lago da Floresta, mar da Praia): `Water tile.png` é
  * um único tile 16x16 sem frames — a mesma simplificação já usada pro
  * chão antes da "variação de grama" (Fase 9): sem borda especial onde
@@ -386,3 +408,99 @@ export const CAVE_ENTRANCE_FRAME = { name: 'cave-entrance', rect: { x: 224, y: 0
  */
 export const WATER_KEY = 'water-flat';
 export const WATER_PATH = 'Tileset/Water tile.png';
+
+/**
+ * Autotile ANIMADO da água (lago da Floresta, mar da Praia): `Beach animations tiles.png`
+ * (384x256 = grade 24x16 de 16px, carregada como spritesheet — frame = linha*24 + coluna,
+ * igual ao solo arado). A folha tem 4 BLOCOS de 4 linhas empilhados (linhas 0-3, 4-7, 8-11,
+ * 12-15) que são as 4 FASES da animação (a espuma/ondulação da borda muda de um bloco pro
+ * outro, o formato dos tiles é idêntico); cada bloco, nas colunas 0-3, é o MESMO layout de
+ * 16 tiles do solo arado (`SOIL_DRY_AUTOTILE`), com fundo de areia opaco:
+ *   col 0, linhas 0-2 = cápsula vertical (capa de cima / meio / capa de baixo)
+ *   linha 3, cols 1-3 = cápsula horizontal (capa da esquerda / meio / capa da direita)
+ *   col 0, linha 3    = ilhota (sem nenhum vizinho de água)
+ *   cols 1-3, linhas 0-2 = 9-slice (cantos, bordas, centro)
+ * O "centro" desse 9-slice tem rosquinhas nos 4 cantos (repetido, viraria bolinhas em todo
+ * encontro de tiles), então o miolo do lago (4 vizinhos de água) usa o tile de água lisa da
+ * coluna 9, linha 2 — o único 100% liso da folha (varredura pixel a pixel; idêntico nas 4 fases).
+ *
+ * A escolha é por BITMASK dos 4 vizinhos ortogonais (bit ligado = o vizinho também é água):
+ * N=1, E=2, S=4, W=8 → 16 combinações, uma por tile (`WATER_AUTOTILE_FRAMES`).
+ */
+export const WATER_AUTOTILE_KEY = 'water-autotile';
+export const WATER_AUTOTILE_PATH = 'Tileset/Beach animations tiles.png';
+const WATER_SHEET_COLS = 24;
+const waterFrame = (col: number, row: number): number => row * WATER_SHEET_COLS + col;
+
+export const WATER_NEIGHBOR = { N: 1, E: 2, S: 4, W: 8 } as const;
+const { N, E, S, W } = WATER_NEIGHBOR;
+
+/** Frame (na fase 0) de cada máscara de vizinhos — ver o layout acima. Cada estilo de água (`WATER_STYLES`) reaproveita este mesmo desenho, só deslocando as colunas. */
+export const WATER_AUTOTILE_FRAMES: Record<number, number> = {
+  0: waterFrame(0, 3), //           ilhota
+  [S]: waterFrame(0, 0), //         só vizinho embaixo → capa de cima da cápsula vertical
+  [N | S]: waterFrame(0, 1), //     meio da cápsula vertical
+  [N]: waterFrame(0, 2), //         só vizinho em cima → capa de baixo
+  [E]: waterFrame(1, 3), //         só vizinho à direita → capa da esquerda da cápsula horizontal
+  [E | W]: waterFrame(2, 3), //     meio da cápsula horizontal
+  [W]: waterFrame(3, 3), //         só vizinho à esquerda → capa da direita
+  [E | S]: waterFrame(1, 0), //     canto superior esquerdo
+  [E | S | W]: waterFrame(2, 0), // borda de cima
+  [S | W]: waterFrame(3, 0), //     canto superior direito
+  [N | E | S]: waterFrame(1, 1), // borda da esquerda
+  [N | E | S | W]: waterFrame(9, 2), // miolo (água lisa)
+  [N | S | W]: waterFrame(3, 1), // borda da direita
+  [N | E]: waterFrame(1, 2), //     canto inferior esquerdo
+  [N | E | W]: waterFrame(2, 2), // borda de baixo
+  [N | W]: waterFrame(3, 2), //     canto inferior direito
+};
+
+/**
+ * Estilos de água (autotile animado) disponíveis por cena. Todos têm o MESMO layout de 16 tiles em 4 fases (ver acima) — só mudam a
+ * folha, a coluna onde o bloco de 4x4 começa e o tile de água lisa (miolo do lago):
+ * - `beach` (padrão: Praia, mar): `Beach animations tiles.png`, blocos nas colunas 0-3, miolo em (9, 2).
+ * - `waterGround` (Floresta): `Water Ground animations tiles.png` — mesma grade 24x16, mas o bloco de água azul com margem de terra
+ *   fica nas colunas 12-15 e o miolo liso (o único tile 100% opaco e liso, achado por varredura de pixels) em (21, 2).
+ */
+export interface WaterStyle {
+  textureKey: string;
+  path: string;
+  /** Frame (fase 0) de cada máscara de vizinhos. */
+  frames: Record<number, number>;
+}
+const shiftedFrames = (colOffset: number, interior: number): Record<number, number> => {
+  const frames: Record<number, number> = {};
+  for (const [mask, frame] of Object.entries(WATER_AUTOTILE_FRAMES)) frames[Number(mask)] = frame + colOffset;
+  frames[N | E | S | W] = interior;
+  return frames;
+};
+export const WATER_STYLES = {
+  beach: { textureKey: WATER_AUTOTILE_KEY, path: WATER_AUTOTILE_PATH, frames: WATER_AUTOTILE_FRAMES },
+  waterGround: {
+    textureKey: 'water-ground-autotile',
+    path: 'Tileset/Water Ground animations tiles.png',
+    frames: shiftedFrames(12, waterFrame(21, 2)),
+  },
+} satisfies Record<string, WaterStyle>;
+export type WaterStyleId = keyof typeof WATER_STYLES;
+
+/** Fases da animação: blocos de 4 linhas empilhados (fase p = frame + p * `WATER_AUTOTILE_PHASE_STRIDE`) e quanto dura cada fase. */
+export const WATER_AUTOTILE_PHASES = 4;
+export const WATER_AUTOTILE_PHASE_STRIDE = 4 * WATER_SHEET_COLS;
+export const WATER_AUTOTILE_PHASE_MS = 240;
+/** Máscara do miolo (água lisa, sem borda) — igual em todas as fases, então não precisa ser animada. */
+export const WATER_AUTOTILE_INTERIOR_MASK = N | E | S | W;
+/** Índices de `Beach animations tiles.png` que são AREIA lisa (não água) — o chão de areia da Praia é pintado com eles no editor. */
+export const WATER_SAND_FILL_INDICES: readonly number[] = [waterFrame(12, 12), waterFrame(13, 12), waterFrame(14, 12)];
+
+/**
+ * Folha de props de decoração ambiente (pedras/cogumelos/flores/moitas/
+ * tronco/trepadeira/parede de coral, pedido explícito — aba "Decoração" do
+ * `MapEditorScene`, ver `data/mapProps.ts`): folha única com dezenas de
+ * sprites de tamanhos bem diferentes, cada frame recortado pixel a pixel
+ * (bounds confirmados por detecção de componentes conectados no canal
+ * alpha, não estimados a olho — evita sprite cortado/deslocado). Puramente
+ * decorativo, sem colisão nenhuma (pedido explícito).
+ */
+export const PROPS_TILESET_KEY = 'map-props';
+export const PROPS_TILESET_PATH = 'Tileset/ALL props seasons.png';

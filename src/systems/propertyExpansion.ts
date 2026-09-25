@@ -2,8 +2,11 @@ import Phaser from 'phaser';
 import { BIOME_LABELS, ExpansionChunk, ExpansionDirection, FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
+import { playEffect } from './soundEffects';
+import { UNLOCK_SOUND } from '../data/audio';
 import { WalkableGrid } from './grid';
-import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, BIOME_TINTS } from './mapBuilder';
+import { gameState } from './gameState';
+import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, bridgeRailingCells, BIOME_TINTS } from './mapBuilder';
 
 /** Ponto de compra de um trecho (célula bloqueada, sem placa visível — ver comentário da classe): ao interagir, tenta comprar aquele trecho específico (ver `PropertyExpansionSystem.tryBuy`). */
 class ExpansionSignInteractable implements Interactable {
@@ -41,15 +44,31 @@ export class PropertyExpansionSystem {
   private readonly purchased = new Set<ExpansionDirection>();
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly map: FarmMapData,
     private readonly grid: WalkableGrid,
     private readonly inventory: Inventory,
     private readonly interactions: InteractionRegistry,
+    /** Chamado depois de um trecho ser comprado — a Fazenda amplia os limites da câmera (só mostra o que já está liberado). */
+    private readonly onUnlocked: () => void = () => {},
   ) {
     for (const chunk of map.expansions) {
       buildGroundChunk(scene, map.tileSize, chunk.col0, chunk.row0, chunk.cols, chunk.rows, undefined, BIOME_TINTS[chunk.biome]);
       buildExpansionChunkFence(scene, map.tileSize, chunk);
+
+      // Trecho que já nasce aberto (o Vilarejo): sem parede do núcleo, sem placa de compra — libera a passagem já na criação.
+      if (chunk.startsUnlocked) {
+        this.purchased.add(chunk.direction);
+        this.unblockCoreWall(chunk.direction);
+        continue;
+      }
+
+      // Já comprado numa sessão anterior (vai pro save): nasce aberto, sem parede nem placa.
+      if (gameState.unlockedExpansions.has(chunk.direction)) {
+        this.purchased.add(chunk.direction);
+        this.unblockCoreWall(chunk.direction);
+        continue;
+      }
 
       this.wallImages.set(chunk.direction, buildFenceSide(scene, map, chunk.direction));
 
@@ -100,6 +119,8 @@ export class PropertyExpansionSystem {
     }
 
     this.purchased.add(chunk.direction);
+    gameState.unlockedExpansions.add(chunk.direction);
+    playEffect(this.scene, UNLOCK_SOUND);
 
     for (const image of this.wallImages.get(chunk.direction) ?? []) image.destroy();
     this.wallImages.delete(chunk.direction);
@@ -109,6 +130,7 @@ export class PropertyExpansionSystem {
     this.interactions.remove(signCol, signRow);
 
     console.log(`${biomeLabel} desbloqueada! (saldo: ${this.inventory.getCoins()}).`);
+    this.onUnlocked();
   }
 
   /**
@@ -123,18 +145,21 @@ export class PropertyExpansionSystem {
   private unblockCoreWall(direction: ExpansionDirection): void {
     const { cols, rows } = this.map;
     const bridgeCoord = (direction === 'north' || direction === 'south' ? 'col' : 'row') as 'col' | 'row';
-    const bridgeCoordsOnThisWall = new Set(
-      this.map.bridges.filter((bridge) => bridge.direction === direction).map((bridge) => bridge[bridgeCoord]),
-    );
+    const bridgesOnThisWall = this.map.bridges.filter((bridge) => bridge.direction === direction);
+    const bridgeCoordsOnThisWall = new Set(bridgesOnThisWall.map((bridge) => bridge[bridgeCoord]));
+    // Os corrimões da ponte (células da própria parede, ao lado dela) também continuam sempre bloqueados (`BridgeSystem`) — abrir a
+    // parede não pode devolvê-los ao jogador, senão dá pra contornar o "túnel" e entrar na ponte pelo lado.
+    const railingCells = new Set(bridgesOnThisWall.flatMap((bridge) => bridgeRailingCells(bridge)).map(([col, row]) => `${col},${row}`));
+    const isRailing = (col: number, row: number): boolean => railingCells.has(`${col},${row}`);
 
     if (direction === 'north') {
-      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col)) this.grid.unblock(col, 0);
+      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col) && !isRailing(col, 0)) this.grid.unblock(col, 0);
     } else if (direction === 'south') {
-      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col)) this.grid.unblock(col, rows - 1);
+      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col) && !isRailing(col, rows - 1)) this.grid.unblock(col, rows - 1);
     } else if (direction === 'west') {
-      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row)) this.grid.unblock(0, row);
+      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row) && !isRailing(0, row)) this.grid.unblock(0, row);
     } else {
-      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row)) this.grid.unblock(cols - 1, row);
+      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row) && !isRailing(cols - 1, row)) this.grid.unblock(cols - 1, row);
     }
   }
 }

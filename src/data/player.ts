@@ -1,9 +1,13 @@
 /**
- * Referências do sprite do personagem jogável.
+ * Referências do sprite do personagem jogável — um conjunto por personagem
+ * escolhido na Criação de Personagem (`CHARACTER_IDS`: Alex, Josh, Lyria, Manu,
+ * Tori). Todos vêm de `Character/Character/Pre-made/<Nome>` e compartilham o
+ * MESMO rig (folhas com as mesmas dimensões e o mesmo layout — conferido nos 5),
+ * então só os caminhos/chaves mudam: `getPlayerAssets(characterId)` devolve as
+ * chaves de textura/animação e os caminhos de cada folha.
  *
- * Asset escolhido: `Character/Character/Pre-made/Alex` (macacão azul, bom
- * contraste com a grama). Analisado pixel a pixel: frame de 32x32, com
- * layout confirmado visualmente por recorte/zoom das folhas originais:
+ * Analisado pixel a pixel (Alex): frame de 32x32, com layout confirmado
+ * visualmente por recorte/zoom das folhas originais:
  * - linha 0 = de frente (baixo)
  * - linha 1 = de costas (cima)
  * - linha 2 = de lado (usada com flipX para virar para a direita)
@@ -18,21 +22,39 @@
  * `Run.png` existe no asset mas não é usado nesta fase (não solicitado).
  *
  * Ferramentas agrícolas (Fase 4), confirmadas por recorte/zoom da mesma
- * pasta `Pre-made/Alex`: `Hoe.png` (arar, 6 frames/direção), `Shovel.png`
- * (usado para plantar — não há animação dedicada de "plantar" no asset;
- * cavar é a melhor aproximação disponível, 5 frames/direção),
- * `Watering.png` (regar, 8 frames/direção) e `Sickle.png` (colher,
- * 6 frames/direção).
+ * pasta: `Hoe.png` (arar, 6 frames/direção), `Shovel.png` (usado para
+ * plantar — não há animação dedicada de "plantar" no asset; cavar é a
+ * melhor aproximação disponível, 5 frames/direção), `Watering.png` (regar,
+ * 8 frames/direção) e `Sickle.png` (colher, 6 frames/direção).
  */
 import { farmMap } from './maps/farmMap';
 
 export const PLAYER_FRAME_SIZE = 32;
 
-export const PLAYER_IDLE_KEY = 'player-alex-idle';
-export const PLAYER_IDLE_PATH = 'Character/Character/Pre-made/Alex/Idle.png';
+/** Personagens jogáveis (pedido explícito: Alex, Josh, Lyria, Manu, Tori) — o nome é também o nome da pasta de assets. */
+export const CHARACTER_IDS = ['Alex', 'Josh', 'Lyria', 'Manu', 'Tori'] as const;
+export type CharacterId = (typeof CHARACTER_IDS)[number];
+export const DEFAULT_CHARACTER_ID: CharacterId = 'Alex';
 
-export const PLAYER_WALK_KEY = 'player-alex-walk';
-export const PLAYER_WALK_PATH = 'Character/Character/Pre-made/Alex/Walk.png';
+export function isCharacterId(value: unknown): value is CharacterId {
+  return typeof value === 'string' && (CHARACTER_IDS as readonly string[]).includes(value);
+}
+
+const PRE_MADE_DIR = 'Character/Character/Pre-made';
+
+/**
+ * Nomes de arquivo que NÃO são iguais entre as 5 pastas do pacote (maiúsculas,
+ * espaço antes do ponto, nome da subpasta de "pegar item"). Conferidos um a
+ * um no disco — o instalador serve os assets de dentro de um `.asar`, onde o
+ * nome precisa bater exatamente (o Windows normal ignora maiúsculas, o asar não).
+ */
+const CHARACTER_FILES: Record<CharacterId, { sword: string; watering: string; sitting: string; pickUp: string }> = {
+  Alex: { sword: 'Sword.png', watering: 'Watering.png', sitting: 'Sitting .png', pickUp: 'Pick Up itens/pick up.png' },
+  Josh: { sword: 'Sword.png', watering: 'Watering.png', sitting: 'Sitting.png', pickUp: 'Pick Up Itens/Pick Up Itens.png' },
+  Lyria: { sword: 'sword.png', watering: 'watering.png', sitting: 'Sitting .png', pickUp: 'Pick up itens/Pick up.png' },
+  Manu: { sword: 'Sword.png', watering: 'Watering.png', sitting: 'Sitting.png', pickUp: 'Pick Up Itens/Pick Up.png' },
+  Tori: { sword: 'Sword.png', watering: 'Watering.png', sitting: 'Sitting.png', pickUp: 'Pick Up Itens/pick up.png' },
+};
 
 export const PLAYER_ANIM_FRAMES = {
   idleDown: { start: 0, end: 3 },
@@ -57,9 +79,12 @@ export const PLAYER_START = {
 export const PLAYER_MOVE_DURATION_MS = 260;
 
 /** Ações agrícolas com animação própria (Fase 4) + buscar água no Poço (Fase 7) + coleta de recursos (Fase 7 — Machado/Picareta) + ataque com espada (Fase 8 — Combate). */
-export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well' | 'axe' | 'pickaxe' | 'sword';
+export type PlayerActionKey = 'hoe' | 'plant' | 'water' | 'harvest' | 'well' | 'axe' | 'pickaxe' | 'sword' | 'eat';
 
-interface ActionAnimSpec {
+/** Duração (ms) da animação de comer — a folha usada tem 1 frame por direção, então isto vira o `frameRate` (ver `PLAYER_ACTIONS.eat`) e também o tempo das mordidas (`systems/eating.ts`). */
+export const EATING_DURATION_MS = 660;
+
+export interface ActionAnimSpec {
   key: string;
   path: string;
   frameRate: number;
@@ -100,109 +125,171 @@ interface ActionAnimSpec {
   side: { start: number; end: number };
 }
 
-export const PLAYER_ACTIONS: Record<PlayerActionKey, ActionAnimSpec> = {
-  hoe: {
-    key: 'player-alex-hoe',
-    path: 'Character/Character/Pre-made/Alex/Hoe.png',
-    frameRate: 10,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 4,
-    down: { start: 0, end: 5 },
-    up: { start: 6, end: 11 },
-    side: { start: 12, end: 17 },
-  },
-  plant: {
-    key: 'player-alex-shovel',
-    path: 'Character/Character/Pre-made/Alex/Shovel.png',
-    frameRate: 10,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 2,
-    down: { start: 0, end: 4 },
-    up: { start: 5, end: 9 },
-    side: { start: 10, end: 14 },
-  },
-  water: {
-    key: 'player-alex-watering',
-    path: 'Character/Character/Pre-made/Alex/Watering.png',
-    frameRate: 10,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 4,
-    down: { start: 0, end: 7 },
-    up: { start: 8, end: 15 },
-    side: { start: 16, end: 23 },
-  },
-  harvest: {
-    key: 'player-alex-sickle',
-    path: 'Character/Character/Pre-made/Alex/Sickle.png',
-    frameRate: 10,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 4,
-    down: { start: 0, end: 5 },
-    up: { start: 6, end: 11 },
-    side: { start: 12, end: 17 },
-  },
-  /** Cortar árvore com o Machado (Fase 7 — Coleta de Recursos). Mesmo layout de `Hoe.png`/`Sickle.png` (192x96, 6 frames/direção), confirmado pelas dimensões da folha. */
-  axe: {
-    key: 'player-alex-axe',
-    path: 'Character/Character/Pre-made/Alex/Axe.png',
-    frameRate: 10,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 4,
-    down: { start: 0, end: 5 },
-    up: { start: 6, end: 11 },
-    side: { start: 12, end: 17 },
-  },
-  /** Quebrar pedra/rocha com a Picareta (Fase 7 — Coleta de Recursos). Mesmo layout das demais. */
-  pickaxe: {
-    key: 'player-alex-pickaxe',
-    path: 'Character/Character/Pre-made/Alex/Pickaxe.png',
-    frameRate: 10,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 4,
-    down: { start: 0, end: 5 },
-    up: { start: 6, end: 11 },
-    side: { start: 12, end: 17 },
-  },
-  /**
-   * Buscar água no Poço (Fase 7) — diferente da animação de regar a
-   * lavoura (`water`, usa o regador já erguido), essa mostra o personagem
-   * se abaixando e levantando algo, mais parecida com "pegar água" do que
-   * "regar uma planta". Não existe uma animação dedicada de "poço" no
-   * pacote de assets — `Pick Up itens/pick up.png` (abaixar e levantar) foi
-   * a mais próxima disponível, sem precisar de arte nova. Essa folha usa
-   * frames de 64x64 (o dobro das outras), confirmado recortando/ampliando
-   * pixel a pixel — tentar carregá-la como 32x32 (padrão das outras)
-   * cortaria cada frame ao meio.
-   */
-  well: {
-    key: 'player-alex-pickup',
-    path: 'Character/Character/Pre-made/Alex/Pick Up itens/pick up.png',
-    frameRate: 8,
-    frameSize: 64,
-    // Pés (frame de baixo) acabam em y=41 de um frame de 64px (22px de
-    // margem embaixo) contra y=25 de um frame de 32px do `Idle.png` (6px
-    // de margem) — ambos escaneados pixel a pixel. Diferença: 16px nativos
-    // = 32px na escala de exibição (DISPLAY_SCALE = 2).
-    yOffset: 32,
-    impactFrameOffset: 2,
-    down: { start: 0, end: 3 },
-    up: { start: 4, end: 7 },
-    side: { start: 8, end: 11 },
-  },
-  /**
-   * Golpe de espada (Fase 8 — Combate): `Character/Pre-made/Alex/Sword.png`
-   * (320x96) tem 10 frames/direção, não 6 como as demais — confirmado pelas
-   * dimensões da folha (320/32=10). Mais rápido que as ferramentas
-   * (`frameRate` maior) pra um golpe responsivo em combate.
-   */
-  sword: {
-    key: 'player-alex-sword',
-    path: 'Character/Character/Pre-made/Alex/Sword.png',
-    frameRate: 16,
-    frameSize: PLAYER_FRAME_SIZE,
-    impactFrameOffset: 4,
-    down: { start: 0, end: 9 },
-    up: { start: 10, end: 19 },
-    side: { start: 20, end: 29 },
-  },
-};
+/** Todas as chaves/caminhos do sprite de UM personagem — ver `getPlayerAssets`. */
+export interface PlayerAssets {
+  characterId: CharacterId;
+  /** Prefixo das chaves de animação de idle/andar (`${animPrefix}-idle-down`, ...). */
+  animPrefix: string;
+  idleKey: string;
+  idlePath: string;
+  walkKey: string;
+  walkPath: string;
+  actions: Record<PlayerActionKey, ActionAnimSpec>;
+}
+
+function buildActions(characterId: CharacterId): Record<PlayerActionKey, ActionAnimSpec> {
+  const dir = `${PRE_MADE_DIR}/${characterId}`;
+  const prefix = `player-${characterId.toLowerCase()}`;
+  const files = CHARACTER_FILES[characterId];
+
+  return {
+    hoe: {
+      key: `${prefix}-hoe`,
+      path: `${dir}/Hoe.png`,
+      frameRate: 10,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 4,
+      down: { start: 0, end: 5 },
+      up: { start: 6, end: 11 },
+      side: { start: 12, end: 17 },
+    },
+    plant: {
+      key: `${prefix}-shovel`,
+      path: `${dir}/Shovel.png`,
+      frameRate: 10,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 2,
+      down: { start: 0, end: 4 },
+      up: { start: 5, end: 9 },
+      side: { start: 10, end: 14 },
+    },
+    water: {
+      key: `${prefix}-watering`,
+      path: `${dir}/${files.watering}`,
+      frameRate: 10,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 4,
+      down: { start: 0, end: 7 },
+      up: { start: 8, end: 15 },
+      side: { start: 16, end: 23 },
+    },
+    harvest: {
+      key: `${prefix}-sickle`,
+      path: `${dir}/Sickle.png`,
+      frameRate: 10,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 4,
+      down: { start: 0, end: 5 },
+      up: { start: 6, end: 11 },
+      side: { start: 12, end: 17 },
+    },
+    /** Cortar árvore com o Machado (Fase 7 — Coleta de Recursos). Mesmo layout de `Hoe.png`/`Sickle.png` (192x96, 6 frames/direção), confirmado pelas dimensões da folha. */
+    axe: {
+      key: `${prefix}-axe`,
+      path: `${dir}/Axe.png`,
+      frameRate: 10,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 4,
+      down: { start: 0, end: 5 },
+      up: { start: 6, end: 11 },
+      side: { start: 12, end: 17 },
+    },
+    /** Quebrar pedra/rocha com a Picareta (Fase 7 — Coleta de Recursos). Mesmo layout das demais. */
+    pickaxe: {
+      key: `${prefix}-pickaxe`,
+      path: `${dir}/Pickaxe.png`,
+      frameRate: 10,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 4,
+      down: { start: 0, end: 5 },
+      up: { start: 6, end: 11 },
+      side: { start: 12, end: 17 },
+    },
+    /**
+     * Buscar água no Poço (Fase 7) — diferente da animação de regar a
+     * lavoura (`water`, usa o regador já erguido), essa mostra o personagem
+     * se abaixando e levantando algo, mais parecida com "pegar água" do que
+     * "regar uma planta". Não existe uma animação dedicada de "poço" no
+     * pacote de assets — `Pick Up itens/pick up.png` (abaixar e levantar) foi
+     * a mais próxima disponível, sem precisar de arte nova. Essa folha usa
+     * frames de 64x64 (o dobro das outras), confirmado recortando/ampliando
+     * pixel a pixel — tentar carregá-la como 32x32 (padrão das outras)
+     * cortaria cada frame ao meio.
+     */
+    well: {
+      key: `${prefix}-pickup`,
+      path: `${dir}/${files.pickUp}`,
+      frameRate: 8,
+      frameSize: 64,
+      // Pés (frame de baixo) acabam em y=41 de um frame de 64px (22px de
+      // margem embaixo) contra y=25 de um frame de 32px do `Idle.png` (6px
+      // de margem) — ambos escaneados pixel a pixel. Diferença: 16px nativos
+      // = 32px na escala de exibição (DISPLAY_SCALE = 2).
+      yOffset: 32,
+      impactFrameOffset: 2,
+      down: { start: 0, end: 3 },
+      up: { start: 4, end: 7 },
+      side: { start: 8, end: 11 },
+    },
+    /**
+     * Golpe de espada (Fase 8 — Combate): `Sword.png` (320x96) tem 10
+     * frames/direção, não 6 como as demais — confirmado pelas dimensões da
+     * folha (320/32=10). Mais rápido que as ferramentas (`frameRate` maior)
+     * pra um golpe responsivo em combate.
+     */
+    sword: {
+      key: `${prefix}-sword`,
+      path: `${dir}/${files.sword}`,
+      frameRate: 16,
+      frameSize: PLAYER_FRAME_SIZE,
+      impactFrameOffset: 4,
+      down: { start: 0, end: 9 },
+      up: { start: 10, end: 19 },
+      side: { start: 20, end: 29 },
+    },
+    /**
+     * Comer (pedido explícito). O pacote NÃO tem uma animação de comer para o
+     * personagem humano (só "Horse - Eating"); a mais próxima é `Sitting .png`
+     * (96x32, 3 frames de 32x32: baixo / cima / lado, conferido por zoom) — o
+     * personagem agachado. Como tem UM frame por direção, a "animação" é essa
+     * pose mantida por `EATING_DURATION_MS` (`frameRate` = 1000/duração, sem
+     * repetir); o movimento fica por conta do alimento sendo mordido sobre a
+     * cabeça (`systems/eating.ts`). Sem `impactFrameOffset`: o efeito (gastar a
+     * colheita e curar) só é aplicado ao TERMINAR de comer.
+     * `yOffset`: os pés da pose agachada acabam em y=24 (baixo) / y=22
+     * (cima e lado) do frame de 32px, contra y=25 do `Idle.png` — medido pelo
+     * canal alfa; 4px de exibição é o meio-termo (erro máximo de 2px).
+     */
+    eat: {
+      key: `${prefix}-sitting`,
+      path: `${dir}/${files.sitting}`,
+      frameRate: 1000 / EATING_DURATION_MS,
+      frameSize: PLAYER_FRAME_SIZE,
+      yOffset: 4,
+      down: { start: 0, end: 0 },
+      up: { start: 1, end: 1 },
+      side: { start: 2, end: 2 },
+    },
+  };
+}
+
+const assetsCache = new Map<CharacterId, PlayerAssets>();
+
+/** Chaves/caminhos do sprite do personagem escolhido (memoizado). Cada personagem tem as PRÓPRIAS chaves de textura/animação, então trocar de personagem (outro slot) nunca reaproveita a arte do anterior. */
+export function getPlayerAssets(characterId: CharacterId): PlayerAssets {
+  const cached = assetsCache.get(characterId);
+  if (cached) return cached;
+
+  const animPrefix = `player-${characterId.toLowerCase()}`;
+  const assets: PlayerAssets = {
+    characterId,
+    animPrefix,
+    idleKey: `${animPrefix}-idle`,
+    idlePath: `${PRE_MADE_DIR}/${characterId}/Idle.png`,
+    walkKey: `${animPrefix}-walk`,
+    walkPath: `${PRE_MADE_DIR}/${characterId}/Walk.png`,
+    actions: buildActions(characterId),
+  };
+  assetsCache.set(characterId, assets);
+  return assets;
+}

@@ -1,35 +1,36 @@
 import Phaser from 'phaser';
-import { CROPS } from '../data/crops';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
 import { Player } from '../entities/Player';
+import { ShippingBinMenu } from '../ui/shippingBinMenu';
 
 /**
- * A Caixa de Remessas: ao interagir, vende de uma vez todas as colheitas do
- * jogador (qualquer item cujo id apareça em `CROPS`), soma o valor pelo
- * `sellPrice` de cada cultura, credita em `Inventory.addCoins` e remove o
- * que foi vendido. Segue o mesmo padrão do `PlotInteractable`: decide tudo
- * a partir do próprio estado (aqui, o conteúdo do inventário), sem que
- * quem chama `interact()` saiba que é uma venda.
+ * A Caixa de Remessas: ao interagir, abre o menu de venda (`ShippingBinMenu`,
+ * estilo Stardew Valley) — o jogador escolhe na Bolsa o que colocar na caixa
+ * e só o botão "Vender" fecha a conta. Esta classe só abre/fecha o menu (o
+ * mesmo padrão do `ShopInteractable`); quem calcula o valor e mexe no
+ * `Inventory` é o próprio menu, que avisa o resultado por `onSold`.
  *
  * É um objeto sólido (célula bloqueada em `systems/grid.ts`) — quem decide
  * levar o jogador até uma célula adjacente e disparar `interact()` de lá é
- * o `PlayerController`, não esta classe. Daqui, a interação é idêntica
- * estando o jogador do lado que estiver.
+ * o `PlayerController`, não esta classe.
  *
  * Ao vender, dá um pulo elástico na própria caixa (`popBin`) além do texto
  * flutuante de moedas ganhas — feedback visual (Fase 9 antecipada), não
  * afeta o resultado da venda, que já foi decidido antes.
  */
 export class ShippingBinInteractable implements Interactable {
+  /** Responde à tecla F (`PlayerController.handleInteractKey`), além do clique — pedido explícito do usuário. */
+  readonly keyInteractable = true;
+
   private readonly binBaseScaleX: number;
   private readonly binBaseScaleY: number;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly bin: Phaser.GameObjects.Image,
-    private readonly inventory: Inventory,
     private readonly player: Player,
+    private readonly menu: ShippingBinMenu,
   ) {
     this.binBaseScaleX = bin.scaleX;
     this.binBaseScaleY = bin.scaleY;
@@ -45,26 +46,11 @@ export class ShippingBinInteractable implements Interactable {
 
   interact(): void {
     if (this.player.isBusy()) return;
+    this.menu.toggle();
+  }
 
-    let totalCoins = 0;
-    let totalItems = 0;
-
-    for (const crop of Object.values(CROPS)) {
-      const amount = this.inventory.takeAll(crop.id);
-      if (amount <= 0) continue;
-      totalCoins += amount * crop.sellPrice;
-      totalItems += amount;
-    }
-
-    if (totalItems <= 0) {
-      console.log('Nada para vender.');
-      return;
-    }
-
-    this.inventory.addCoins(totalCoins);
-    console.log(
-      `Vendido: ${totalItems} ite${totalItems === 1 ? 'm' : 'ns'} por ${totalCoins} moedas (saldo: ${this.inventory.getCoins()}).`,
-    );
+  /** Feedback da venda (chamado pelo menu via `onSold`): moedas flutuando + pulo da caixa. */
+  celebrateSale(totalCoins: number): void {
     this.showFloatingGain(totalCoins);
     this.popBin();
   }
@@ -108,7 +94,7 @@ export class ShippingBinInteractable implements Interactable {
   }
 }
 
-/** Registra o `ShippingBinInteractable` na célula onde a caixa está posicionada. */
+/** Registra o `ShippingBinInteractable` na célula da caixa e devolve o menu (a cena fecha com ESC e trava o movimento enquanto aberto). */
 export function registerShippingBinInteractable(
   scene: Phaser.Scene,
   bin: Phaser.GameObjects.Image,
@@ -117,6 +103,12 @@ export function registerShippingBinInteractable(
   inventory: Inventory,
   player: Player,
   registry: InteractionRegistry,
-): void {
-  registry.set(col, row, new ShippingBinInteractable(scene, bin, inventory, player));
+): ShippingBinMenu {
+  let interactable: ShippingBinInteractable | null = null;
+  const menu = new ShippingBinMenu(scene, inventory, (totalCoins) => {
+    interactable?.celebrateSale(totalCoins);
+  });
+  interactable = new ShippingBinInteractable(scene, bin, player, menu);
+  registry.set(col, row, interactable);
+  return menu;
 }

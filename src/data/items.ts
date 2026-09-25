@@ -17,7 +17,11 @@ import { RECIPES } from './recipes';
  * armaduras (`data/armors.ts`) e as receitas compradas na Loja antes de
  * fabricar na Bancada de Trabalho (`data/recipes.ts`).
  */
-export type SlotCategory = 'tool' | 'seed' | 'decoration' | 'resource' | 'armor' | 'recipe';
+// `crop` (bug corrigido — colheita ia só pro registro de estoque, nunca
+// ganhava slot físico na Bolsa): o vegetal/fruta já colhido, separado de
+// `seed` (a semente ainda não plantada) mesmo indexado pelo mesmo
+// `CropDefinition.id` — os dois podem coexistir em slots diferentes.
+export type SlotCategory = 'tool' | 'seed' | 'decoration' | 'resource' | 'armor' | 'recipe' | 'crop';
 
 /** Referência ao conteúdo de um slot — não guarda quantidade (isso continua vindo de `Inventory`, por categoria). */
 export interface SlotRef {
@@ -48,8 +52,16 @@ export function resolveSlotVisual(ref: SlotRef): SlotVisual | null {
     return weapon ? { name: weapon.name, textureKey: weapon.textureKey, iconFrame: weapon.iconFrame } : null;
   }
   if (ref.category === 'seed') {
+    // Saquinho de semente (pedido explícito — antes usava o mesmo frame do
+    // fruto colhido, ver `crop.cropFrameName`/categoria 'crop' abaixo).
     const crop = CROPS[ref.id];
-    return crop ? { name: crop.name, textureKey: ALL_CROPS_ICONS_KEY, iconFrame: crop.iconFrameName } : null;
+    return crop ? { name: crop.name, textureKey: ALL_CROPS_ICONS_KEY, iconFrame: crop.seedFrameName } : null;
+  }
+  if (ref.category === 'crop') {
+    // Fruto/vegetal já colhido (pedido explícito, item 4) — o que vai pra
+    // Bolsa depois de colher (ver `Inventory.add`).
+    const crop = CROPS[ref.id];
+    return crop ? { name: crop.name, textureKey: ALL_CROPS_ICONS_KEY, iconFrame: crop.cropFrameName } : null;
   }
   if (ref.category === 'decoration') {
     const decoration = DECORATIONS[ref.id];

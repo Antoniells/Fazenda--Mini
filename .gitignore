@@ -1,2 +1,9 @@
 node_modules
 dist
+dist-electron
+release
+release-*
+# Saves do Electron (Documentos/Mini Fazenda) — quando essa pasta é a do projeto, ficam na raiz e não vão pro git
+/savegame-slot*.json
+/settings.json
+/display_prefs.json

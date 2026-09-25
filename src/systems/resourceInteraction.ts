@@ -2,11 +2,14 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Interactable, InteractionRegistry } from './interaction';
 import { gameState } from './gameState';
-import { AXE, PICKAXE } from '../data/tools';
+import { getToolTierInfo, TOOL_TIER_POWER } from '../data/toolProgression';
 import { WOOD, STONE, ACORN } from '../data/resources';
 import { LEAF_FALL_KEY, LEAF_FALL_ANIM_KEY, LEAF_FALL_FRAMES } from '../data/effects';
 import { WalkableGrid } from './grid';
 import { resourceNodeRegistry } from './resourceNodeRegistry';
+import { spawnLoot } from './lootDrops';
+import { playEffect, playRandomEffect } from './soundEffects';
+import { AXE_HIT_SOUNDS, TREE_FALL_SOUND, ROCK_HIT_SOUNDS, ROCK_BREAK_SOUND } from '../data/audio';
 
 /** Sprite + sombra (opcional) de um recurso no mundo — ambos destruídos juntos ao colher. */
 interface HarvestableVisual {
@@ -14,10 +17,18 @@ interface HarvestableVisual {
   shadow?: Phaser.GameObjects.Image;
 }
 
-/** Golpes de Machado até uma árvore cair (Fase 9 — pedido explícito). */
+/** "Golpes de madeira" até uma árvore cair (Fase 9 — pedido explícito): Machado de Madeira 8 golpes; tiers maiores batem mais forte (`TOOL_TIER_POWER`). */
 const HITS_TO_FELL_TREE = 8;
-/** Golpes de Picareta até uma pedra quebrar (Fase 9 — pedido explícito). */
-const HITS_TO_BREAK_ROCK = 2;
+/** "Golpes de madeira" até uma pedra quebrar (Fase 9 — pedido explícito): Picareta de Madeira 4 golpes; tiers maiores batem mais forte. */
+const HITS_TO_BREAK_ROCK = 4;
+
+/** A ferramenta selecionada é da família certa? Devolve a força do tier dela (`TOOL_TIER_POWER`), ou `null` se não serve. */
+function selectedToolPower(family: 'axe' | 'pickaxe'): number | null {
+  const selected = gameState.inventory.getSelectedSlot();
+  if (!selected || selected.category !== 'tool') return null;
+  const info = getToolTierInfo(selected.id);
+  return info && info.family === family ? TOOL_TIER_POWER[info.tier] : null;
+}
 
 /** Duração do flash branco (ms) a cada golpe. */
 const HIT_FLASH_MS = 80;
@@ -111,7 +122,8 @@ function clearHarvestedNode(
  * ÚLTIMO golpe derruba a árvore de verdade (drop + remoção do mundo).
  */
 export class TreeInteractable implements Interactable {
-  private hits = 0;
+  /** Progresso até cair, em "golpes de madeira" (cada golpe soma a força do tier da ferramenta usada). Guardado no registro (`ResourceNode.hits`) — a cena recria o objeto a cada entrada/virada de dia e o dano não pode zerar. */
+  private hits: number;
 
   constructor(
     private readonly player: Player,
@@ -121,31 +133,41 @@ export class TreeInteractable implements Interactable {
     private readonly sceneKey: string,
     private readonly col: number,
     private readonly row: number,
-  ) {}
+  ) {
+    this.hits = resourceNodeRegistry.getNode(sceneKey, col, row)?.hits ?? 0;
+  }
 
   interact(): void {
     if (this.player.isBusy()) return;
 
-    const selected = gameState.inventory.getSelectedSlot();
-    if (!selected || selected.category !== 'tool' || selected.id !== AXE.id) {
+    const power = selectedToolPower('axe');
+    if (power === null) {
       console.log('Selecione o Machado para cortar a árvore.');
       return;
     }
 
     this.player.performAction('axe', () => {
-      this.hits++;
+      this.hits += power;
+      resourceNodeRegistry.setHits(this.sceneKey, this.col, this.row, this.hits);
       playHitReaction(this.visual.sprite);
       spawnLeafEffect(this.visual.sprite);
+      // Golpe comum: machadada; o último: a árvore cai.
+      if (this.hits < HITS_TO_FELL_TREE) playRandomEffect(this.visual.sprite.scene, AXE_HIT_SOUNDS);
+      else playEffect(this.visual.sprite.scene, TREE_FALL_SOUND);
 
       if (this.hits < HITS_TO_FELL_TREE) {
-        console.log(`Árvore: golpe ${this.hits}/${HITS_TO_FELL_TREE}.`);
+        console.log(`Árvore: ${Math.floor(this.hits)}/${HITS_TO_FELL_TREE}.`);
         return;
       }
 
       const wood = Phaser.Math.Between(12, 16);
       const acorns = Phaser.Math.Between(0, 2);
-      gameState.inventory.addResources(WOOD.id, wood);
-      if (acorns > 0) gameState.inventory.addResources(ACORN.id, acorns);
+      // O loot cai no chão, ao pé da árvore (posição lida ANTES de `clearHarvestedNode` destruir o sprite) — o jogador pega ao chegar perto.
+      const { x, y } = this.visual.sprite;
+      const scene = this.visual.sprite.scene;
+      scene.cameras.main.shake(140, 0.005); // A árvore cai: a tela sente.
+      spawnLoot(scene, this.player, x, y, { category: 'resource', id: WOOD.id, amount: wood });
+      if (acorns > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: ACORN.id, amount: acorns });
 
       console.log(
         `Árvore cortada: +${wood} Madeira` + (acorns > 0 ? ` e +${acorns} Bolota${acorns > 1 ? 's' : ''}` : '') + '.',
@@ -163,7 +185,8 @@ export class TreeInteractable implements Interactable {
  * com tremor/flash, o último quebra a pedra de verdade.
  */
 export class RockInteractable implements Interactable {
-  private hits = 0;
+  /** Progresso até quebrar, em "golpes de madeira" (cada golpe soma a força do tier da ferramenta usada) — guardado no registro, como na árvore. */
+  private hits: number;
 
   constructor(
     private readonly player: Player,
@@ -174,28 +197,35 @@ export class RockInteractable implements Interactable {
     private readonly col: number,
     private readonly row: number,
     private readonly big: boolean,
-  ) {}
+  ) {
+    this.hits = resourceNodeRegistry.getNode(sceneKey, col, row)?.hits ?? 0;
+  }
 
   interact(): void {
     if (this.player.isBusy()) return;
 
-    const selected = gameState.inventory.getSelectedSlot();
-    if (!selected || selected.category !== 'tool' || selected.id !== PICKAXE.id) {
+    const power = selectedToolPower('pickaxe');
+    if (power === null) {
       console.log('Selecione a Picareta para quebrar a pedra.');
       return;
     }
 
     this.player.performAction('pickaxe', () => {
-      this.hits++;
+      this.hits += power;
+      resourceNodeRegistry.setHits(this.sceneKey, this.col, this.row, this.hits);
       playHitReaction(this.visual.sprite);
+      // Golpe comum: batida na pedra; o último: ela quebra.
+      if (this.hits < HITS_TO_BREAK_ROCK) playRandomEffect(this.visual.sprite.scene, ROCK_HIT_SOUNDS);
+      else playEffect(this.visual.sprite.scene, ROCK_BREAK_SOUND);
 
       if (this.hits < HITS_TO_BREAK_ROCK) {
-        console.log(`${this.big ? 'Rocha' : 'Pedra'}: golpe ${this.hits}/${HITS_TO_BREAK_ROCK}.`);
+        console.log(`${this.big ? 'Rocha' : 'Pedra'}: ${Math.floor(this.hits)}/${HITS_TO_BREAK_ROCK}.`);
         return;
       }
 
       const stone = this.big ? Phaser.Math.Between(8, 10) : Phaser.Math.Between(1, 3);
-      gameState.inventory.addResources(STONE.id, stone);
+      this.visual.sprite.scene.cameras.main.shake(110, 0.004); // A pedra racha.
+      spawnLoot(this.visual.sprite.scene, this.player, this.visual.sprite.x, this.visual.sprite.y, { category: 'resource', id: STONE.id, amount: stone });
       console.log(`${this.big ? 'Rocha' : 'Pedra'} quebrada: +${stone} Pedra.`);
 
       clearHarvestedNode(this.visual, this.grid, this.interactions, this.sceneKey, this.col, this.row);

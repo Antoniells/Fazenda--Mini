@@ -24,6 +24,9 @@ import {
 import { createGroundShadow } from './shadow';
 import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
+import { GROUND_TILESETS } from './groundTilesets';
+import { buildWaterAutotile } from './waterAutotile';
+import type { WaterStyleId } from '../data/tiles';
 
 /** Escala de exibição: cada tile de 16px é desenhado em 32px na tela. */
 export const DISPLAY_SCALE = 2;
@@ -63,13 +66,9 @@ function placeFenceTile(
  * natural do tileset (verde), sem tint.
  */
 export const BIOME_TINTS: Partial<Record<BiomeId, number>> = {
-  // Tints em multiply escurecem/saturam a base verde da grama (não
-  // clareiam) — por isso a Praia usa um tom terroso mais forte (não um
-  // areia claro quase branco, que multiply mal altera) pra ficar
-  // perceptível como região distinta; confirmado visualmente no navegador.
-  beach: 0xe0a85c,
+  // Só a Mineração ainda usa tint (multiply escurece a base verde da grama). Praia e Caverna NÃO têm mais: o filtro escurecia a arte
+  // dos mapas deles (pedido explícito) — o chão dessas áreas mostra as cores naturais dos tilesets.
   mining: 0xaaaaaa,
-  cave: 0x555566,
 };
 
 /**
@@ -88,6 +87,61 @@ export const BIOME_TINTS: Partial<Record<BiomeId, number>> = {
  * grama pelo tile de terra correto (canto/borda/preenchimento), escolhido
  * a partir dos vizinhos — mesmo depois de montado o `groundData` base.
  */
+/**
+ * Chão AUTORADO no `MapEditorScene` (`XMapData.ground`, GID por célula) —
+ * usado célula a célula com `putTileAt`, em vez de gerar proceduralmente.
+ * Registra os 3 tilesets que o editor pode pintar (`systems/groundTilesets`,
+ * a MESMA fonte de GID que o editor usa), pra um GID de qualquer um deles
+ * renderizar certo aqui — não só grama.
+ */
+function buildAuthoredGroundChunk(
+  scene: Phaser.Scene,
+  tileSize: number,
+  originCol: number,
+  originRow: number,
+  cols: number,
+  rows: number,
+  authoredGround: number[][],
+  tint?: number,
+  waterStyle?: WaterStyleId,
+): Phaser.Tilemaps.TilemapLayer {
+  const tilemap = scene.make.tilemap({ tileWidth: tileSize, tileHeight: tileSize, width: cols, height: rows });
+  const tilesets = GROUND_TILESETS.map((ts) => tilemap.addTilesetImage(ts.textureKey, ts.textureKey, tileSize, tileSize, 0, 0, ts.firstGid)).filter(
+    (tileset): tileset is Phaser.Tilemaps.Tileset => tileset !== null,
+  );
+  if (tilesets.length === 0) {
+    throw new Error('Não foi possível carregar nenhum tileset de chão.');
+  }
+
+  const tile = tileSize * DISPLAY_SCALE;
+  const layer = tilemap.createBlankLayer('ground', tilesets, originCol * tile, originRow * tile) as Phaser.Tilemaps.TilemapLayer;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const gid = authoredGround[row]?.[col];
+      if (gid !== undefined) layer.putTileAt(gid, col, row);
+    }
+  }
+
+  layer.setScale(DISPLAY_SCALE);
+  layer.setDepth(-1);
+  if (tint !== undefined) layer.setTint(tint);
+
+  // Água: as células pintadas com água (lago/mar) ganham o autotile animado por cima do chão — bordas
+  // escolhidas pelos vizinhos, não pelo tile que foi pintado à mão (ver `systems/waterAutotile.ts`).
+  buildWaterAutotile(scene, tileSize, DISPLAY_SCALE, originCol, originRow, authoredGround, waterStyle);
+
+  return layer;
+}
+
+/**
+ * `authoredGround` (opcional — `XMapData.ground`, autorado no
+ * `MapEditorScene`): quando presente, o chão é pintado EXATAMENTE com esses
+ * GIDs, célula a célula (`buildAuthoredGroundChunk`), e o resto desta
+ * função (variação procedural, `dirtZone`) nem roda. Sem ele, continua o
+ * método procedural de sempre — nenhum mapa existente sem `ground` muda de
+ * comportamento.
+ */
 export function buildGroundChunk(
   scene: Phaser.Scene,
   tileSize: number,
@@ -97,7 +151,13 @@ export function buildGroundChunk(
   rows: number,
   dirtZone?: DirtZone,
   tint?: number,
+  authoredGround?: number[][],
+  waterStyle?: WaterStyleId,
 ): Phaser.Tilemaps.TilemapLayer {
+  if (authoredGround) {
+    return buildAuthoredGroundChunk(scene, tileSize, originCol, originRow, cols, rows, authoredGround, tint, waterStyle);
+  }
+
   const groundData: number[][] = [];
 
   for (let row = 0; row < rows; row++) {
@@ -135,13 +195,14 @@ export function buildGroundChunk(
 }
 
 /**
- * Constrói a camada de grama do núcleo da propriedade (`map.cols` x
- * `map.rows`, a partir de (0,0)) — o único chunk que recebe o caminho de
- * terra (`buildDirtZone`), já que ele liga casa/lavoura/loja, todos dentro
- * do núcleo.
+ * Constrói a camada de chão do núcleo da propriedade (`map.cols` x
+ * `map.rows`, a partir de (0,0)). Se `map.ground` existir (autorado no
+ * `MapEditorScene`), usa ele célula a célula; senão, gera proceduralmente
+ * como sempre — o único chunk que recebe o caminho de terra (`buildDirtZone`)
+ * nesse caso, já que ele liga casa/lavoura/loja, todos dentro do núcleo.
  */
 export function buildFarmGround(scene: Phaser.Scene, map: FarmMapData): Phaser.Tilemaps.TilemapLayer {
-  return buildGroundChunk(scene, map.tileSize, 0, 0, map.cols, map.rows, buildDirtZone(map));
+  return buildGroundChunk(scene, map.tileSize, 0, 0, map.cols, map.rows, buildDirtZone(map), undefined, map.ground);
 }
 
 /**
@@ -413,6 +474,20 @@ export function bridgeRailingCells(bridge: BridgeDefinition): Array<[number, num
 }
 
 /**
+ * Células (col, row) do corredor andável de uma ponte — o trecho ENTRE os
+ * corrimões de `bridgeRailingCells` (a célula da própria ponte + as de dentro
+ * do núcleo cobertas pela arte). Nada de decoração solta (tufo/cogumelo do
+ * `buildWildFoliage`) deve nascer aí: ficaria por cima da ponte.
+ */
+export function bridgeWalkwayCells(bridge: BridgeDefinition): Array<[number, number]> {
+  const isVerticalCrossing = bridge.direction === 'north' || bridge.direction === 'south';
+  const interiorStep = bridge.direction === 'north' || bridge.direction === 'west' ? 1 : -1;
+
+  if (isVerticalCrossing) return [[bridge.col, bridge.row], [bridge.col, bridge.row + interiorStep]];
+  return [[bridge.col, bridge.row], [bridge.col + interiorStep, bridge.row], [bridge.col + interiorStep * 2, bridge.row]];
+}
+
+/**
  * Desenha as árvores decorativas definidas em `farmMap.treePositions` e
  * retorna os game objects criados, para que a cena possa usá-los no sistema
  * de sobreposição de profundidade (`systems/treeOverlap`).
@@ -551,7 +626,8 @@ export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.
  * (posição escolhida em `farmMap.ts`) — puramente pra não desenhar uma
  * cerca por cima do sprite dela (a colisão ali já vem da própria caixa).
  */
-export function buildFarmlandFence(scene: Phaser.Scene, map: FarmMapData): void {
+export function buildFarmlandFence(scene: Phaser.Scene, map: FarmMapData): Map<string, Phaser.GameObjects.Image> {
+  const images = new Map<string, Phaser.GameObjects.Image>();
   const tile = map.tileSize * DISPLAY_SCALE;
   const { col0, row0, colEnd, rowEnd, gate } = getFarmlandFenceLayout(map);
 
@@ -567,6 +643,7 @@ const skip = new Set<string>([
     // Profundidade pela base da célula — mesma convenção das árvores/Casa,
     // pro jogador poder passar na frente ou atrás da cerca corretamente.
     image.setDepth((row + 1) * tile);
+    images.set(`${col},${row}`, image);
   };
 
   place(col0, row0, FENCE_CORNER_INDEX);
@@ -582,4 +659,7 @@ const skip = new Set<string>([
     place(col0, row, FENCE_EDGE_V_INDEX);
     place(colEnd, row, FENCE_EDGE_V_INDEX);
   }
+
+  // As imagens por célula: a horda usa (`systems/farmFences.ts`) pra dar vida às cercas e derrubá-las.
+  return images;
 }

@@ -2,11 +2,11 @@ import { Interactable, InteractionRegistry } from './interaction';
 import { Player } from '../entities/Player';
 
 /**
- * Dormir (Fase 9): interagir com a porta de casa dispara o callback
- * `onSleep` (fade-out, avançar o relógio pro dia seguinte, `farmland.
- * onNewDay()`, fade-in — ver `MainScene.sleep`). Esta classe não sabe nada
- * sobre câmera/relógio/lavoura, só decide QUANDO chamar — mesmo padrão dos
- * outros `Interactable` (Caixa de Remessas, Loja): objeto sólido com
+ * Dormir: interagir com a CAMA (dentro de casa, `scenes/HouseScene.ts`)
+ * dispara o callback `onSleep` (fade out, avançar pro dia seguinte, curar,
+ * salvar, fade in — ver `HouseScene.sleep`/`systems/dayCycle.ts`). Esta
+ * classe não sabe nada sobre câmera/relógio/lavoura, só decide QUANDO
+ * chamar — mesmo padrão dos outros `Interactable`: objeto sólido com
  * interação adjacente já cuidada pelo `PlayerController`.
  */
 class SleepInteractable implements Interactable {
@@ -21,13 +21,13 @@ class SleepInteractable implements Interactable {
   }
 }
 
-/** Registra a interação de dormir na célula da porta de casa (`farmMap.houseDoorPosition`). */
+/** Registra a interação de dormir em TODAS as células que a cama ocupa (clicar em qualquer parte dela funciona). */
 export function registerSleepInteractable(
-  col: number,
-  row: number,
+  cells: Array<[number, number]>,
   player: Player,
   onSleep: () => void,
   registry: InteractionRegistry,
 ): void {
-  registry.set(col, row, new SleepInteractable(player, onSleep));
+  const interactable = new SleepInteractable(player, onSleep);
+  for (const [col, row] of cells) registry.set(col, row, interactable);
 }

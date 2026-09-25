@@ -10,7 +10,19 @@ import { WATERING_CAN_ICON_KEY, WATERING_CAN_ICON_PATH } from './ui';
  * pra `WaterBar` (`WATERING_CAN_ICON_KEY`) em vez de carregar o mesmo PNG
  * de novo com outra chave.
  */
-export type ToolId = 'hoe' | 'water' | 'sickle' | 'axe' | 'pickaxe' | 'axe-iron' | 'axe-gold' | 'pickaxe-iron' | 'pickaxe-gold';
+export type ToolId =
+  | 'hoe'
+  | 'water'
+  | 'sickle'
+  | 'axe'
+  | 'pickaxe'
+  | 'axe-stone'
+  | 'pickaxe-stone'
+  | 'axe-iron'
+  | 'axe-gold'
+  | 'pickaxe-iron'
+  | 'pickaxe-gold'
+  | 'hammer';
 
 export interface ToolDefinition {
   id: ToolId;
@@ -22,6 +34,11 @@ export interface ToolDefinition {
 
 const TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/1. Wood';
 /** Mesmas pastas de tier já usadas em `data/weapons.ts` (Ferro/Ouro) — o pacote também tem `Axe.png`/`Pickaxe.png` em cada uma. */
+/**
+ * O pacote de ícones NÃO tem uma pasta "Pedra": o 2º tier dele é `2. Cooper` (cobre), que é o que o tier Pedra da
+ * progressão (Madeira > Pedra > Ferro > Ouro, `data/toolProgression.ts`) usa de arte.
+ */
+const STONE_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/2. Cooper';
 const IRON_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/3. Iron';
 const GOLD_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/4. Gold';
 
@@ -68,6 +85,21 @@ export const PICKAXE: ToolDefinition = {
 };
 
 /**
+ * Martelo: conserta cercas destruídas (ver `systems/farmFences.ts`). Comprado na Loja (aba Ferramentas, `HAMMER_PRICE`), diferente
+ * das ferramentas de progressão. O pacote de ícones NÃO tem um martelo: o ícone é PROVISÓRIO — a Pá de madeira (`Shovel.png`,
+ * folha 32x16, só o frame 0; a Pá não é usada em nenhum outro lugar). Trocar pela arte de martelo quando existir = só mudar
+ * `texturePath` aqui, nenhuma lógica depende dele. Bate com a mesma animação da Picareta (`Player.performAction('pickaxe')`).
+ */
+export const HAMMER_PRICE = 80;
+export const HAMMER: ToolDefinition = {
+  id: 'hammer',
+  name: 'Martelo',
+  textureKey: 'tool-hammer',
+  texturePath: `${TOOLS_BASE_PATH}/Shovel.png`,
+  iconFrame: 0,
+};
+
+/**
  * Ferramentas de progressão (Fase 8 — Upgrade de Ferramentas): diferente
  * das 5 acima (dadas de graça no início, nunca compradas), estas só
  * existem via Receita + Bancada de Trabalho (`data/recipes.ts`) — não têm
@@ -76,6 +108,22 @@ export const PICKAXE: ToolDefinition = {
  * (Madeira/Ferro/Ouro) e mesma folha 32x16 (só o frame 0) já usada pelas
  * Espadas em `data/weapons.ts`.
  */
+export const STONE_AXE: ToolDefinition = {
+  id: 'axe-stone',
+  name: 'Machado de Pedra',
+  textureKey: 'tool-axe-stone',
+  texturePath: `${STONE_TOOLS_BASE_PATH}/Axe.png`,
+  iconFrame: 0,
+};
+
+export const STONE_PICKAXE: ToolDefinition = {
+  id: 'pickaxe-stone',
+  name: 'Picareta de Pedra',
+  textureKey: 'tool-pickaxe-stone',
+  texturePath: `${STONE_TOOLS_BASE_PATH}/Pickaxe.png`,
+  iconFrame: 0,
+};
+
 export const IRON_AXE: ToolDefinition = {
   id: 'axe-iron',
   name: 'Machado de Ferro',
@@ -114,8 +162,11 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
   sickle: SICKLE,
   axe: AXE,
   pickaxe: PICKAXE,
+  'axe-stone': STONE_AXE,
+  'pickaxe-stone': STONE_PICKAXE,
   'axe-iron': IRON_AXE,
   'axe-gold': GOLD_AXE,
   'pickaxe-iron': IRON_PICKAXE,
   'pickaxe-gold': GOLD_PICKAXE,
+  hammer: HAMMER,
 };

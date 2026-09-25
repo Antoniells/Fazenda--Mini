@@ -239,6 +239,40 @@ export const CLOSE_X_ICON_FRAME = {
   } 
 };
 
+/**
+ * Mesma folha (`UI/HUD.png`): as duas lixeiras da primeira fileira — fechada
+ * (normal) e aberta (hover) — usadas no botão "Excluir save" de cada slot do
+ * Menu Principal. Bounding boxes reais medidos pelo canal alfa (componentes
+ * conectados): fechada x=66,y=1 (12x14); aberta x=82,y=0 (12x15).
+ */
+export const DELETE_ICON_FRAME = { name: 'delete-icon', rect: { x: 66, y: 1, width: 12, height: 14 } };
+export const DELETE_ICON_OPEN_FRAME = { name: 'delete-icon-open', rect: { x: 82, y: 0, width: 12, height: 15 } };
+
+/**
+ * Ponteiro do mouse do jogo (`systems/gameCursor.ts`): o PRIMEIRO ícone de
+ * `UI/HUD.png` (seta marrom, célula 16x16 em 0,0). Retângulo = bounding box
+ * real medido pelo alfa (x=3,y=2; 11x12). `HOTSPOT` = pixel da ponta da seta
+ * dentro do recorte (é ali que o clique "acerta"). `SCALE` = ampliação inteira
+ * (nítida): 2x dá 22x24 px, abaixo do limite de 32x32 que os navegadores
+ * aceitam sem esconder o cursor perto das bordas.
+ */
+export const GAME_CURSOR_RECT = { x: 3, y: 2, width: 11, height: 12 };
+export const GAME_CURSOR_HOTSPOT = { x: 1, y: 1 };
+export const GAME_CURSOR_SCALE = 2;
+
+/**
+ * Defesa da armadura equipada (`ui/armorHud.ts`): `UI/Armor.png` (207x80) tem 3
+ * peitorais lado a lado — cheio (aço), meio (metade aço/metade branco) e
+ * vazio (branco) — o mesmo esquema cheio/meio/vazio dos corações
+ * (`HEART_*_FRAME`). Retângulos = bounding boxes reais medidos pelo alfa
+ * (57x57 cada, passo de 65px).
+ */
+export const ARMOR_HUD_KEY = 'ui-armor-icons';
+export const ARMOR_HUD_PATH = 'UI/Armor.png';
+export const ARMOR_FULL_FRAME = { name: 'armor-full', rect: { x: 12, y: 12, width: 57, height: 57 } };
+export const ARMOR_HALF_FRAME = { name: 'armor-half', rect: { x: 77, y: 12, width: 57, height: 57 } };
+export const ARMOR_EMPTY_FRAME = { name: 'armor-empty', rect: { x: 142, y: 12, width: 57, height: 57 } };
+
 export const CLOSE_X_ICON_PRESSED_FRAME = {
   name: 'close-x-icon-pressed',
   rect: { 
@@ -269,3 +303,41 @@ export const BACKPACK_ICON_FRAME = { name: 'backpack-icon', rect: { x: 0, y: 0, 
 export const FISHING_ROD_ICON_KEY = 'ui-fishing-rod-icon';
 export const FISHING_ROD_ICON_PATH = 'Icons/RPG icons/Weapons and Armor/1. Wood/Fishing Rod.png';
 export const FISHING_ROD_ICON_FRAME = { name: 'fishing-rod-icon', rect: { x: 0, y: 0, width: 16, height: 16 } };
+
+/**
+ * `UI/Bars.png` (192x160): corações e barras de status. Usado só o conjunto
+ * de corações GRANDES COM CONTORNO BRANCO (linha 1 do grid de 16x16 —
+ * legível sobre qualquer fundo do mundo): cheio / meio / vazio, cada um
+ * inteiro dentro da própria célula 16x16 (bounding box real conferido pelo
+ * canal alpha: x=0-15, y=1-14, então nenhum pixel do contorno é cortado).
+ * O `HealthHud` (Fase 8 — Combate) usa estes 3 estados.
+ */
+export const HEALTH_HEARTS_KEY = 'ui-bars';
+export const HEALTH_HEARTS_PATH = 'UI/Bars.png';
+export const HEART_FULL_FRAME = { name: 'heart-full', rect: { x: 0, y: 16, width: 16, height: 16 } };
+export const HEART_HALF_FRAME = { name: 'heart-half', rect: { x: 16, y: 16, width: 16, height: 16 } };
+export const HEART_EMPTY_FRAME = { name: 'heart-empty', rect: { x: 32, y: 16, width: 16, height: 16 } };
+
+/**
+ * Menu Principal (`MainMenuScene`): fundo estático da fazenda + UMA folha de peças (`menu_parts.webp`, 1536x1024, com
+ * canal alfa) com o logo, a coroa de folhas (semicírculo que fica ATRÁS do logo), as 3 placas de madeira dos botões
+ * (vazias — o texto "Iniciar"/"Configurações"/"Sair" é escrito pela cena) e uma placa dourada vazia, que é o destaque do
+ * hover (só a moldura: o interior é transparente, então vai por cima da placa sem esconder o texto). Em vez de fatiar a
+ * imagem num editor, a cena adiciona FRAMES nomeados por retângulo (mesma técnica dos corações/painéis acima) e monta
+ * objetos independentes — trocar a arte = trocar o arquivo e (se o layout mudar) estes retângulos, nunca a lógica da cena.
+ * Retângulos medidos pelo alfa, em coordenadas da imagem original.
+ */
+export const MENU_BACKGROUND_KEY = 'menu_bg';
+export const MENU_BACKGROUND_PATH = 'UI/Menu/menu_bg.jpg';
+export const MENU_UI_KEY = 'menu_ui';
+export const MENU_UI_PATH = 'UI/Menu/menu_parts.webp';
+export const MENU_PART_FRAMES = {
+  logo: { name: 'menu-logo', rect: { x: 27, y: 80, width: 851, height: 448 } },
+  wreath: { name: 'menu-wreath', rect: { x: 56, y: 632, width: 755, height: 340 } },
+  goldPlate: { name: 'menu-gold-plate', rect: { x: 876, y: 735, width: 604, height: 147 } },
+};
+export const MENU_BUTTON_FRAMES = {
+  start: { name: 'menu-btn-start', rect: { x: 911, y: 119, width: 557, height: 142 } },
+  settings: { name: 'menu-btn-settings', rect: { x: 913, y: 301, width: 560, height: 145 } },
+  quit: { name: 'menu-btn-quit', rect: { x: 913, y: 481, width: 558, height: 145 } },
+};

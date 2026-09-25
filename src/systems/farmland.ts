@@ -1,5 +1,4 @@
-import { CROPS, CropDefinition } from '../data/crops';
-import { Inventory } from './inventory';
+import { CROPS, CropDefinition, rollHarvestAmount } from '../data/crops';
 
 export type PlotState = 'untilled' | 'tilled' | 'growing' | 'dead';
 
@@ -32,6 +31,9 @@ function plotKey(col: number, row: number): string {
   return `${col},${row}`;
 }
 
+/** Formato salvo pelo `SaveManager` (Fase 10 — Persistência) — um `Plot` completo por célula cultivável. */
+export type PlotSaveData = Plot;
+
 /**
  * Estado e regras da agricultura.
  * - Crescimento: por DIA, não por tempo real decorrido — `stage` só avança
@@ -47,6 +49,12 @@ function plotKey(col: number, row: number): string {
  */
 export class Farmland {
   private readonly plots = new Map<string, Plot>();
+  /**
+   * Células em que a enxada NÃO age (hoje: onde há um aspersor posicionado — `DecorationPlacementSystem`).
+   * Regra do grid da lavoura, não da ferramenta: vale pra qualquer origem de `till`. Estado transitório
+   * (não vai pro save): a cena recria as travas a partir das construções posicionadas ao abrir.
+   */
+  private readonly tillLocked = new Set<string>();
 
   constructor(cultivableCells: Array<[number, number]>) {
     for (const [col, row] of cultivableCells) {
@@ -97,16 +105,45 @@ export class Farmland {
     return plot.wateredToday;
   }
 
-  /** Terreno cultivável, ainda não arado -> arado. */
-  till(col: number, row: number): boolean {
+  /** Trava/destrava a célula pra enxada (ver `tillLocked`). */
+  setTillLocked(col: number, row: number, locked: boolean): void {
+    if (locked) this.tillLocked.add(plotKey(col, row));
+    else this.tillLocked.delete(plotKey(col, row));
+  }
+
+  isTillLocked(col: number, row: number): boolean {
+    return this.tillLocked.has(plotKey(col, row));
+  }
+
+  /**
+   * Terreno cultivável, ainda não arado -> arado. Recusa célula travada (aspersor em cima — `setTillLocked`).
+   * `raining`: em dia de chuva a terra recém-arada já nasce molhada (a chuva cai nela), como o solo colhido em `harvest`.
+   */
+  till(col: number, row: number, raining = false): boolean {
     const plot = this.getPlot(col, row);
     if (!plot || plot.state !== 'untilled') return false;
+    if (this.isTillLocked(col, row)) return false;
     plot.state = 'tilled';
+    plot.wateredToday = raining;
+    return true;
+  }
+
+  /**
+   * Terreno arado e VAZIO -> terra normal de novo (a Picareta desfaz o arado). Recusa canteiro com semente/planta (`growing`/`dead`) —
+   * esses não são "só arados"; o solo volta seco (a rega vale só pra plantação).
+   */
+  untill(col: number, row: number): boolean {
+    const plot = this.getPlot(col, row);
+    if (!plot || plot.state !== 'tilled') return false;
+    plot.state = 'untilled';
+    plot.cropId = null;
+    plot.stage = 0;
+    plot.wateredToday = false;
     return true;
   }
 
   /** Terreno arado e vazio -> plantado com a cultura informada. A semente fica dormente (nem morre, nem germina) até ser regada — só então passa a exigir rega diária pra não morrer (ver `onNewDay`). */
-  plant(col: number, row: number, cropId: string): boolean {
+  plant(col: number, row: number, cropId: string, raining = false): boolean {
     const plot = this.getPlot(col, row);
     if (!plot || plot.state !== 'tilled') return false;
     if (!CROPS[cropId]) return false;
@@ -114,7 +151,7 @@ export class Farmland {
     plot.state = 'growing';
     plot.cropId = cropId;
     plot.stage = 0;
-    plot.wateredToday = false;
+    plot.wateredToday = raining; // Chovendo, a semente já está molhada (a chuva cai nela).
     return true;
   }
 
@@ -123,6 +160,40 @@ export class Farmland {
     const plot = this.getPlot(col, row);
     if (!plot || plot.state !== 'growing') return false;
     plot.wateredToday = true;
+    return true;
+  }
+
+  /** Rega TODAS as plantações — e a terra arada vazia, que a chuva também molha — de uma vez (chuva, ver `systems/weather.ts`); devolve as regadas agora (as já regadas hoje não contam). */
+  waterAll(): Plot[] {
+    const watered: Plot[] = [];
+    for (const plot of this.plots.values()) {
+      if ((plot.state === 'growing' || plot.state === 'tilled') && !plot.wateredToday) {
+        plot.wateredToday = true;
+        watered.push(plot);
+      }
+    }
+    return watered;
+  }
+
+  /** Tem algo plantado vivo (semente ou planta) nesta célula? — alvo das plantações da horda. */
+  hasLiveCrop(col: number, row: number): boolean {
+    return this.getPlot(col, row)?.state === 'growing';
+  }
+
+  /**
+   * A horda pisoteou a plantação: a planta germinada morre (fica `dead`, dá pra limpar com a Foice como qualquer plantação
+   * seca); a semente ainda dormente simplesmente some (o canteiro volta a `tilled`). Devolve `true` se destruiu algo.
+   */
+  destroyCrop(col: number, row: number): boolean {
+    const plot = this.getPlot(col, row);
+    if (!plot || plot.state !== 'growing') return false;
+    if (plot.stage > 0) {
+      plot.state = 'dead';
+    } else {
+      plot.state = 'tilled';
+      plot.cropId = null;
+    }
+    plot.wateredToday = false;
     return true;
   }
 
@@ -136,20 +207,22 @@ export class Farmland {
     return true;
   }
 
-  /** Colhe uma plantação pronta: libera o terreno (volta a arado) e devolve o resultado. */
-  harvest(col: number, row: number, inventory: Inventory): { cropId: string; amount: number } | null {
+  /**
+   * Colhe uma plantação pronta: libera o terreno (volta a arado) e devolve o resultado — quem chama decide o que fazer com a colheita (hoje ela cai no chão, ver `systems/lootDrops.ts`).
+   * `raining`: em dia de chuva o solo colhido CONTINUA molhado (a chuva segue caindo nele); fora da chuva ele volta a seco, como sempre.
+   */
+  harvest(col: number, row: number, raining = false): { cropId: string; amount: number } | null {
     const plot = this.getPlot(col, row);
     if (!plot || !this.isReady(plot)) return null;
     const crop = this.getCrop(plot);
     if (!crop) return null;
 
-    inventory.add(crop.id, crop.yieldAmount);
-
     plot.state = 'tilled';
     plot.cropId = null;
     plot.stage = 0;
+    plot.wateredToday = raining;
 
-    return { cropId: crop.id, amount: crop.yieldAmount };
+    return { cropId: crop.id, amount: rollHarvestAmount(crop.yieldAmount) };
   }
 
   /**
@@ -169,6 +242,7 @@ export class Farmland {
   onNewDay(): void {
     for (const plot of this.plots.values()) {
       if (plot.state === 'tilled') {
+        plot.wateredToday = false; // O solo colhido na chuva (`harvest`) seca na virada do dia.
         if (Math.random() < TILLED_DECAY_CHANCE) plot.state = 'untilled';
         continue;
       }
@@ -193,5 +267,29 @@ export class Farmland {
 
   getAllPlots(): Plot[] {
     return Array.from(this.plots.values());
+  }
+
+  serialize(): PlotSaveData[] {
+    return this.getAllPlots().map((plot) => ({ ...plot }));
+  }
+
+  /**
+   * Reconstrói a partir de `serialize()` — as próprias células salvas já
+   * definem a área cultivável (não precisa de `farmMap.farmlandArea` de
+   * novo), então um save continua válido mesmo que a área da lavoura mude
+   * num mapa editado depois.
+   */
+  static deserialize(data: PlotSaveData[], raining = false): Farmland {
+    const farmland = new Farmland(data.map((plot): [number, number] => [plot.col, plot.row]));
+    for (const saved of data) {
+      const plot = farmland.getPlot(saved.col, saved.row);
+      if (!plot) continue;
+      plot.state = saved.state;
+      plot.cropId = saved.cropId;
+      plot.stage = saved.stage;
+      // Solo arado e vazio só está molhado se estiver chovendo (saves antigos deixavam a flag ligada depois de colher).
+      plot.wateredToday = saved.state === 'tilled' ? saved.wateredToday && raining : saved.wateredToday;
+    }
+    return farmland;
   }
 }

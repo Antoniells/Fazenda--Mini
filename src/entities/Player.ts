@@ -1,16 +1,22 @@
 import Phaser from 'phaser';
 import {
-  PLAYER_IDLE_KEY,
-  PLAYER_WALK_KEY,
   PLAYER_ANIM_FRAMES,
   PLAYER_MOVE_DURATION_MS,
-  PLAYER_ACTIONS,
   PlayerActionKey,
+  PlayerAssets,
+  CharacterId,
+  getPlayerAssets,
 } from '../data/player';
+import { gameState } from '../systems/gameState';
 import { GridPoint } from '../systems/pathfinding';
 import { createGroundShadow } from '../systems/shadow';
+import { playEffect } from '../systems/soundEffects';
+import { HURT_SOUND } from '../data/audio';
 
 type Facing = 'down' | 'up' | 'side';
+
+/** Tempo máximo (ms) que uma ação (golpe, rega, comer…) pode segurar o jogador ocupado (busy): bem acima da mais longa (~1 s); só age se a animação nunca terminar. */
+const ACTION_FAILSAFE_MS = 4000;
 
 /**
  * Entidade do personagem jogável: dono do sprite, da posição lógica em grid
@@ -28,11 +34,14 @@ export class Player {
   row: number;
 
   private readonly tilePx: number;
+  /** Chaves de textura/animação do personagem escolhido (`gameState.profile.characterId`) — as texturas já foram carregadas no `preload` da cena (ver `systems/playerSprites.ts`). */
+  private readonly assets: PlayerAssets;
   private facing: Facing = 'down';
   /** Espelha o sprite de lado (o frame base de "side" olha para a esquerda). */
   private flipSide = false;
   private moving = false;
   private busy = false;
+  private sitting = false;
   private moveElapsed = 0;
   private fromX = 0;
   private fromY = 0;
@@ -48,9 +57,10 @@ export class Player {
     this.col = col;
     this.row = row;
     this.tilePx = tilePx;
+    this.assets = getPlayerAssets(gameState.profile.characterId);
 
     const { x, y } = this.cellAnchor(col, row);
-this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown.start);
+    this.sprite = scene.add.sprite(x, y, this.assets.idleKey, PLAYER_ANIM_FRAMES.idleDown.start);
     this.sprite.setOrigin(0.5, 1);
 
     // ADICIONE ISSO: Inicializa a profundidade do jogador
@@ -77,6 +87,45 @@ this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDow
   /** Está executando uma ação agrícola (animação de ferramenta em andamento)? */
   isBusy(): boolean {
     return this.busy;
+  }
+
+  /**
+   * Sentado num móvel (`sitAt`)? NÃO conta como `isBusy`: o `PlayerController` ignora clique e teclas de quem está ocupado, e é justamente
+   * o clique/tecla que precisa chegar pra levantar (`standUp`). Ações (`performAction`) e passos (`tryStep`) já checam isto por conta própria.
+   */
+  isSitting(): boolean {
+    return this.sitting;
+  }
+
+  /**
+   * Senta (pedido explícito): o sprite vai pro ponto (`x`,`y`, os "pés" na altura do assento) do móvel, virado pra frente, na pose da
+   * folha `Sitting` (a mesma da ação de comer, `PLAYER_ACTIONS.eat`, 1 quadro por direção) e fica assim até `standUp`. A célula lógica
+   * (`col`/`row`) NÃO muda — é a de onde ele veio, e é pra onde volta ao levantar. `depth` = profundidade do sprite (acima do móvel).
+   */
+  sitAt(x: number, y: number, depth: number): void {
+    if (this.moving || this.busy || this.sitting) return;
+    this.clearPath();
+    this.updateFacing(0, 1);
+    this.sitting = true;
+
+    const spec = this.assets.actions.eat;
+    this.sprite.setPosition(x, y + (spec.yOffset ?? 0));
+    this.sprite.setDepth(depth);
+    this.shadow.setPosition(x, y - 13);
+    this.shadow.setDepth(depth - 0.1);
+    this.sprite.play(`${spec.key}-down`);
+  }
+
+  /** Levanta e volta pra célula de onde sentou. */
+  standUp(): void {
+    if (!this.sitting) return;
+    this.sitting = false;
+    const { x, y } = this.cellAnchor(this.col, this.row);
+    this.sprite.setPosition(x, y);
+    this.sprite.setDepth(y);
+    this.shadow.setPosition(x, y - 13);
+    this.shadow.setDepth(y - 0.1);
+    this.playIdle();
   }
 
   /**
@@ -122,6 +171,10 @@ this.sprite = scene.add.sprite(x, y, PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDow
 
   /** Tenta mover uma célula na direção informada, se não estiver em movimento nem ocupado com uma ação. */
 tryStep(dCol: number, dRow: number, isWalkable: (col: number, row: number) => boolean): void {
+    if (this.sitting) {
+      this.standUp(); // Apertar uma tecla de andar levanta (o passo em si só vale a partir do próximo frame).
+      return;
+    }
     if (this.busy) return;
     
     this.receivedInputThisFrame = true;
@@ -153,10 +206,11 @@ const col = this.col + dCol;
    * instante em que a ferramenta/espada visualmente toca o chão/alvo, não
    * só quando a animação inteira termina (ver `ActionAnimSpec.impactFrameOffset`).
    * A animação só representa a ação visualmente — quem decide o efeito é
-   * sempre `onApply`, nunca a animação em si.
+   * sempre `onApply`, nunca a animação em si. `onStart` (opcional) roda uma
+   * vez, no instante em que a animação COMEÇA (som/efeito de abertura).
    */
-  performAction(action: PlayerActionKey, onApply: () => void): void {
-    if (this.moving || this.busy) return;
+  performAction(action: PlayerActionKey, onApply: () => void, onStart?: () => void): void {
+    if (this.moving || this.busy || this.sitting) return;
 
     // Pedido explícito do usuário: NÃO forçar `facing`/`flipX` pra baixo
     // aqui — a ferramenta/espada precisa tocar na direção em que o
@@ -165,7 +219,7 @@ const col = this.col + dCol;
     // corretos; não há nada a reaplicar).
     this.busy = true;
 
-    const spec = PLAYER_ACTIONS[action];
+    const spec = this.assets.actions[action];
     // Algumas folhas de animação têm mais margem vazia abaixo do
     // personagem que o padrão (`Idle.png`) — como a origem é o canto
     // inferior do frame, não os pés de verdade, isso faz o personagem
@@ -176,6 +230,8 @@ const col = this.col + dCol;
 
     const key = `${spec.key}-${this.facing}`;
     this.sprite.play(key);
+    // Só aqui a ação é certa (as recusas acima retornam antes): quem quer um som/efeito NO INÍCIO da animação (regar, comer) usa este gancho.
+    onStart?.();
 
     // "Impact frame": `onApply` roda assim que o frame de impacto é
     // alcançado, não só ao final — golpe de espada acerta e enxada lavra
@@ -203,8 +259,15 @@ const col = this.col + dCol;
       this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, handleAnimationUpdate);
     }
 
-    this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+    // Fim da ação (uma única vez): normalmente pelo ANIMATION_COMPLETE; se a animação nunca terminar (chave inexistente pra essa
+    // direção/personagem, animação interrompida por outra) o temporizador de segurança encerra do mesmo jeito — sem ele o jogador
+    // ficava `busy` PRA SEMPRE: nem andava, nem agia, nem interagia (soft-lock).
+    let finished = false;
+    const finish = (): void => {
+      if (finished) return;
+      finished = true;
       if (handleAnimationUpdate) this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, handleAnimationUpdate);
+      this.sprite.off(Phaser.Animations.Events.ANIMATION_COMPLETE, finish);
       // Rede de segurança: ações sem `impactFrameOffset`, ou o raro caso do
       // frame de impacto nunca ter disparado, ainda aplicam aqui — nunca
       // termina a ação sem `onApply` ter rodado.
@@ -212,7 +275,9 @@ const col = this.col + dCol;
       this.sprite.y -= yOffset;
       this.busy = false;
       this.playIdle();
-    });
+    };
+    this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, finish);
+    this.sprite.scene.time.delayedCall(ACTION_FAILSAFE_MS, finish);
   }
 
   /**
@@ -237,6 +302,22 @@ const col = this.col + dCol;
     if (this.facing === 'up') return { dx: 0, dy: -1 };
     if (this.facing === 'down') return { dx: 0, dy: 1 };
     return { dx: this.flipSide ? -1 : 1, dy: 0 };
+  }
+
+  /**
+   * Feedback de dano (Fase 8 — Combate): flash vermelho no sprite + tremida
+   * curta da câmera. Não empurra o personagem de propósito — ele se move
+   * célula a célula por rota/teclado, e um empurrão em pixels brigaria com
+   * isso. A invencibilidade em si é de `PlayerHealth`, não daqui.
+   */
+  playHurtFeedback(): void {
+    const scene = this.sprite.scene;
+    this.sprite.setTint(0xff5a5a);
+    scene.time.delayedCall(160, () => {
+      if (this.sprite.active) this.sprite.clearTint();
+    });
+    scene.cameras.main.shake(130, 0.004);
+    playEffect(scene, HURT_SOUND);
   }
 
   private beginStep(col: number, row: number, dCol: number, dRow: number): void {
@@ -302,12 +383,12 @@ if (t >= 1) {
   }
 
   private playIdle(): void {
-    const key = `player-idle-${this.facing}`;
+    const key = `${this.assets.animPrefix}-idle-${this.facing}`;
     this.sprite.play(key, true);
   }
 
   private playWalk(): void {
-    const key = `player-walk-${this.facing}`;
+    const key = `${this.assets.animPrefix}-walk-${this.facing}`;
     // Só inicia a animação se ela já não estiver rodando
     if (this.sprite.anims.currentAnim?.key !== key) {
       this.sprite.play(key, true);
@@ -315,54 +396,55 @@ if (t >= 1) {
   }
 
   /** Cria as animações de idle/caminhada/ações agrícolas nas 3 direções do rig (baixo/cima/lado). */
-  static createAnimations(scene: Phaser.Scene): void {
+  static createAnimations(scene: Phaser.Scene, characterId: CharacterId): void {
+    const assets = getPlayerAssets(characterId);
     // O gerenciador de animações do Phaser é GLOBAL (por `Game`, não por
     // cena) — sem essa checagem, toda troca de cena/`MainScene.create()`
     // tentava recriar as mesmas chaves de novo, gerando warnings no console
     // e trabalho repetido à toa (pedido explícito do usuário).
-    if (scene.anims.exists('player-idle-down')) return;
+    if (scene.anims.exists(`${assets.animPrefix}-idle-down`)) return;
 
     const { anims } = scene;
 
     anims.create({
-      key: 'player-idle-down',
-      frames: anims.generateFrameNumbers(PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown),
+      key: `${assets.animPrefix}-idle-down`,
+      frames: anims.generateFrameNumbers(assets.idleKey, PLAYER_ANIM_FRAMES.idleDown),
       frameRate: 4,
       repeat: -1,
     });
     anims.create({
-      key: 'player-idle-up',
-      frames: anims.generateFrameNumbers(PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleUp),
+      key: `${assets.animPrefix}-idle-up`,
+      frames: anims.generateFrameNumbers(assets.idleKey, PLAYER_ANIM_FRAMES.idleUp),
       frameRate: 4,
       repeat: -1,
     });
     anims.create({
-      key: 'player-idle-side',
-      frames: anims.generateFrameNumbers(PLAYER_IDLE_KEY, PLAYER_ANIM_FRAMES.idleSide),
+      key: `${assets.animPrefix}-idle-side`,
+      frames: anims.generateFrameNumbers(assets.idleKey, PLAYER_ANIM_FRAMES.idleSide),
       frameRate: 4,
       repeat: -1,
     });
 
     anims.create({
-      key: 'player-walk-down',
-      frames: anims.generateFrameNumbers(PLAYER_WALK_KEY, PLAYER_ANIM_FRAMES.walkDown),
+      key: `${assets.animPrefix}-walk-down`,
+      frames: anims.generateFrameNumbers(assets.walkKey, PLAYER_ANIM_FRAMES.walkDown),
       frameRate: 10,
       repeat: -1,
     });
     anims.create({
-      key: 'player-walk-up',
-      frames: anims.generateFrameNumbers(PLAYER_WALK_KEY, PLAYER_ANIM_FRAMES.walkUp),
+      key: `${assets.animPrefix}-walk-up`,
+      frames: anims.generateFrameNumbers(assets.walkKey, PLAYER_ANIM_FRAMES.walkUp),
       frameRate: 10,
       repeat: -1,
     });
     anims.create({
-      key: 'player-walk-side',
-      frames: anims.generateFrameNumbers(PLAYER_WALK_KEY, PLAYER_ANIM_FRAMES.walkSide),
+      key: `${assets.animPrefix}-walk-side`,
+      frames: anims.generateFrameNumbers(assets.walkKey, PLAYER_ANIM_FRAMES.walkSide),
       frameRate: 10,
       repeat: -1,
     });
 
-    for (const spec of Object.values(PLAYER_ACTIONS)) {
+    for (const spec of Object.values(assets.actions)) {
       anims.create({
         key: `${spec.key}-down`,
         frames: anims.generateFrameNumbers(spec.key, spec.down),

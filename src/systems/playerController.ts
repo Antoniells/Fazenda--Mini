@@ -7,6 +7,10 @@ import { gameState } from './gameState';
 import { WEAPONS } from '../data/weapons';
 import { resolveSwordAttack } from './combat';
 import { Enemy } from '../entities/Enemy';
+import { startEating, isEdibleCropSelected } from './eating';
+import { tutorial } from './tutorial';
+import { playEffect } from './soundEffects';
+import { SWORD_SWING_SOUND } from '../data/audio';
 
 /**
  * Alvo pendente de interação: `standCol/standRow` é a célula andável para
@@ -76,6 +80,9 @@ export class PlayerController {
   /** Vários sistemas podem "roubar" o clique (Fase 6: posicionar decoração; Fase 8: tela de Inventário) — o primeiro que estiver `isActive()` vence. */
   private readonly inputInterceptors: PointerInputInterceptor[] = [];
 
+  /** Objetos móveis do mundo que atendem ao clique (o pet, pra receber carinho) — o primeiro que devolver `true` consome o clique, que então NÃO vira "andar até aqui"/interação. */
+  private readonly worldClickHandlers: Array<(x: number, y: number) => boolean> = [];
+
   /** De onde vêm os inimigos vivos desta cena (Fase 8 — Combate) — `null` (padrão) equivale a nenhum inimigo aqui, ver `setEnemyProvider`. */
   private enemyProvider: (() => Enemy[]) | null = null;
 
@@ -109,11 +116,44 @@ export class PlayerController {
     });
 
     scene.input.keyboard!.on('keydown-SPACE', () => this.handleAttackKey());
+    scene.input.keyboard!.on('keydown-F', () => this.handleInteractKey());
+  }
+
+  /**
+   * F: interage com o que está registrado na célula que o personagem está ENCARANDO (Loja, Caixa de Remessas, porta de casa —
+   * `Interactable.keyInteractable`, pedido explícito do usuário: tecla além do mouse) — mesmo alvo que o clique alcançaria
+   * chegando adjacente e virando de frente, só que sem andar. Nada ali? Cai no comportamento antigo do F: comer a colheita
+   * selecionada, se houver.
+   */
+  private handleInteractKey(): void {
+    if (this.player.isBusy() || this.inputInterceptors.some((interceptor) => interceptor.isActive())) return;
+
+    const { dx, dy } = this.player.getFacingVector();
+    const col = this.player.col + dx;
+    const row = this.player.row + dy;
+    const interactable = this.canInteractWith(col, row) ? this.interactions.get(col, row) : undefined;
+    if (interactable?.keyInteractable) {
+      interactable.interact();
+      return;
+    }
+
+    if (!tutorial.allows({ kind: 'eat' })) return;
+    startEating(this.scene, this.player);
+  }
+
+  /** O tutorial (`systems/tutorial.ts`) deixa interagir com esta célula agora? Sem tutorial rodando, sempre. */
+  private canInteractWith(col: number, row: number): boolean {
+    return tutorial.allows({ kind: 'interact', col, row });
   }
 
   /** Registra um sistema que pode roubar o clique enquanto `isActive()` — ver `PointerInputInterceptor`. */
   addInputInterceptor(interceptor: PointerInputInterceptor): void {
     this.inputInterceptors.push(interceptor);
+  }
+
+  /** Registra um tratador de clique no mundo (coordenadas de mundo) — ver `worldClickHandlers`. Só roda com nenhum interceptor ativo (menus abertos etc.). */
+  addWorldClickHandler(handler: (x: number, y: number) => boolean): void {
+    this.worldClickHandlers.push(handler);
   }
 
   /** Plugado pela cena dona dos inimigos (só a Floresta, por ora — ver `ForestScene`) — ver doc da classe. */
@@ -137,18 +177,23 @@ export class PlayerController {
 
     const selected = gameState.inventory.getSelectedSlot();
     const weapon = selected?.category === 'tool' ? WEAPONS[selected.id] : undefined;
-    if (!weapon) return;
+    if (!weapon || !tutorial.allows({ kind: 'attack' })) return;
 
     // Captura a direção ANTES do `performAction` tocar a animação — ver
     // doc de `combat.computeAttackHitbox`.
     const facing = this.player.getFacingVector();
-    this.player.performAction('sword', () => {
-      resolveSwordAttack(this.player, this.enemyProvider?.() ?? [], weapon.damage, facing);
-    });
+    this.player.performAction(
+      'sword',
+      () => {
+        resolveSwordAttack(this.player, this.enemyProvider?.() ?? [], weapon.damage, facing);
+      },
+      () => playEffect(this.scene, SWORD_SWING_SOUND), // O "vush" sai no início do golpe, acerte ou não.
+    );
   }
 
   private handlePointerDown(x: number, y: number): void {
     if (this.player.isBusy()) return;
+    if (!tutorial.allows({ kind: 'move' })) return; // Tutorial: nos passos "info" nada do mundo responde ao clique.
 
     const activeInterceptor = this.inputInterceptors.find((interceptor) => interceptor.isActive());
     if (activeInterceptor) {
@@ -156,24 +201,32 @@ export class PlayerController {
       return;
     }
 
+    if (this.worldClickHandlers.some((handler) => handler(x, y))) return;
+
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
 
-    if (!this.grid.isWalkable(col, row)) {
+    if (!this.grid.isWalkable(col, row) || this.interactions.get(col, row)?.interactFromAdjacent) {
       this.handleBlockedClick(col, row);
       return;
     }
 
     if (this.player.col === col && this.player.row === row) {
       this.pendingInteraction = null;
-      this.interactions.get(col, row)?.interact();
+      const interactable = this.canInteractWith(col, row) ? this.interactions.get(col, row) : undefined;
+      if (interactable) {
+        interactable.interact();
+      } else if (isEdibleCropSelected() && tutorial.allows({ kind: 'eat' })) {
+        // Clicar no próprio personagem com uma colheita na mão = comer (só se não houver nada na célula pra interagir).
+        startEating(this.scene, this.player);
+      }
       return;
     }
 
     const path = findPath(this.grid, { col: this.player.col, row: this.player.row }, { col, row });
     if (!path || path.length === 0) return;
 
-    this.pendingInteraction = this.interactions.get(col, row)
+    this.pendingInteraction = this.canInteractWith(col, row) && this.interactions.get(col, row)
       ? { standCol: col, standRow: row, targetCol: col, targetRow: row }
       : null;
     this.player.setPath(path, this.canWalkTo.bind(this));
@@ -188,10 +241,11 @@ export class PlayerController {
    * frente para o alvo e disparar `interact()` acontece na chegada (`update`).
    */
   private handleBlockedClick(col: number, row: number): void {
-    const interactable = this.interactions.get(col, row);
+    const interactable = this.canInteractWith(col, row) ? this.interactions.get(col, row) : undefined;
     if (!interactable) return;
 
-    const stand = this.findNearestWalkableNeighbor(col, row);
+    const hinted = interactable.approachCell;
+    const stand = hinted && this.grid.isWalkable(hinted.col, hinted.row) ? hinted : this.findNearestWalkableNeighbor(col, row);
     if (!stand) return;
 
     if (this.player.col === stand.col && this.player.row === stand.row) {
@@ -280,7 +334,7 @@ if (!this.player.isBusy()) {
       // Define a direção baseada no que foi apertado
       const dCol = isLeft ? -1 : isRight ? 1 : 0;
       const dRow = isUp ? -1 : isDown ? 1 : 0;
-      if (dCol !== 0 || dRow !== 0) {
+      if ((dCol !== 0 || dRow !== 0) && tutorial.allows({ kind: 'move' })) {
          {
           this.player.clearPath();
           this.pendingInteraction = null;

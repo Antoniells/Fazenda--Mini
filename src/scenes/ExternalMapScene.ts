@@ -1,17 +1,34 @@
 import Phaser from 'phaser';
 import { BridgeDefinition, ExpansionDirection } from '../data/maps/farmMap';
-import { GRASS_TILESET_KEY, GRASS_TILESET_PATH, TILE_SIZE, BRIDGE_KEY, BRIDGE_PATH } from '../data/tiles';
-import { PLAYER_IDLE_KEY, PLAYER_IDLE_PATH, PLAYER_WALK_KEY, PLAYER_WALK_PATH, PLAYER_FRAME_SIZE } from '../data/player';
+import { TILE_SIZE, BRIDGE_KEY, BRIDGE_PATH, PROPS_TILESET_KEY, PROPS_TILESET_PATH, WaterStyleId } from '../data/tiles';
+import { preloadGroundTilesets } from '../systems/groundTilesets';
+import { preloadPlayerSprites } from '../systems/playerSprites';
+import { preloadPet } from '../systems/petSprites';
+import { PetCompanion } from '../systems/petCompanion';
+import { PET_ROAM } from '../data/pets';
+import { gameState } from '../systems/gameState';
 import { SHADOW_KEY, SHADOW_PATH } from '../data/effects';
-import { buildGroundChunk, buildBridge, bridgeRailingCells, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { buildGroundChunk, buildBridge, bridgeRailingCells, bridgeWalkwayCells, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { setupWorldCamera } from '../systems/cameraSetup';
 import { WalkableGrid } from '../systems/grid';
+import { waterCellsFromGround } from '../systems/waterCells';
 import { TileCursor } from '../systems/tileCursor';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
 import { InteractionRegistry } from '../systems/interaction';
-import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isCraftingMenuOpen, closeCraftingMenu } from './UIScene';
+import { attachFootstepSounds } from '../systems/soundEffects';
+import { attachFootDust, isDirtGround } from '../systems/grassDust';
+import { onPlayerStepped } from '../systems/sceneEvents';
+import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isCraftingMenuOpen, closeCraftingMenu, isDialogueOpen } from './UIScene';
 import { DebugGridOverlay } from '../systems/debugGridOverlay';
+import { MapType } from './MapEditorScene';
+import type { DirtZone } from '../systems/dirtPaths';
+import { registerMapEditorShortcut } from '../systems/mapEditorLauncher';
+import { DayNightOverlay } from '../systems/dayNightOverlay';
+import { WorldBlur } from '../systems/worldBlur';
+import { advanceWorldTime, describeNewDay } from '../systems/worldTime';
+import { shouldStartHorde } from '../systems/horde';
+import { LockedMessage } from '../ui/lockedMessage';
 
 /** Dados que chegam de `scene.start(key, data)` ao atravessar a ponte da Fazenda (ver `systems/bridgeSystem.ts`). */
 export interface ExternalMapEntryData {
@@ -25,15 +42,30 @@ export interface ExternalMapConfig {
   cols: number;
   rows: number;
   areaName: string;
+  /** Identifica qual `data/maps/*.ts` esta cena edita (F2 universal, ver `systems/mapEditorLauncher.ts`) — cada subclasse passa a própria (`'forest'`/`'cave'`/`'beach'`/`'quarry'`). */
+  mapType?: MapType;
   /** Tint aplicado ao chão de grama (mesma paleta já usada nos trechos de bioma da Fazenda — ver `mapBuilder.BIOME_TINTS`); `undefined` mantém o verde natural. */
   groundTint?: number;
+  /**
+   * Bug corrigido — chão autorado no `MapEditorScene` (Modo Ground) nunca
+   * era lido aqui (só `MainScene`/Fazenda consumia `farmMap.ground`): sem
+   * isto, pintar o chão de Floresta/Caverna/Praia/Pedreira no editor não
+   * tinha NENHUM efeito no jogo de verdade, só no preview do editor.
+   */
+  ground?: number[][];
+  /** Mesmo bug/campo de `ground` acima — nunca aplicado fora da Fazenda. */
+  backgroundColor?: string;
+  /** Ruas/praças de terra pintadas por cima da grama procedural (só vale sem `ground` autorado) — o Vilarejo. */
+  dirtZone?: DirtZone;
+  /** Folha da água animada deste mapa (`WATER_STYLES`); ausente = a da Praia. A Floresta usa `'waterGround'` (margem de terra). */
+  waterStyle?: WaterStyleId;
   /** Células extras bloqueadas no `WalkableGrid`, além da borda (árvores, pedras, água, etc.) — cada subclasse monta a lista a partir dos próprios dados (`data/maps/*.ts`). */
   obstacleCells: Array<[number, number]>;
   /**
    * Continuidade espacial (pedido explícito do usuário): lado desta cena
    * onde fica a ponte de volta pra Fazenda — sempre o lado OPOSTO de onde
    * fica a ponte da Fazenda que leva aqui (ex.: a ponte da Fazenda fica a
-   * Leste → a ponte de volta na Floresta fica a Oeste). Fixo por cena (cada
+   * Oeste → a ponte de volta na Floresta fica a Leste). Fixo por cena (cada
    * uma só é alcançável por UMA ponte da Fazenda), não vem de `entryData`.
    */
   returnDirection: ExpansionDirection;
@@ -47,6 +79,28 @@ export function computeWallBridgeCell(direction: ExpansionDirection, cols: numbe
   if (direction === 'south') return { col: midCol, row: rows - 1 };
   if (direction === 'west') return { col: 0, row: midRow };
   return { col: cols - 1, row: midRow };
+}
+
+/**
+ * Zona de CHEGADA da ponte de volta: a passarela coberta pela arte (entre os corrimões, sem saída lateral) mais um bloco livre logo
+ * depois dela, por onde o jogador sai pro mapa. Nenhuma árvore/pedra pode existir ou nascer aqui — uma só na frente da passarela a
+ * fecharia e prenderia o jogador que acabou de chegar. Cenas concretas usam pra limpar/excluir essas células.
+ */
+export function computeArrivalClearance(direction: ExpansionDirection, cols: number, rows: number): Array<[number, number]> {
+  const bridge = computeWallBridgeCell(direction, cols, rows);
+  // Passo (dcol, drow) da parede pra dentro do mapa, e o eixo lateral.
+  const inward = direction === 'north' ? [0, 1] : direction === 'south' ? [0, -1] : direction === 'west' ? [1, 0] : [-1, 0];
+  const lateral = [inward[1], inward[0]];
+  const walkwayLength = direction === 'north' || direction === 'south' ? 2 : 3; // Igual a `bridgeWalkwayCells`.
+
+  const cells: Array<[number, number]> = [];
+  for (let depth = 0; depth < walkwayLength + 2; depth++) {
+    for (let side = -1; side <= 1; side++) {
+      if (depth < walkwayLength && side !== 0) continue; // Na passarela só o corredor central; depois dela, um bloco de 3 de largura.
+      cells.push([bridge.col + inward[0] * depth + lateral[0] * side, bridge.row + inward[1] * depth + lateral[1] * side]);
+    }
+  }
+  return cells;
 }
 
 /** Célula andável logo "na frente" da ponte (uma célula pra dentro do mapa, na direção oposta à parede) — onde o jogador nasce ao chegar. */
@@ -75,7 +129,7 @@ const HINT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 };
 
 /** Bordas bloqueadas + qualquer célula extra informada (árvores/pedras/água/etc.) — ver `WalkableGrid`. */
-function buildExternalGrid(cols: number, rows: number, obstacleCells: Array<[number, number]>): WalkableGrid {
+export function buildExternalGrid(cols: number, rows: number, obstacleCells: Array<[number, number]>): WalkableGrid {
   const blocked = new Set<string>();
   const key = (col: number, row: number): string => `${col},${row}`;
 
@@ -116,10 +170,20 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   protected entryData!: ExternalMapEntryData;
   protected player!: Player;
   protected controller!: PlayerController;
+  /** Pet companheiro (nasce ao lado do jogador em toda cena de mapa) — ver `systems/petCompanion.ts`. */
+  protected petCompanion?: PetCompanion;
   /** DEBUG TEMPORÁRIO — ver `systems/debugGridOverlay.ts`. `protected` pra `ForestScene` poder plugar `setEnemyProvider`. */
   protected debugGridOverlay!: DebugGridOverlay;
+  /** Corredor da ponte de volta (célula da ponte + trecho coberto pela arte) — cenas concretas usam pra não espalhar decoração em cima dela (ver `buildWildFoliage`). Preenchido antes de `buildMapContent`. */
+  protected bridgeWalkway: Array<[number, number]> = [];
   /** Trava contra reentrância (mesmo bug/fix de `BridgeSystem.isTransitioning`): sem isso, pisar várias vezes na célula da ponte durante o `fadeOut` de `returnToFarm` disparava `scene.start` mais de uma vez. */
   protected isTransitioning = false;
+  /** Véu de dia/noite e faixa "DIA n": o relógio corre em toda cena (`systems/worldTime.ts`), não só na Fazenda. */
+  private dayNightOverlay!: DayNightOverlay;
+  private worldBlur!: WorldBlur;
+  protected lockedMessage!: LockedMessage;
+  /** Já avisou (nesta visita) que a noite de horda começou com o jogador longe da Fazenda. */
+  private hordeWarned = false;
 
   constructor(
     key: string,
@@ -135,24 +199,24 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // `returnToFarm()` continuava `true` pra sempre depois da primeira
     // viagem, travando qualquer transição seguinte por esta mesma ponte.
     this.isTransitioning = false;
+    this.hordeWarned = false;
   }
 
   preload(): void {
-    // Todos já carregados pela MainScene (única forma de chegar aqui é
-    // atravessando uma ponte de lá) — recarregar é só uma garantia barata
-    // caso essa premissa mude no futuro; o Phaser ignora uma chave já em
-    // cache, sem custo de rede extra.
-    this.load.image(GRASS_TILESET_KEY, encodeURI(`/${GRASS_TILESET_PATH}`));
+    // Todos os tilesets de chão (Grama/Solo/Água + qualquer um importado e
+    // colado em `GROUND_TILESETS`) — necessário mesmo fora da Fazenda agora
+    // que `this.config.ground` (autorado no editor) pode referenciar GID de
+    // QUALQUER tileset, não só o de grama (bug corrigido — ver doc de
+    // `ExternalMapConfig.ground`).
+    preloadGroundTilesets(this);
     this.load.image(BRIDGE_KEY, encodeURI(`/${BRIDGE_PATH}`));
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
-    this.load.spritesheet(PLAYER_IDLE_KEY, encodeURI(`/${PLAYER_IDLE_PATH}`), {
-      frameWidth: PLAYER_FRAME_SIZE,
-      frameHeight: PLAYER_FRAME_SIZE,
-    });
-    this.load.spritesheet(PLAYER_WALK_KEY, encodeURI(`/${PLAYER_WALK_PATH}`), {
-      frameWidth: PLAYER_FRAME_SIZE,
-      frameHeight: PLAYER_FRAME_SIZE,
-    });
+    // Props de decoração ambiente (aba "Decoração" do MapEditorScene) —
+    // carregado aqui uma vez só, pras 4 cenas externas, em vez de repetir em
+    // cada `loadMapAssets` (ver `systems/mapProps.ts`).
+    this.load.image(PROPS_TILESET_KEY, encodeURI(`/${PROPS_TILESET_PATH}`));
+    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPet(this, gameState.profile.petId);
 
     this.loadMapAssets();
   }
@@ -164,7 +228,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     const { cols, rows } = this.config;
     const tilePx = TILE_SIZE * DISPLAY_SCALE;
 
-    buildGroundChunk(this, TILE_SIZE, 0, 0, cols, rows, undefined, this.config.groundTint);
+    buildGroundChunk(this, TILE_SIZE, 0, 0, cols, rows, this.config.dirtZone, this.config.groundTint, this.config.ground, this.config.waterStyle);
+    // Mesmo tratamento de `MainScene.create()` pro `farmMap.backgroundColor`
+    // — opcional, sem ele mantém a cor padrão do Phaser (preto).
+    if (this.config.backgroundColor) this.cameras.main.setBackgroundColor(this.config.backgroundColor);
 
     // Continuidade espacial (pedido explícito): a ponte de volta fica no
     // lado OPOSTO da ponte da Fazenda que trouxe o jogador até aqui (ver
@@ -181,8 +248,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       requirement: {},
     };
     buildBridge(this, TILE_SIZE, returnBridge);
+    this.bridgeWalkway = bridgeWalkwayCells(returnBridge);
 
-const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
+// A água pintada no chão (lago/mar) bloqueia sozinha — não depende de `blockedArea`/`lakeArea` estarem preenchidos no mapa.
+    const grid = buildExternalGrid(cols, rows, [...this.config.obstacleCells, ...waterCellsFromGround(this.config.ground)]);
     const interactions = new InteractionRegistry();
 
     // 1. Libera a passagem na célula da ponte (furando a borda bloqueada do mapa)
@@ -194,8 +263,10 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
     // mais larga que 1 tile, então precisa do mesmo "túnel" invisível.
     for (const [col, row] of bridgeRailingCells(returnBridge)) grid.block(col, row);
 
+    attachFootstepSounds(this, (col, row) => (col === bridgeCell.col && row === bridgeCell.row ? 'bridge' : 'grass'));
+
     // 2. Escuta quando o jogador pisa na célula da ponte para acionar a viagem
-    this.events.on('player-stepped', (col: number, row: number) => {
+    onPlayerStepped(this, (col, row) => {
       if (col === bridgeCell.col && row === bridgeCell.row && !this.isTransitioning) {
         this.isTransitioning = true;
         this.returnToFarm();
@@ -207,6 +278,8 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
     // Mesma escala aplicada na MainScene logo após instanciar o Player —
     // faltava aqui, por isso o personagem aparecia minúsculo nas cenas novas.
     this.player.sprite.setScale(DISPLAY_SCALE);
+    // Poeira nos pés só sobre TERRA (GID autorado que não é grama/água/areia, ou a rua de terra do Vilarejo; fora a ponte de volta) — ver `systems/grassDust.ts`.
+    attachFootDust(this, this.player, tilePx, (col, row) => !(col === bridgeCell.col && row === bridgeCell.row) && (isDirtGround(this.config.ground, col, row) || !!this.config.dirtZone?.has(col, row)));
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
     this.debugGridOverlay = new DebugGridOverlay(this, grid, tilePx, this.player); // DEBUG TEMPORÁRIO
     // Inventário (Fase 8 — Interface): agora pode abrir em qualquer mapa, não
@@ -220,7 +293,15 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
       isActive: () => isCraftingMenuOpen(),
       handleClick: () => {},
     });
+    // Conversa com um morador aberta: o clique é só dela.
+    this.controller.addInputInterceptor({
+      isActive: () => isDialogueOpen(),
+      handleClick: () => {},
+    });
     setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
+    this.dayNightOverlay = new DayNightOverlay(this);
+    this.worldBlur = new WorldBlur(this.cameras.main);
+    this.lockedMessage = new LockedMessage(this);
 
     // Mesmo destaque de célula sob o mouse já usado na Fazenda (Fase 9,
     // pedido explícito do usuário) — sem lavoura aqui, então sempre o
@@ -230,6 +311,7 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
     ensureUIScene(this);
 
     this.input.keyboard!.on('keydown-E', () => {
+      if (isDialogueOpen()) return; // Em conversa, o E não abre o Inventário por cima.
       if (isCraftingMenuOpen()) closeCraftingMenu();
       toggleInventoryScreen();
     });
@@ -240,10 +322,16 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
       }
       if (isCraftingMenuOpen()) closeCraftingMenu();
     });
+    if (this.config.mapType) registerMapEditorShortcut(this, this.config.mapType); // Só os mapas com editor (o Vilarejo não tem).
 
     this.buildMapContent({ tilePx, grid, interactions, player: this.player });
 
-    const centerX = (cols * tilePx) / 2;
+    // Depois do conteúdo do mapa (árvores/pedras/água já bloqueados no grid): o pet nunca nasce nem passeia em cima de obstáculo.
+    // (fora do anel da borda — parede e a célula da ponte de volta — pra ele nunca ficar parado em cima do "portão".)
+    // (só depois de desbloqueado pelo evento da caixa — `systems/petEvent.ts`.)
+    if (gameState.petUnlocked) this.petCompanion = new PetCompanion(this, this.player, this.controller, grid, tilePx, PET_ROAM.area, (col, row) => col > 0 && row > 0 && col < cols - 1 && row < rows - 1);
+
+    const centerX = this.scale.width / 2;
     this.add.text(centerX, 20, `Você está em: ${this.config.areaName}`, TITLE_STYLE).setOrigin(0.5, 0).setScrollFactor(0).setDepth(4000);
     this.add
       .text(centerX, 42, 'Ande até a ponte para voltar para a Fazenda.', HINT_STYLE)
@@ -264,7 +352,25 @@ const grid = buildExternalGrid(cols, rows, this.config.obstacleCells);
     // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário/Bancada
     // está aberto (ver `MainScene.isInputLocked`) — aqui não há Menu de
     // Pausa/Dormir ainda, então esses dois são as únicas causas possíveis.
-    if (!isInventoryOpen() && !isCraftingMenuOpen()) this.controller.update(time, delta);
+    if (!isInventoryOpen() && !isCraftingMenuOpen() && !isDialogueOpen()) {
+      this.controller.update(time, delta);
+      this.petCompanion?.update(time, delta);
+    }
+
+    // O dia corre aqui também: véu da noite, virada de dia (meia-noite) e a faixa "DIA n".
+    const { dayTurn, hordeMissed } = advanceWorldTime(delta, false);
+    if (dayTurn) {
+      const { title, subtitle } = describeNewDay();
+      this.lockedMessage.show(title, subtitle);
+    }
+    if (hordeMissed) this.lockedMessage.show('A HORDA PASSOU', 'Você estava longe da Fazenda: sem recompensa.');
+    // A horda só começa com o jogador na Fazenda (é ela quem a conduz): longe dela, avisa pra ele voltar antes da meia-noite.
+    if (!this.hordeWarned && shouldStartHorde()) {
+      this.hordeWarned = true;
+      this.lockedMessage.show('A HORDA CHEGOU!', 'Volte para a Fazenda e defenda-a antes da meia-noite!');
+    }
+    this.dayNightOverlay.setNightAlpha(gameState.gameClock.getNightAlpha());
+    this.worldBlur.setActive(isInventoryOpen() || isCraftingMenuOpen() || isDialogueOpen());
     this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts`.
   }
 

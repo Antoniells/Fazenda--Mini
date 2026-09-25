@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-import { ExternalMapScene } from './ExternalMapScene';
+import { ExternalMapScene, computeArrivalClearance } from './ExternalMapScene';
 import { forestMap } from '../data/maps/forestMap';
 import { BIRCH_TREE_KEY, BIRCH_TREE_PATH, ROCK_KEY, ROCK_PATH, WATER_KEY, WATER_PATH, TILE_SIZE } from '../data/tiles';
 import { LEAF_FALL_KEY, LEAF_FALL_PATH, LEAF_FALL_FRAME_SIZE } from '../data/effects';
 import { SLIME_KEY, SLIME_PATH, SLIME_FRAME_SIZE } from '../data/enemies';
-import { buildExternalTree, buildGrowingTree, buildRock, buildWaterArea, waterAreaCells, buildWildFoliage } from '../systems/externalMapBuilder';
+import { buildGrowingTree, buildRock, buildWaterArea, waterAreaCells, buildWildFoliage } from '../systems/externalMapBuilder';
+import { buildMapProps } from '../systems/mapProps';
 import { GrassTuftMap, rustleGrassTuft } from '../systems/grassDetails';
 import { resourceNodeRegistry } from '../systems/resourceNodeRegistry';
 import { TreeInteractable, RockInteractable } from '../systems/resourceInteraction';
@@ -12,13 +13,22 @@ import { updateTreeOverlap } from '../systems/treeOverlap';
 import { SlimeSpawner } from '../systems/slimeSpawner';
 import { WalkableGrid } from '../systems/grid';
 import { InteractionRegistry } from '../systems/interaction';
+import { waterCellsFromGround } from '../systems/waterCells';
+import { onPlayerStepped } from '../systems/sceneEvents';
 import { Player } from '../entities/Player';
 import { isInventoryOpen } from './UIScene';
 
 export const FOREST_SCENE_KEY = 'ForestScene';
 
 /** Teto de nós ativos ao mesmo tempo (Fase 7 — respawn diário) — impede a Floresta de lotar de árvores/pedras depois de muitos dias. */
-const FOREST_CAPS = { maxTrees: 10, maxRocks: 6 };
+const FOREST_CAPS = { maxTrees: 22, maxRocks: 12 };
+
+/** A ponte de volta da Floresta fica na parede LESTE (a Fazenda a alcança pela oeste, abaixo da Pedreira) — ver `ExternalMapConfig.returnDirection`. */
+const FOREST_RETURN_DIRECTION = 'east';
+/** Zona de chegada dessa ponte: livre de árvores/pedras sempre (ver `computeArrivalClearance`). */
+function forestArrivalCells(): Array<[number, number]> {
+  return computeArrivalClearance(FOREST_RETURN_DIRECTION, forestMap.cols, forestMap.rows);
+}
 
 /**
  * Virada de dia da Floresta (Fase 7 — "gancho de virada de dia"): chamado
@@ -33,14 +43,17 @@ export function advanceForestDay(): void {
   const { cols, rows, lakeArea, birchTreePositions } = forestMap;
   const lakeCells = new Set(waterAreaCells(lakeArea.col0, lakeArea.row0, lakeArea.cols, lakeArea.rows).map(([c, r]) => `${c},${r}`));
   const birchCells = new Set(birchTreePositions.map(([c, r]) => `${c},${r}`));
+  const waterCells = new Set(waterCellsFromGround(forestMap.ground).map(([c, r]) => `${c},${r}`));
+
+  const arrivalCells = new Set(forestArrivalCells().map(([c, r]) => `${c},${r}`));
 
   const isCellFree = (col: number, row: number): boolean =>
-    !lakeCells.has(`${col},${row}`) && !birchCells.has(`${col},${row}`);
+    !lakeCells.has(`${col},${row}`) && !birchCells.has(`${col},${row}`) && !waterCells.has(`${col},${row}`) && !arrivalCells.has(`${col},${row}`);
 
   resourceNodeRegistry.advanceDay(FOREST_SCENE_KEY, cols, rows, isCellFree);
 }
 
-/** Destino da ponte Leste (Madeireira) — ver `data/maps/forestMap.ts`. */
+/** Destino da ponte Oeste inferior da Fazenda (abaixo da Pedreira) — ver `data/maps/forestMap.ts`. */
 export class ForestScene extends ExternalMapScene {
   /** Bétulas decorativas + árvores de pinheiro (qualquer estágio) — usadas pela transparência de sobreposição (`updateTreeOverlap`), mesma técnica da `MainScene` (Fazenda). */
   private readonly treeVisuals: Phaser.GameObjects.Image[] = [];
@@ -59,6 +72,8 @@ export class ForestScene extends ExternalMapScene {
       FOREST_SCENE_KEY,
       [
         ...forestMap.pineTreePositions.map(([col, row]) => ({ col, row, kind: 'tree' as const, stage: 'mature' as const })),
+        // Bétulas: também cortáveis (pedido explícito) — mesmo registro dos pinheiros, só muda a espécie.
+        ...birchTreePositions.map(([col, row]) => ({ col, row, kind: 'tree' as const, stage: 'mature' as const, species: 'birch' as const })),
         ...forestMap.rockPositions.map(([col, row]) => ({ col, row, kind: 'smallRock' as const, stage: 'mature' as const })),
       ],
       FOREST_CAPS,
@@ -68,14 +83,19 @@ export class ForestScene extends ExternalMapScene {
       cols,
       rows,
       areaName: 'Floresta',
+      mapType: 'forest',
+      ground: forestMap.ground,
+      backgroundColor: forestMap.backgroundColor,
+      waterStyle: 'waterGround', // Lago com a folha "Water Ground animations tiles" (margem de terra), não a de areia da Praia.
       // Sem tint: fica com o verde natural da grama (mesmo critério da
       // faixa "Madeireira" dentro da Fazenda, ver `mapBuilder.BIOME_TINTS`).
       // Continuidade espacial: a ponte da Fazenda que traz o jogador aqui
-      // fica a LESTE, então a ponte de volta fica a OESTE (lado oposto).
-      returnDirection: 'west',
+      // fica a OESTE (abaixo da Pedreira), então a ponte de volta fica a LESTE (lado oposto).
+      returnDirection: FOREST_RETURN_DIRECTION,
+      // Bétulas não entram aqui: como toda árvore colhível, bloqueiam a célula pelo registro (ver `buildMapContent`) — uma bétula já cortada não pode continuar bloqueando ao voltar à cena.
       obstacleCells: [
-        ...birchTreePositions,
         ...waterAreaCells(lakeArea.col0, lakeArea.row0, lakeArea.cols, lakeArea.rows),
+        ...(forestMap.blockedArea ?? []),
         ],
     });
   }
@@ -99,24 +119,25 @@ export class ForestScene extends ExternalMapScene {
   protected buildMapContent(ctx: { tilePx: number; grid: WalkableGrid; interactions: InteractionRegistry; player: Player }): void {
     const { grid, interactions, player } = ctx;
 
-    // Bétulas: só decoração fixa, nunca colhível (ver comentário de
-    // `data/tiles.ts` sobre não ter estágios de crescimento próprios).
-    for (const [col, row] of forestMap.birchTreePositions) {
-      this.treeVisuals.push(buildExternalTree(this, TILE_SIZE, col, row, 'birch'));
-    }
+    // Saves antigos guardam as árvores/pedras do mapa anterior (a ponte de volta ficava a oeste): a cada entrada limpa a zona de chegada
+    // nova, pra nenhuma delas fechar a saída da passarela. (Aqui, e não no construtor: o save só é restaurado depois dele.)
+    for (const [col, row] of forestArrivalCells()) resourceNodeRegistry.removeNode(FOREST_SCENE_KEY, col, row);
 
     const { lakeArea } = forestMap;
     buildWaterArea(this, TILE_SIZE, lakeArea.col0, lakeArea.row0, lakeArea.cols, lakeArea.rows);
 
+    // Props de decoração ambiente (aba "Decoração" do MapEditorScene, pedido explícito) — puramente visuais, sem colisão.
+    buildMapProps(this, TILE_SIZE, forestMap.props ?? []);
+
     // Árvores/pedras colhíveis: sempre a partir do estado ATUAL do registro
     // (não das posições originais do mapa) — reflete o que já foi cortado/
     // quebrado e o que cresceu/respawnou desde a última visita.
-    let rockVariant: 0 | 1 = 0;
+    let rockVariant: 0 | 1 | 2 = 0;
 for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
       // O grid.block incondicional foi removido daqui!
 
       if (node.kind === 'tree') {
-        const visual = buildGrowingTree(this, TILE_SIZE, node.col, node.row, node.stage);
+        const visual = buildGrowingTree(this, TILE_SIZE, node.col, node.row, node.stage, node.species);
         this.treeVisuals.push(visual.sprite);
 
         if (node.stage === 'mature') {
@@ -136,7 +157,7 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
         // Pedras continuam bloqueando a passagem normalmente
         grid.block(node.col, node.row);
         const visual = buildRock(this, TILE_SIZE, node.col, node.row, rockVariant, node.kind === 'bigRock');
-        rockVariant = rockVariant === 0 ? 1 : 0;
+        rockVariant = ((rockVariant + 1) % 3) as 0 | 1 | 2;
         interactions.set(
           node.col,
           node.row,
@@ -148,12 +169,12 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // Cogumelos/plantinhas selvagens (Fase 9 — polimento visual): por
     // último, já com toda árvore/pedra/água bloqueada no grid, pra nunca
     // nascer em cima de um obstáculo.
-    this.wildFoliage = buildWildFoliage(this, TILE_SIZE, grid);
+    this.wildFoliage = buildWildFoliage(this, TILE_SIZE, grid, this.bridgeWalkway);
 
     // Fase 8 — Combate: Slimes só nascem na Floresta (pedido explícito do
     // usuário) — depois de toda árvore/pedra já bloqueada no grid, mesma
     // razão da folhagem acima (não nasce em cima de obstáculo).
-    this.slimeSpawner = new SlimeSpawner(this, TILE_SIZE, forestMap.cols, forestMap.rows, grid);
+    this.slimeSpawner = new SlimeSpawner(this, TILE_SIZE, forestMap.cols, forestMap.rows, grid, player);
     // Ataque global (pedido explícito do usuário): a tecla/lógica em si
     // agora vive no `PlayerController` (qualquer cena já tem um) — só
     // registra AQUI de onde vêm os inimigos vivos, já que só a Floresta
@@ -164,7 +185,7 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // Regra padrão (pedido explícito do usuário): tufo/cogumelo balançam ao
     // jogador pisar em cima em QUALQUER cena, não só a Fazenda — mesmo
     // evento/técnica de `MainScene.ts`.
-    this.events.on('player-stepped', (col: number, row: number) => rustleGrassTuft(this, this.wildFoliage, col, row));
+    onPlayerStepped(this, (col, row) => rustleGrassTuft(this, this.wildFoliage, col, row));
   }
 
   update(time: number, delta: number): void {
@@ -176,6 +197,6 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // Pausa com o Inventário aberto (mesmo critério do movimento do
     // jogador, ver `ExternalMapScene.update`) — sem isso, um Slime podia
     // continuar perseguindo/encostando no jogador com o menu na tela.
-    if (!isInventoryOpen()) this.slimeSpawner.update(time, delta, this.player);
+    if (!isInventoryOpen()) this.slimeSpawner.update(time, delta);
   }
 }

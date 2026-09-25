@@ -1,4 +1,5 @@
 import { ExpansionChunk, FarmMapData, getFarmlandFenceLayout } from '../data/maps/farmMap';
+import { waterCellsFromGround } from './waterCells';
 
 export interface WalkableGrid {
   cols: number;
@@ -70,9 +71,11 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
     blocked.add(key(map.cols - 1, row));
   }
 
-  for (const [col, row] of map.treePositions) {
-    blocked.add(key(col, row));
-  }
+  // Árvores e pedras da Fazenda NÃO são bloqueadas aqui: são recursos colhíveis, então quem bloqueia (e
+  // desbloqueia ao cortar/quebrar) é `systems/farmResources.ts`, a partir do registro atual.
+
+  // Água pintada no chão (lago/rio) — não dá pra andar nela.
+  for (const [col, row] of waterCellsFromGround(map.ground)) blocked.add(key(col, row));
 
   blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
   blocked.add(key(map.shopPosition[0], map.shopPosition[1]));
@@ -104,6 +107,23 @@ for (let row = houseRow0 + 3; row < houseRow0 + houseRows -1; row++) {
   }
   blocked.delete(gateKey);
   blocked.delete(key(fence.gate[0] - 1, fence.gate[1]));
+
+  // Blocos de colisão extras (pintados manualmente no `MapEditorScene`,
+  // Modo Entities → Bloco de Colisão) — bloqueiam mesmo sem nenhum objeto
+  // visível ali, ex.: reservar uma célula pra uma futura construção.
+  for (const [col, row] of map.blockedArea ?? []) {
+    blocked.add(key(col, row));
+  }
+
+  // Garantia defensiva (bug corrigido — a interação de dormir parou de
+  // funcionar depois que `blockedArea` passou a ser lido de verdade): a
+  // porta da Casa É a célula com a interação própria (ver
+  // `systems/sleepInteraction.ts`) e o jogador anda direto EM CIMA dela pra
+  // interagir (não é "objeto sólido com aproximação", como Loja/Caixa de
+  // Remessas) — então ela nunca pode ficar bloqueada, nem por um Bloco de
+  // Colisão pintado por cima dela sem querer no editor. Sempre por último,
+  // depois de qualquer outro bloqueio nesta função.
+  blocked.delete(key(map.houseDoorPosition[0], map.houseDoorPosition[1]));
 
   // Trechos de expansão (Fase 6): perímetro externo permanente de cada um
   // (a área interna já nasce andável — só a parede do núcleo, bloqueada

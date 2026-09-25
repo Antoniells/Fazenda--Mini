@@ -7,6 +7,23 @@
  */
 export interface Interactable {
   interact(): void;
+  /**
+   * Esta interação também responde à tecla de interação (F — `PlayerController.handleInteractKey`), testando a célula que o
+   * personagem está ENCARANDO (não a célula dele, já que são sempre objetos sólidos ao lado) — pedido explícito do usuário, hoje
+   * só a Loja, a Caixa de Remessas e a porta de casa (`ShopInteractable`/`ShippingBinInteractable`/`EnterHouseInteractable`).
+   * Ausente/`false` = só clique, como antes.
+   */
+  keyInteractable?: boolean;
+  /**
+   * Célula ANDÁVEL que só deve ser usada "de fora": clicar nela leva o jogador até uma célula vizinha (como numa célula sólida)
+   * e interage de lá, em vez de fazê-lo pisar em cima — ex.: a cerca destruída, que o Martelo conserta e volta a bloquear.
+   */
+  interactFromAdjacent?: boolean;
+  /**
+   * Célula ANDÁVEL de onde atender esta interação (célula sólida cuja vizinhança está toda fechada — ex.: o balcão da loja, encostado
+   * na parede da casa): o clique leva o jogador até ela em vez de procurar a vizinha mais próxima. Ignorada se não for andável.
+   */
+  approachCell?: { col: number; row: number };
 }
 
 export class InteractionRegistry {

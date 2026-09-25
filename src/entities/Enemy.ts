@@ -1,19 +1,27 @@
 import Phaser from 'phaser';
 import { DISPLAY_SCALE } from '../systems/mapBuilder';
 import { createGroundShadow } from '../systems/shadow';
+import { playEffect } from '../systems/soundEffects';
+import { ENEMY_DEFEATED_SOUND } from '../data/audio';
+import { SoundEffectDef } from '../data/audio';
+import { popText } from '../systems/floatingText';
 
 /** Atributos base de qualquer inimigo (Fase 8 — Combate) — cada subclasse concreta define os próprios valores. */
 export interface EnemyStats {
   maxHp: number;
-  /** Dano causado ao jogador ao encostar nele. */
+  /** Dano causado ao jogador quando o ataque do inimigo acerta (ver `entities/Slime.ts`). */
   contactDamage: number;
   /** Velocidade de movimento, em px de mundo por segundo (posição livre, não presa ao grid — ver comentário da classe). */
   moveSpeed: number;
+  /** Som ao levar um golpe (inclusive o que mata) — opcional: sem ele, o inimigo apanha em silêncio. */
+  hitSound?: SoundEffectDef;
 }
 
 const HIT_FLASH_MS = 80;
 const KNOCKBACK_DISTANCE_PX = 22;
 const KNOCKBACK_DURATION_MS = 140;
+/** Quantos px acima dos pés (âncora do sprite) fica a sombra do inimigo — a arte do Slime tem margem vazia embaixo, então a sombra sobe pra ficar sob o corpo. */
+const SHADOW_OFFSET_Y = 26;
 
 /**
  * Base de qualquer inimigo (Fase 8 — Combate): posição LIVRE em pixels do
@@ -47,7 +55,7 @@ export abstract class Enemy {
 
     // Cria a sombra antes do sprite com a mesma escala do player
     // Mude a criação da sombra para subtrair 20 no eixo Y
-    this.shadow = createGroundShadow(scene, x, y - 20, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
+    this.shadow = createGroundShadow(scene, x, y - SHADOW_OFFSET_Y, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
     this.shadow.setDepth(y - 0.1);
 
     this.sprite = scene.add.sprite(x, y, textureKey, frame);
@@ -76,18 +84,25 @@ export abstract class Enemy {
    * Aplica dano + tremor/flash + empurrão (Fase 8 — Combate) — chamado por
    * `systems/combat.ts` quando o golpe de espada acerta este inimigo.
    * `knockbackDx/Dy` já vem normalizado (direção jogador→inimigo) de quem
-   * chama, que é quem sabe onde o jogador está.
+   * chama, que é quem sabe onde o jogador está. `source` diz quem bateu (o
+   * pet companheiro também morde — ver `entities/Pet.ts`).
    */
-  takeDamage(amount: number, knockbackDx: number, knockbackDy: number): void {
+  takeDamage(amount: number, knockbackDx: number, knockbackDy: number, source: 'player' | 'pet' = 'player'): void {
     if (this.dead) return;
 
     this.hp -= amount;
     this.playHitFlash();
+    // Número de dano subindo da cabeça (como no Terraria) + tremidinha da câmera: o golpe "pesa". A mordida do pet só mostra o número (cor diferente) — sacudir a tela a cada mordida cansaria.
+    popText(this.scene, this.sprite.x, this.sprite.y - 34, `-${amount}`, source === 'pet' ? { color: '#bfe6ff', fontSize: 15 } : { color: '#ffe27a', fontSize: 18 });
+    if (source === 'player') this.scene.cameras.main.shake(70, 0.003);
+    if (this.stats.hitSound) playEffect(this.scene, this.stats.hitSound);
 
     if (this.hp <= 0) {
       this.die();
       return;
     }
+
+    this.onDamaged();
 
     this.scene.tweens.add({
       targets: [this.sprite, this.shadow],
@@ -108,10 +123,19 @@ export abstract class Enemy {
     });
   }
 
+  /** Some de cena SEM morrer (a horda amanheceu): para de agir mas não dispara `onDeath` — a subclasse cuida do visual. */
+  protected markGone(): void {
+    this.dead = true;
+  }
+
   private die(): void {
     this.dead = true;
+    playEffect(this.scene, ENEMY_DEFEATED_SOUND);
     this.onDeath();
   }
+
+  /** Hook: chamado quando leva dano E sobrevive — a subclasse pode reagir (ex.: interromper um ataque em preparação). Não faz nada por padrão. */
+  protected onDamaged(): void {}
 
   /** Hook: cada subclasse decide a animação/efeito de morte e destrói o próprio sprite quando ela terminar. */
   protected abstract onDeath(): void;
@@ -127,7 +151,7 @@ update(time: number, delta: number, playerX: number, playerY: number): void {
     
     // Atualiza a posição e a profundidade da sombra
     // Atualiza a posição da sombra para y - 20
-    this.shadow.setPosition(this.sprite.x, this.sprite.y - 20);
+    this.shadow.setPosition(this.sprite.x, this.sprite.y - SHADOW_OFFSET_Y);
     this.shadow.setDepth(this.sprite.y - 0.1);
   }
 }

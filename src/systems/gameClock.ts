@@ -24,6 +24,12 @@ const MAX_NIGHT_ALPHA = 0.55;
  * a hora do dia e o contador de dias; não tem efeito nenhum sobre plantio,
  * crescimento ou qualquer outra mecânica existente.
  */
+/** Formato salvo pelo `SaveManager` (Fase 10 — Persistência). */
+export interface GameClockSaveData {
+  day: number;
+  dayProgressMs: number;
+}
+
 export class GameClock {
   private dayProgressMs = (START_HOUR / 24) * DAY_LENGTH_MS;
   private day = 1;
@@ -47,12 +53,21 @@ export class GameClock {
    * Pula direto para as 06:00 do dia seguinte — usado pela mecânica de
    * dormir (Fase 9, ver `systems/sleepInteraction.ts`): dormir sempre leva
    * pro início do próximo dia, não soma um número fixo de horas (diferente
-   * de `update`, que avança gradualmente com o tempo real). Sempre soma 1
-   * ao dia, mesmo que já fosse exatamente 06:00.
+   * de `update`, que avança gradualmente com o tempo real).
+   *
+   * O contador de dias JÁ vira à meia-noite (`update`), então dormir entre
+   * 00:00 e 05:59 só leva o relógio pras 06:00 do MESMO dia — somar 1 de novo
+   * pularia um dia inteiro (e rodaria a virada da lavoura duas vezes, matando
+   * plantação não regada). Devolve `true` se o dia realmente virou (dormiu
+   * antes da meia-noite), `false` se a virada já tinha acontecido — quem
+   * chama só roda a virada de dia (lavoura, clima, mundo) no `true`.
    */
-  advanceToNextMorning(): void {
+  advanceToNextMorning(): boolean {
+    const midnightAlreadyPassed = this.getHours() < START_HOUR;
     this.dayProgressMs = (START_HOUR / 24) * DAY_LENGTH_MS;
+    if (midnightAlreadyPassed) return false;
     this.day += 1;
+    return true;
   }
 
   /** Hora do dia, 0 (meia-noite) a 24 (exclusivo) — contínua, usada pelo véu noturno (`getNightAlpha`) para uma transição suave. */
@@ -87,6 +102,11 @@ export class GameClock {
     return `${hh}:${mm}`;
   }
 
+  /** É dia (sem nenhum véu de noite: do fim do amanhecer ao começo do entardecer)? Usado por efeitos que só existem de dia (borboletas). */
+  isDaytime(): boolean {
+    return this.getNightAlpha() === 0;
+  }
+
   /**
    * Opacidade (0-1) do véu noturno para a hora atual — 0 em pleno dia,
    * `MAX_NIGHT_ALPHA` em plena noite, com transição suave no amanhecer/
@@ -106,5 +126,16 @@ export class GameClock {
     // dusk: DUSK_START_HOUR..DUSK_END_HOUR
     const t = (hours - DUSK_START_HOUR) / (DUSK_END_HOUR - DUSK_START_HOUR);
     return MAX_NIGHT_ALPHA * t;
+  }
+
+  serialize(): GameClockSaveData {
+    return { day: this.day, dayProgressMs: this.dayProgressMs };
+  }
+
+  static deserialize(data: GameClockSaveData): GameClock {
+    const clock = new GameClock();
+    clock.day = data.day;
+    clock.dayProgressMs = data.dayProgressMs;
+    return clock;
   }
 }

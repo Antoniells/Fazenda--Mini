@@ -7,14 +7,14 @@
 - **TypeScript** — linguagem principal do projeto, para segurança de tipos e manutenibilidade.
 - **Phaser** — engine 2D usada para renderização, cenas, física e input.
 - **Vite** — build tool e servidor de desenvolvimento; o jogo será desenvolvido inicialmente através dele.
-- **Electron** *(futuro, Fase 10)* — empacotamento como aplicativo executável para desktop. Não instalado nem configurado nesta etapa.
+- **Electron** *(Fase 10)* — empacotamento como aplicativo executável para desktop (`electron/`, `electron-builder`).
 
 ## Plataforma e distribuição
 
-O desenvolvimento acontece via Vite. Posteriormente, o jogo poderá ser empacotado como aplicativo desktop utilizando Electron. Para que essa transição não exija reescrever a lógica principal do jogo:
+O desenvolvimento acontece via Vite, e o mesmo build é empacotado como aplicativo desktop com Electron. Para que a lógica principal do jogo não dependa do empacotamento:
 
 - A lógica do jogo (cenas, entidades, sistemas, dados) não deve depender de APIs específicas de navegador além do que o Phaser já abstrai.
-- Qualquer necessidade futura de acesso a sistema de arquivos, janelas nativas ou processos deve ficar isolada em uma camada própria, implementada apenas quando o Electron for integrado.
+- Acesso a sistema de arquivos, janelas nativas e processos fica isolado em uma camada própria (`electron/` + adaptadores em `src/systems`), nunca misturado à lógica do jogo.
 
 ## Organização de código
 
@@ -47,13 +47,135 @@ Cada responsabilidade deve viver em seu próprio módulo. Evitar concentrar lóg
 - Configurações e definições de jogo (tipos de ação, propriedades de cultivos, itens, parâmetros de economia, etc.) devem ser representadas como dados estruturados, separados da lógica que os interpreta.
 - Isso permite ajustar conteúdo e balanceamento sem alterar sistemas de código.
 
-## Integração futura com Electron
+## Integração com Electron (Fase 10)
 
-Quando a Fase 10 (Desktop) for desenvolvida:
+**Scripts** (`package.json`):
 
-- O build gerado pelo Vite será empacotado dentro de um shell Electron.
-- Qualquer funcionalidade nativa de desktop (janelas, menus do sistema, instalador) será adicionada como camada externa à lógica do jogo, não misturada a ela.
-- Até lá, nenhuma dependência do Electron deve ser instalada ou referenciada no código.
+- `npm run dev:electron` — Vite + janela do Electron apontando para `http://localhost:5173` (F12 abre o DevTools). A porta é fixa (`strictPort`): feche outro `npm run dev` antes.
+- `npm run start:electron` — gera o build e abre no Electron como o executável faria (protocolo `app://`).
+- `npm run build:electron` — build + instalador do Windows em `release/` (`electron-builder`, configuração no campo `build` do `package.json`).
+
+**Estrutura** (`electron/*.cts`, compilado para `dist-electron/*.cjs` por `npm run electron:compile`; `.cts` porque o `package.json` é `"type": "module"`):
+
+- `main.cts` — janela, protocolo `app://`, IPC de save e de tela cheia.
+- `preload.cts` — expõe `window.electronAPI` (`contextIsolation` + `sandbox`; o jogo não tem `require`, `fs` nem `ipcRenderer`).
+
+**Decisões:**
+
+- **Servir o jogo:** os assets são carregados por caminho absoluto (`/UI/...`), que não funciona sob `file://`; empacotado, o processo principal serve `dist` pelo protocolo `app://game/` (com respostas `Range` para o áudio em streaming).
+- **Janela:** 16:9 (o jogo é 1280x720, `gameConfig.ts` — `GAME_WIDTH/GAME_HEIGHT` em `electron/main.cts` precisam acompanhar), a maior escala que cabe na tela (até 1920x1080), sem menu, tamanho fixo (mínimo = máximo — `resizable: false` deixava o Chromium com uma área errada no Windows), instância única. O jogo **abre em tela cheia** por padrão; F11/Alt+Enter ou o botão das Configurações alternam, e a escolha do jogador fica em `display_prefs.json` (sem esse arquivo = tela cheia).
+- **Save:** `ElectronStorageAdapter` (em `systems/storageAdapter.ts`) usa a ponte `window.electronAPI.storage`, síncrona (`sendSync`), porque a interface `StorageAdapter` é síncrona. Os arquivos ficam em `Documentos/Mini Fazenda/`: `savegame-slot1.json` a `savegame-slot3.json` e `settings.json`. O jogo só envia uma CHAVE; o processo principal escolhe o arquivo (formato `[a-z0-9-]`, sem caminhos), limita o tamanho e grava de forma atômica (temporário + renomear). No navegador o adaptador padrão continua sendo o `localStorage`.
+- **Variável de teste:** `MINI_FAZENDA_SAVE_DIR` troca a pasta dos saves (para testes não sujarem seus Documentos).
+
+## Cursor do jogo e balão de dica
+
+- **Cursor** (`systems/gameCursor.ts`, `data/ui.ts` → `GAME_CURSOR_*`): o primeiro ícone de `UI/HUD.png` (seta marrom) é fatiado da textura já carregada, ampliado 2x sem suavização num canvas e vira o `cursor: url(...)` do CSS. A regra usa `!important` porque o Phaser aplica `cursor: pointer` inline sobre objetos com `useHandCursor` — assim o ponteiro do jogo vale em todos os elementos. Instalado uma vez pela `MainMenuScene` (primeira cena).
+- **Tooltip** (`ui/tooltip.ts`): painel do jogo (NineSlice) + texto, invisíveis até `show(texto, ponteiro)`; `follow` acompanha o ponteiro (vira de lado/para cima quando não cabe) e `hide` esconde. A `UIScene` cria UM e o passa à `Hotbar` e ao `InventoryScreen`, que ligam `pointerover`/`pointermove`/`pointerout` dos slots. No Inventário o ícone cobre o centro da moldura, então moldura e ícone registram o hover separadamente; o balão some ao arrastar, ao fechar a tela e ao trocar de aba.
+
+## Clima, aspersor, armadura, Loja, Caixa de Remessas e loot no chão
+
+- **Chuva** (`systems/weather.ts`, `ui/weatherOverlay.ts`): na virada do dia (dormir, meia-noite, tecla T) `MainScene.rollWeather` sorteia `RAIN_CHANCE` (15%) e guarda em `gameState.weather.raining` (vai pro save). Chovendo, `Farmland.waterAll` rega toda a lavoura e a cena "varre" as plantações com respingos. O visual vive na `UIScene` (persistente): véu cinza-azulado + partículas de gotas (`Water props.png`) + respingos batendo em pontos aleatórios da tela (`Sprash.png`); não chove na Caverna.
+- **Aspersor** (`data/decorations.ts` → `SPRINKLER`, `systems/sprinklers.ts`): decoração comprável (Loja, aba Construções) com `waterReach` (era `waterRadius`, um raio — hoje é um padrão de terras: ver a seção "Caixa de Correio e grid de alcance do aspersor"); toda manhã rega as terras que alcança. Lê `gameState.placedDecorations`. Arte: `Objects/Props/Sprinkler.webp` (ver a seção "Martelo, cercas destruídas, aspersor animado e ajustes").
+- **Armadura** (`Inventory.toggleArmor`/`getDefense`, `ui/armorHud.ts`): clicar numa armadura da Mochila (ou no ícone dela na bonequinha) veste/tira. Cada ponto de defesa tira 5% do dano recebido (`reduceDamage` em `systems/playerHealth.ts`). A HUD (`UI/Armor.png`: cheio/meio/vazio) mostra 5 ícones de 2 pontos cada, embaixo dos corações, escondida sem armadura.
+- **Loja** (`ui/shopMenu.ts`): mesmo esquema da aba Agricultura do Inventário — grid de itens à esquerda (clicar SELECIONA), detalhe à direita (ícone grande, nome, descrição, preço) e o botão "Comprar" (que pede a compra via `onBuy`). Cada `ShopItem` traz `name`/`description`; itens únicos (receitas) mostram "Já possui" via `isOwned`.
+- **Caixa de Remessas** (`ui/shippingBinMenu.ts`, `systems/shippingBinInteraction.ts`): interagir abre um menu com dois grids (caixa / bolsa). Clicar numa colheita da bolsa transfere 1 unidade (Shift+clique ou botão direito: todas); nada sai do `Inventory` até o botão "Vender" (`Inventory.takeCrop` + `addCoins`). Fechar sem vender não perde nada.
+- **Loot no chão** (`systems/lootDrops.ts`): árvores, pedras, Slimes e plantações chamam `spawnLoot` em vez de dar o item direto. O item pula até o chão (arte do próprio item) e, quando o jogador chega a ~48px, é sugado até ele e só então entra no `Inventory`. Monte grande vira até 6 itens. Sair do mapa (`SHUTDOWN`) manda o que sobrou no chão pra bolsa.
+
+## Seleção de personagem, interior da casa e ajustes da versão 0.1.2
+
+- **Seleção de personagem** (`data/player.ts`, `systems/playerSprites.ts`, `CharacterCreationScene`): Alex, Josh, Lyria, Manu e Tori compartilham o mesmo rig; `getPlayerAssets(characterId)` devolve as chaves/caminhos de cada um (nomes de arquivo que diferem entre as pastas ficam em `CHARACTER_FILES`). `profile.characterId` (`gameState`) vai pro save (`SaveData.characterId`, opcional — saves antigos caem em Alex). Toda cena que cria um `Player` chama `preloadPlayerSprites` no `preload` (a `CharacterCreationScene` só carrega o idle de cada um pro preview). Chaves de textura e de animação são POR personagem (`player-<nome>-...`), então trocar de personagem entre slots nunca reaproveita arte do anterior.
+- **Interior da casa** (`data/maps/houseMap.ts`, `scenes/HouseScene.ts`): cômodo 8x8 (bordas de parede, porta na parede de baixo, cama 1x2), câmera parada e ampliada 2x. A porta da Fazenda (`systems/enterHouseInteraction.ts`) dá fade out e vai pra `HouseScene`; pisar na porta de dentro volta pra Fazenda em frente à porta. **Dormir** agora é na cama (`systems/sleepInteraction.ts`) → `systems/dayCycle.ts` `startNextDay`: relógio às 06:00, vida cheia, lavoura/clima/aspersores/mundo do dia novo, SALVA, fade in. Chão/paredes são placeholder (tábua do `Barn tileset.png`).
+- **Correção — dormir depois da meia-noite:** o contador de dias já vira à meia-noite; antes, dormir entre 00:00 e 05:59 somava OUTRO dia e rodava a virada da lavoura de novo (plantação não regada morria). `GameClock.advanceToNextMorning` agora devolve `false` nesse caso e `startNextDay` só roda a virada quando o dia realmente virou.
+- **Caixa de Remessas vende materiais** (`data/sellables.ts`, `ResourceDefinition.sellPrice`): madeira 1, pedra 2, gosma de Slime 4 (a gosma não tinha nenhum uso). A bolota não vende (é semente de árvore).
+- **Câmera de mapas pequenos** (`systems/cameraSetup.ts`): mapa menor que a janela (Floresta/Pedreira/Caverna/Praia, ~830x640 em 1280x720) fica centralizado, e o vazio em volta usa a cor do bioma.
+- **Juice:** números de dano e tremor de câmera ao acertar inimigos; tremor ao derrubar árvore/quebrar pedra; "+N Item" agrupado ao pegar loot (`systems/floatingText.ts`); dígitos de moedas "pulam" ao ganhar; faixa "DIA N" (com o clima) na virada do dia.
+- **Áreas:** Caverna com tint azulado + cogumelos/pedras/flores-cristal; Praia, Pedreira e Floresta com props de decoração (`props` em `data/maps/*`).
+
+## Pet companheiro
+
+- **Escolha e save** (`data/pets.ts`, `CharacterCreationScene`, `gameState`/`saveManager`): na Criação de Personagem uma segunda linha `< >` (ou Shift + ← →) troca entre 3 gatos e 3 cachorros (`PETS`, um catálogo curado das folhas de `assets/Animals/Pets`). O escolhido vai pro perfil (`profile.petId`) e pro save (`SaveData.petId`, opcional — saves antigos ou com id inválido carregam com o pet padrão). Adicionar um pet = uma linha em `PETS`.
+- **Folha do pet** (`data/pets.ts`): grade 4 colunas de 32x32; só as linhas 0-4 são usadas porque nelas gatos e cachorros têm o mesmo layout (0 = andar de lado, olhando à esquerda; 1 = de frente; 2 = de costas; 3/4 = em pé → sentado, de lado/de frente — a pose feliz é o quadro 3 da linha 4). Da linha 5 em diante o layout muda entre as espécies. Chaves de textura/animação são POR pet (`pet-<id>`), como no personagem.
+- **Entidade** (`entities/Pet.ts`): posição livre em px (como os inimigos), mas sempre andando célula a célula por rotas A* (`systems/pathfinding.ts`) no MESMO grid do jogador — contorna árvores, cercas, casa e água. Só troca de rota nos limites de célula (nunca no meio de um passo) e "chegar" é estar na célula do destino planejado (`goal`), não "a rota acabou". Estados: descansando (sentado voltado pro jogador), passeando, seguindo, atendendo ao chamado, recebendo carinho, perseguindo e mordendo. Todos os números (velocidades, raios, dano, recargas) ficam em `PET_TUNING`/`PET_ROAM`.
+- **Exploração**: o pet vagueia num raio em volta do JOGADOR (`wanderRadiusTiles`; pra cima o raio é metade, senão ele passeia atrás de casas/árvores e "some") e só vem atrás quando o jogador passa do `leashTiles`; se ficar longe demais ou sem caminho, reaparece ao lado dele. A Fazenda solta mais (`PET_ROAM.farm`) que as áreas e a Casa.
+- **Carinho**: um clique no pet (`PlayerController.addWorldClickHandler` — tratadores de clique no mundo, checados DEPOIS dos interceptores de menu/posicionamento e ANTES de "andar até aqui") o chama; se estiver longe ele corre até o jogador, e então fica feliz (pose de língua pra fora, pulinhos e 3 corações do HUD — `UI/Bars.png` — subindo). O jogador não anda e vira de frente pro pet. Ocupado brigando, o pet só absorve o clique.
+- **Navegação entre cenas** (`systems/petCompanion.ts`): o `Pet` é uma entidade da cena (os sprites morrem com ela), então TODA cena que tem jogador — Fazenda, as 4 áreas (`ExternalMapScene`) e a Casa — carrega a folha no `preload` (`preloadPet`) e cria um `PetCompanion` logo depois do jogador/grid/conteúdo prontos; o pet nasce na célula livre ao lado do jogador (fora do anel de parede nas áreas, fora da porta na Casa). A escolha em si vive só no `gameState`.
+- **Combate**: quando um inimigo acerta (ou tenta acertar — a invencibilidade pós-dano não conta) o jogador, a cena emite `PLAYER_ATTACKED_EVENT` (`systems/combat.ts`, emitido por `SlimeSpawner.hurtPlayer` com o `Enemy` que atacou; o `Slime` passou a informar `this` no callback do golpe). O `PetCompanion` escuta e o pet corre até o agressor e o morde (`Enemy.takeDamage(..., 'pet')`: mostra o número de dano, mas não sacode a câmera) até ele morrer; só revida contra quem agrediu. Desiste se o jogador se afastar demais ou se ficar parado, sem rota, por `chaseStuckMs` (inimigo encostado na parede/do outro lado da água) — se o inimigo agredir de novo, o pet volta. O pet não leva dano.
+- **Pausas**: as cenas só chamam `petCompanion.update` quando o jogo está andando — Menu de Pausa e fade de entrada na casa na Fazenda; Inventário/Bancada abertos nas áreas (igual aos Slimes) e na Casa.
+
+## Água animada (autotile), colheita na chuva e ajustes
+
+- **Autotile animado da água** (`systems/waterAutotile.ts`, tabela em `data/tiles.ts` — `WATER_AUTOTILE_*`): `buildAuthoredGroundChunk` (chão autorado no editor, Fazenda e áreas) chama `buildWaterAutotile`, que acha as células de água do `ground` (`isWaterGid`: o tile "Água" plano e qualquer tile de "Beach animations tiles" que não seja areia lisa — o lago da Floresta e o mar da Praia foram pintados com ele) e desenha por cima do chão o tile certo de `Beach animations tiles.png`, escolhido por **bitmask dos 4 vizinhos** (N=1, E=2, S=4, W=8; bit ligado = vizinho também é água; fora do mapa conta como água). São 16 máscaras = 16 tiles, o MESMO layout do solo arado (cápsulas verticais/horizontais, ilhota, 9-slice); o miolo usa o único tile 100% liso da folha (col 9, linha 2), porque o "centro" do 9-slice tem rosquinhas nos cantos. A folha tem 4 fases empilhadas (blocos de 4 linhas, `WATER_AUTOTILE_PHASE_STRIDE`); um único timer da cena troca as fases de todas as células de borda (240 ms) — o miolo liso é igual nas 4 e não é atualizado. Como no arado, só há 4 vizinhos (sem cantos internos). Colisão NÃO muda (continua vindo de `blockedArea`/`obstacleCells`), e o editor continua mostrando o tile pintado (estático).
+- **Colheita na chuva** (`Farmland.harvest(col, row, raining)`): colher em dia de chuva mantém o solo molhado (`wateredToday` fica ligado no solo `tilled` e o renderer trata solo arado + regado como molhado); fora da chuva volta a seco. Na virada do dia o solo arado seca (`onNewDay`), e ao carregar um save o solo arado só vem molhado se estiver chovendo.
+- **Props de chão** (`MapPropDef.flat`, `systems/mapProps.ts`): o tronco caído é desenhado no chão (`depth -0.4`, acima do chão/água/terra e abaixo de tudo ordenado por Y), em vez de ordenado por Y — a arte de 2+ tiles de altura cobria quem passava atrás dela.
+- **Ícone da madeira**: `Icons/RPG icons/Extras/Wood.png` (primeiro ícone 16x16 da folha) — vale pro drop no chão, o slot do Inventário e a Caixa de Remessas.
+
+## Água bloqueada, recursos da Fazenda, ciclo de brotos e aspersor 1x1
+
+- **Água bloqueia sozinha** (`systems/waterCells.ts`): `isWaterGid` é a fonte ÚNICA do que é água (o autotile desenha por ela, a colisão bloqueia por ela); `waterCellsFromGround(ground)` lista as células. `ExternalMapScene` (Floresta/Praia) e `buildWalkableGrid` (Fazenda) bloqueiam essas células no grid — sem depender de `blockedArea`/`lakeArea` — e o respawn diário da Floresta não nasce nelas. Slimes, folhagem selvagem e o pet ficam de fora da água porque nascem/andam pelo grid.
+- **Recursos da Fazenda** (`systems/farmResources.ts`): as árvores de `farmMap.treePositions` e as pedras de `farmMap.rockPositions` (editor) são nós do `resourceNodeRegistry` (chave `MainScene:resources`, semeada no construtor da `MainScene`). `FarmResources` desenha tudo a partir do registro; árvore adulta e pedra bloqueiam o grid e ganham `TreeInteractable` (Machado, 8 golpes, madeira + bolotas) / `RockInteractable` (Picareta, 4 golpes, pedra), os mesmos das áreas — o loot cai no chão. `buildWalkableGrid` não bloqueia mais `treePositions`: quem bloqueia (e desbloqueia ao cortar) é o `FarmResources`. O `TreePlantingSystem` ficou só com o modo de plantio (fantasma + clique) e delega a árvore plantada ao `FarmResources.plant`.
+- **Ciclo de dias** (`advanceFarmResourcesDay`, chamado por `dayCycle.advanceWorldResourcesState` e pela `MainScene` à meia-noite): toda árvore avança um estágio (broto → muda → adulta, ~2 dias) e nascem 0–2 brotos novos em grama lisa livre (`isFarmCellFreeForResource`: dentro da propriedade, fora da lavoura/caminho/construções/blocos de colisão e a mais de 2 células da casa, loja, caixa, portão e pontes), até o teto de 12 árvores (`FARM_CAPS`; cortar libera vaga). Pedras da Fazenda não renascem. Broto e muda são andáveis e balançam ao pisar.
+- **Recursos persistem** (`resourceNodeRegistry.serialize/restore/resetToInitial`, `SaveData.resourceNodes`): o que foi cortado/quebrado e o que nasceu/cresceu (Fazenda, Floresta, Pedreira) vai pro save. Partida nova e saves antigos (sem o campo) voltam ao mapa original — antes o registro nunca era zerado e o mundo da partida anterior vazava pra nova. `ResourceCaps.newTreesPerDay/newRocksPerDay` deixam cada cena ajustar a taxa de nascimento.
+- **Aspersor 1x1** (`data/decorations.ts`, `systems/decorationPlacement.ts`): `footprint` 1x1 e `displayScaleMultiplier` 16/109 (o CORPO do aspersor, 109px no `Sprinkler.webp`, vira exatamente 1 tile; o jato passa pra fora, só visual); `placement: 'farmland'` — só pode ser posicionado em terreno de plantio AINDA NÃO ARADO (as demais decorações continuam só fora da lavoura). Sprinklers de saves antigos (2x2, fora da lavoura) voltam como 1x1 e continuam regando.
+- **Trava da enxada** (`Farmland.setTillLocked/isTillLocked`): o aspersor (`locksTilling`) trava o bloco pra `till` — regra do grid da lavoura, não da ferramenta (transitória: recriada por `restorePlacements` ao abrir a Fazenda). Com a enxada na mão, o clique no aspersor não faz nada (não ara nem remove); só a PICARETA (qualquer tier) o tira do chão — ele cai como item no chão (`LootCategory 'decoration'`) e o jogador o recolhe; qualquer outra seleção só mostra a dica. Como o aspersor fica em cima de um canteiro, `DecorationPlacementSystem` guarda a interação anterior da célula (`PlotInteractable`) ao posicionar e a devolve ao remover — sem isso o canteiro ficaria sem interação pra sempre.
+- **Pedreira**: as pedras não ficam mais em `obstacleCells` (lista congelada no boot) — bloqueiam pelo registro atual em `buildMapContent`; uma pedra já quebrada não deixa mais parede invisível ao voltar.
+
+## Progressão de ferramentas, móveis da casa e Baú
+
+- **Progressão linear** (`data/toolProgression.ts`): Machado e Picareta seguem Madeira > Pedra > Ferro > Ouro (`TOOL_PROGRESSION`, ids em `data/tools.ts`). O pacote de ícones não tem pasta "Pedra": o tier Pedra usa a arte de `2. Cooper`. Fabricar na Bancada o tier N exige TER o N-1 na Bolsa (`getToolUpgradeBlock`, `systems/toolUpgrade.ts`; a Bancada mostra "Já tem"/"Precisa: …") e `Inventory.upgradeTool` **substitui** o item anterior no MESMO slot — o antigo é destruído, nunca há item extra nem outro slot, e o slot selecionado da Hotbar não muda. Saves do fluxo antigo (dois tiers da mesma família) são consolidados em `Inventory.deserialize` (fica o maior, no slot do mais antigo). Receitas novas: `recipe-axe-stone`/`recipe-pickaxe-stone` (200 moedas).
+- **Efeito dos tiers** (`resourceInteraction.ts`): cada golpe soma `TOOL_TIER_POWER` (1 / 1,5 / 2 / 4) ao progresso — Machado derruba a árvore em 8 / 6 / 4 / 2 golpes e a Picareta quebra a pedra em 4 / 3 / 2 / 1. Antes, Machado/Picareta de Ferro/Ouro não funcionavam em árvores/pedras (só o de madeira passava na checagem de id). Qualquer tier também remove a Bancada. Só Machado e Picareta têm progressão por ora (Enxada/Foice/Regador/espadas seguem como estão); outra família = uma linha em `TOOL_PROGRESSION` + 4 `ToolDefinition`s.
+- **Móveis** (`data/decorations.ts` — `placement: 'house'`, `FURNITURE`): Baú, Cadeira, Mesa (2x1), Sofá (2x1) e Cômoda são decorações comuns (compradas na aba Construção da Loja, estoque em `Inventory.decorations`) que só se posicionam dentro da casa. `systems/furniturePlacement.ts` (`FurniturePlacementSystem`, na `HouseScene`): fantasma + clique via `PointerInputInterceptor` (Hotbar ou tecla B entram no modo; ESC sai); só células internas do cômodo (parede fora), nunca a porta/o ponto de entrada, e a posição é recusada se fechar TODO o acesso à cama (simula o bloqueio e roda o A* da entrada até uma célula ao lado da cama). Bloqueia o grid (objeto estático com colisão), registra a interação em cada célula do footprint e grava em `gameState.placedFurniture` (save). Clicar num móvel comum o recolhe (volta ao estoque). Na Fazenda os móveis nunca entram no modo de posicionamento (`canPlaceAt` recusa, `MainScene.resolveSelectedDecoration` ignora).
+- **Baú** (`systems/chestStorage.ts`, `ui/chestMenu.ts`): o conteúdo vive em `gameState.chests` (por id de baú = célula-âncora do móvel; vai pro save, `SaveData.chests`) como até 24 pilhas `{category, id, amount}` (ferramentas/armaduras são pilhas de 1). Mover é imediato e passa por uma API genérica do `Inventory` (`getStackCount/removeStack/addStack/hasRoomFor/getBagStacks`), que trata todas as categorias igual e não conta como colheita nova (as Descobertas não mudam): `depositToChest` só move o que o baú comporta e `withdrawFromChest` só tira do baú o que a Bolsa aceitou (vaga de slot; uma ferramenta que conflita com a progressão — já tem outra da família — é recusada). A tela é do `UIScene` (câmera própria, sem o zoom da casa), aberta pelo evento `OPEN_CHEST_MENU_EVENT`: em cima o baú, embaixo a bolsa; clique move 1, Shift+clique/botão direito move a pilha; "Recolher" pega o móvel de volta só com o baú vazio. A casa trava movimento/clique e fecha com ESC enquanto a tela está aberta.
+
+## Evento do pet (caixa e carta) e Hordas
+
+- **Evento do pet** (`systems/petEvent.ts`, `petBox.ts`, `ui/letterPanel.ts`): `HouseScene.sleep` conta os sonos na cama (`gameState.sleepCount`, antes da virada que salva). No 3º, `petBoxPlaced` liga e uma caixa (`PetBox`, `Animals/Pets/Cats/Box.png`, sólida, na célula (20, 9) à frente da casa) aparece na Fazenda. Interagir dispara `OPEN_LETTER_EVENT`; a `UIScene` mostra o `LetterPanel` (modal, só fecha pelo botão "Cuidar dele" — Esc não vale) com a carta e o nome do jogador. O ❤️ do texto original NÃO é emoji/glifo (regra de não desenhar arte por código): é o sprite de coração do HUD (`UI/Bars.png`) ao fim da carta. Ao terminar a leitura: `unlockPet()` (`petUnlocked = true`), salva, a caixa some e o pet passa a existir. Sem `petUnlocked` nenhuma cena cria o `PetCompanion` (Fazenda, áreas e Casa). O pet continua sendo o escolhido na Criação de Personagem. Saves antigos (sem o campo) carregam como liberado — já tinham pet desde o começo; partida nova começa bloqueado.
+- **Hordas** (`data/horde.ts`, `systems/horde.ts`, `hordeDirector.ts`, `entities/Raider.ts`): a cada 10 dias (10, 20, 30…) a Fazenda sofre uma noite de ataque, das 19:00 às 06:00. O estado (`gameState.horde`, no save) é global; os inimigos são da cena — o `HordeDirector` os faz nascer nas bordas da propriedade (rajada de 3 e lotes de 2 a cada 9 s, sempre em célula com rota até a casa), reaproveita o estado se a cena reabrir no meio (nasce o que falta) e mostra o contador. Tamanho/vida crescem com o número da horda (8 + 2 por horda, máx. 20; vida 25 + 5 por horda). Os drops (gosma) dos abatidos vão pro POOL da horda (`registerHordeKill`), não caem no chão.
+- **IA dos Raiders — 3 alvos por prioridade**: (1) o JOGADOR, se estiver a menos de 7 células (e, sem plantação viva no mapa, caça o jogador onde estiver); (2) as CERCAS da lavoura — `FarmFences` dá vida (3 golpes) às mesmas imagens que `buildFarmlandFence` desenha e o grid já bloqueia; caem e liberam a célula; (3) as PLANTAÇÕES — o objetivo de fundo: a plantação viva mais próxima (`Farmland.destroyCrop`: a planta morre, a semente dormente some). A rota vem de um A* PONDERADO (`systems/hordePathfinding.ts`): cerca é passagem com custo (7 passos), então o inimigo só quebra a cerca quando dar a volta pelo portão sai mais caro — aí ela vira o alvo imediato até cair. Reavalia a cada ~0,7 s. O ataque é o do Slime (aviso → golpe → recuperação; levar dano no aviso interrompe) e avisa `PLAYER_ATTACKED_EVENT` (o pet revida).
+- **Fim do evento**: vitória quando o último inimigo cai OU amanhece (06:00) com o jogador vivo → `finishHordeVictory`: drops do pool + BÔNUS (moedas 150n, madeira 40+15n, pedra 25+10n e Ferro 4+2n, n = número da horda; `hordeReward`), as cercas só machucadas se recuperam (`FarmFences.healDamaged`) e as DESTRUÍDAS continuam quebradas até o Martelo (o aviso de vitória diz quantas faltam), e salva. Se o jogador MORRE (`playerDeath`): `finishHordeDefeat` encerra sem bônus e entrega só o pool; a `MainScene.init` roda `startNextDay` (o dia avança) e o aviso ao acordar lista o que ele guardou. A penalidade de moedas do desmaio continua.
+- **Dormir bloqueado**: durante a horda e, no dia dela, até ela acontecer (`getSleepBlockReason`) — senão bastava um cochilo pra passar o dia sem a noite de ataque. O relógio só corre na Fazenda, então sair pra casa/áreas congela a horda.
+- **Ferro** (`data/resources.ts` `IRON`, ícone de `Bars and ores.png`): recurso novo (não havia ferro coletável); vende na Caixa de Remessas. A Fazenda passou a carregar o spritesheet do Slime (`MainScene.preload`) porque os Raiders usam a mesma arte.
+
+## Efeitos visuais: poeira na grama e borboletas
+
+- **Poeira nos pés** (`systems/grassDust.ts`, `attachGrassDust`): enquanto o jogador ANDA sobre uma célula de "Grama", a cada 130 ms sai uma nuvenzinha atrás dele — a mancha de `Tileset/Shadow.png` (a mesma da sombra e da poeira da enxada) em tingimento SÓLIDO (`TintModes.FILL`, a mancha-base é escura e multiplicar preto não muda a cor), que cresce, sobe, vai pra trás e some. Parado, na terra, na ponte ou na lavoura arada não sai nada. "Grama" = o GID autorado da célula é um dos dois tons da grama plana (`GRASS_TILE_IDS`, mesma regra dos detalhes de grama; `isGrassGround`); sem `ground` autorado o chão é gerado como grama. Cada cena acrescenta as próprias exceções: a Fazenda exclui a ponte e a lavoura já arada/plantada (`Farmland.getPlot`), as áreas externas excluem a ponte de volta. Ligado na Fazenda e em todas as `ExternalMapScene`; a Caverna e a Pedreira não têm `ground` autorado (o chão é a grama procedural com tingimento), então contam como grama, como já contam para o som de passos.
+- **Borboletas** (`systems/butterflies.ts`, `ButterflyField`; sprites em `data/effects.ts` `BUTTERFLY_*`, 5 espécies de `Animals/Forest/Bugs/Butterfly/`, 7 frames de bater de asas): só na Fazenda e SÓ DE DIA (`GameClock.isDaytime()` = sem véu noturno, das 07:00 às 17:00). A cada 1,5–4,5 s, com no máximo 6 no ar, uma nasce numa posição aleatória de grama dentro da tela (ou logo além dela): UM Tween de opacidade (alpha 0 → 1, `hold`, `yoyo` de volta a 0) faz aparecer, ficar e sumir; enquanto isso ela deriva devagar com uma oscilação. Ao anoitecer ninguém novo nasce e as que estão no ar somem com um fade. Sem colisão nem interação. O campo é atualizado pelo `update` da `MainScene` (junto do relógio, então congela com a pausa); os sprites morrem com a cena.
+
+## Martelo, cercas destruídas, aspersor animado e ajustes
+
+- **Cerca destruída** (`systems/farmFences.ts`): a última pancada da horda troca o quadro da cerca pelo `FENCE_BROKEN_INDEX` (2º quadro de `White Fence.png`, dois cepos quebrados), libera a célula no grid (o inimigo e o jogador passam) e a registra em `gameState.destroyedFences` — vai pro save (`destroyedFences`, opcional: save antigo = nenhuma) e a cena nova as recria já quebradas. NÃO se conserta sozinha. O fim da horda só cura as cercas machucadas.
+- **Martelo** (`data/tools.ts` `HAMMER`, `HAMMER_PRICE` = 80): ferramenta comprada DIRETO na aba Ferramentas da Loja (desconta moedas, compra única — depois vira "Já possui"; `MainScene.buyHammer`). Com ele na mão, clicar na cerca quebrada leva o jogador até uma célula VIZINHA e ele bate de lá (mesma animação de golpe da Picareta): `FarmFences.repair` devolve o quadro inteiro, a vida e bloqueia a célula de novo. O clique "de fora" em célula andável vem do flag `Interactable.interactFromAdjacent` (`PlayerController.handlePointerDown` reaproveita o caminho do clique em célula sólida). O ícone é PROVISÓRIO: o pacote não tem martelo, então usa a Pá de madeira (`Shovel.png`) — trocar é só o `texturePath`.
+- **Sem muda em cima de cerca**: `TreePlantingSystem` (e o posicionamento de construções) recusam qualquer célula em que `FarmFences.hasFenceAt` seja verdadeiro — de pé OU destruída (destruída fica andável, então só `isWalkable` não bastaria).
+- **Picareta desfaz o arado**: canteiro `tilled` vazio + Picareta (qualquer tier) → `Farmland.untill` (volta a `untilled`, seco), com a poeira/som da enxada; canteiro com semente/planta não muda.
+- **Aspersor animado** (`Objects/Props/Sprinkler.webp`, 4x6 quadros de 236x218): parado no quadro 0 o dia todo; a animação (jorrando e "fechando") toca UMA vez por dia, na manhã (`MORNING_ANIMATION_HOURS` 06:00–12:00, `animatesEachMorning`), disparada pela `MainScene` (`playSprinklerMorning` → `DecorationPlacementSystem.playMorningAnimations`; o dia já tocado fica em `gameState.sprinklerAnimDay`, então trocar de cena não repete). O ícone (Loja/Bolsa) é um recorte justo do corpo (`frameName`); os quadros de animação têm todos o mesmo tamanho, com `animationOriginY` alinhando o pé do cano à base do tile. O `Sprinkler.png` antigo foi removido.
+- **Pet que não voltava da casa**: a `MainScene` é reaproveitada pelo Phaser a cada `scene.start` e seus campos sobrevivem — o `petCompanion` da vez anterior (já destruído) barrava a criação de outro. `create` agora o zera antes de recriar.
+- **Moedas iniciais**: 70 (`STARTING_COINS`); saves existentes mantêm as suas.
+
+## Tutorial de novos jogadores
+
+- **Gerenciador** (`systems/tutorial.ts`, dados em `data/tutorial.ts`, painel em `ui/tutorialPanel.ts`): lógica pura (sem Phaser). Os passos são só dados (`TUTORIAL_STEPS`: título, texto e um `goal`); adicionar/reordenar um passo é mexer só ali. Tipos de objetivo: `info` (texto + botão "Começar"/"Concluir"), `move` (N passos), `select` (pegar um item na Hotbar) e `act` (arar/plantar/regar com o item certo na mão). Passos atuais: boas-vindas → andar 6 passos → Enxada → arar → sementes → plantar → Regador → regar → fim.
+- **Avanço**: o jogo AVISA o gerenciador (`tutorial.notify`) quando a ação de fato aconteceu — `player-stepped` na `MainScene` (andar), `UIScene.requestHotbarSelect` (selecionar) e o resultado de `till`/`plant`/`water` em `PlotInteractable`. Um passo de "selecionar" cujo item já está na mão vale por cumprido (nunca trava). O andamento (`gameState.tutorialStep/Progress`) só vive na sessão.
+- **Bloqueio de comandos** (`tutorial.allows(cmd)`, perguntado por quem recebe o comando): nos passos `info` NADA funciona (o painel escurece a tela e o botão é a única saída); em `move`/`select`/`act` só o movimento fica livre; `select` e `act` aceitam na Hotbar só o item exigido; `act` libera clique só em canteiros; ataque (Espaço), comer (F), Inventário (E) e posicionar (B) ficam travados o tempo todo. `PlayerController` (teclado, clique, ataque, comer), `UIScene` (Hotbar: teclas 1-8, scroll e clique) e `MainScene` (E/B) consultam o gerenciador; Esc (Pausa) continua livre. O painel tem sempre o botão "Pular tutorial" (`tutorial.skip()`): encerra em qualquer passo e conta como concluído — grava no save igual ao fim normal. Sem tutorial rodando `allows` é sempre `true`, então o resto do jogo não muda.
+- **Save**: ao terminar o último passo grava `gameState.tutorialCompleted = true` e salva na hora (`tutorialCompleted` em `SaveData`). Partida nova começa `false` (`startNewGame`, e o slot 7 vazio da Hotbar fica selecionado pra o passo da Enxada não nascer cumprido); save ANTIGO (sem o campo) carrega `true` — quem já jogava não vê o tutorial; o padrão de `gameState` também é `true` (fluxo de desenvolvimento que abre a Fazenda sem o menu). Concluído, nunca mais aparece. Sair no meio recomeça do primeiro passo.
+
+## Câmera do jogador (zoom) e câmera de interface
+
+- **Zoom** (`systems/cameraSetup.ts` → `WORLD_CAMERA_ZOOM` = 1,25): a câmera que segue o jogador (Fazenda e as 4 áreas; a Casa tem o próprio zoom fixo) enquadra 32x18 tiles em vez de 40x22,5 — personagem e lavoura maiores sem apertar o campo de visão. Ajustar é mudar essa constante. O zoom é aplicado ANTES dos limites da câmera (o tamanho visível do mundo depende dele).
+- **Câmera de interface** (`systems/uiCamera.ts`, instalada por `setupWorldCamera`): Loja, Pausa, Caixa de Remessas, aviso "DIA n", contador da horda e títulos das áreas são desenhados na própria cena do mapa com `scrollFactor` 0 — a câmera principal os ampliaria (o aviso do topo saía da tela, todo texto ficava mole). Uma segunda câmera (zoom 1, mesmo tamanho da janela) desenha só esses objetos; a principal, só o mundo. A classificação é automática: a cada frame, todo objeto novo da cena vai pra uma das câmeras conforme o `scrollFactor` (máscara `cameraFilter`), então nenhum sistema precisa saber dela; o clique acerta porque cada câmera só considera o que desenha. Exceção: o véu da noite (`KEEP_ON_WORLD_CAMERA`) fica no mundo — o zoom o alarga e ele continua cobrindo a tela.
+
+## Geografia do mundo (pontes entre cenas)
+
+- **Mapa**: a Fazenda tem 4 pontes de transição (`farmMap.bridges`, dado puro): **Cavernas** ao norte (10,0), **Praia** ao sul (30,29) e, na parede **oeste**, a **Pedreira** em (0,10) com a **Floresta** logo ABAIXO dela, em (0,20) — a Floresta ficava na parede leste (39,20) e foi movida. A parede leste não tem mais ponte.
+- **Continuidade espacial**: a ponte de volta de cada área fica no lado OPOSTO ao da Fazenda (`ExternalMapConfig.returnDirection`): Cavernas ↔ sul, Praia ↔ norte, Pedreira ↔ leste e agora Floresta ↔ **leste** (`FOREST_RETURN_DIRECTION`; a ponte de volta é a célula central da parede leste, (25,10)). Os pontos de nascimento saem sozinhos da geometria: ao voltar à Fazenda o jogador nasce logo dentro da parede, ao lado da ponte (`BridgeSystem.computeReturnSpawn` → (1,20)); ao chegar na Floresta, uma célula à frente da ponte de volta ((24,10), `computeSpawnInFrontOf`).
+- **Zona de chegada livre** (`computeArrivalClearance`): a passarela da ponte de volta (entre os corrimões, sem saída lateral) mais um bloco de 3 de largura depois dela ficam SEMPRE sem árvore/pedra — uma só na frente fecharia a saída e prenderia o jogador. O pinheiro (22,10) foi tirado de `forestMap.ts`; e, como saves antigos guardam os nós do mapa anterior, `ForestScene.buildMapContent` limpa essa zona do registro a cada entrada, e o respawn diário (`advanceForestDay`) também a exclui.
+- **Save**: o desbloqueio das pontes é guardado pela chave "col,row"; ao carregar, a chave antiga da Floresta ("39,20") é migrada pra "0,20" — quem já pagou a ponte não paga de novo.
+
+## Vilarejo (trecho leste)
+
+- **Mapa** (`data/maps/farmMap.ts`): o trecho de expansão LESTE (antes a "Madeireira", 12 colunas) virou o bioma `'village'` — colunas 40..69, linhas 0..29 (30 colunas). Nasce ABERTO (`ExpansionChunk.startsUnlocked`): sem parede do núcleo, sem placa de compra — `PropertyExpansionSystem` já libera a parede leste na criação (o mundo passa a ter a Fazenda 0..39 + o Vilarejo 40..69). Os outros três trechos (Mineração a oeste, Cavernas, Praia) seguem à venda como antes.
+- **Limites da câmera**: `MainScene.create` calcula os limites pelo retângulo de TODOS os trechos (`farmMap.expansions`), então o Vilarejo entra sozinho: a câmera rola até a coluna 70 (px 2240) e para ali — sem faixa preta. O grid (`inBounds`) também cobre o trecho, com o perímetro externo bloqueado.
+- **Layout e colisões** (`data/maps/villageMap.ts`, dados puros; desenho em `systems/villageBuilder.ts`): rua principal leste-oeste (linhas 14-15) ligada à abertura da parede, praça com chafariz animado (4 quadros), poço e banca; avenida norte-sul; 10 casas (`Objects/Exterior/Houses/2, 3, 7, 8`) em três fileiras, cada uma com a rua/viela da frente livre; 11 pinheiros decorativos e flores/cogumelos. As COLISÕES vêm da mesma fonte que o desenho: cada arte tem uma máscara (`solid`, `#` = célula sólida, medida pelo alfa: paredes bloqueiam, telhado não) e `villageBlockedCells()` soma paredes + troncos + poço ao grid estático (`systems/grid.ts`) — nunca há casa sem colisão. A profundidade de cada casa é a base das paredes (o jogador passa atrás do telhado, na frente da porta), e os pinheiros entram na transparência de sobreposição. As ruas de terra usam o mesmo blob de terra da Fazenda (`villageDirtZone`); rua/praça não soltam poeira nos pés.
+- **Loja do Vilarejo** (`data/villageShop.ts`, `systems/villageShop.ts`): a casa de madeira com toldo (`VILLAGE_SHOP_HOUSE`, `house8`, na entrada da rua principal) virou loja. Fachada: o NPC Ferreiro (`Character/.../NPC'S/Blacksmith/Idle.png`, quadros 0-3 = de frente, em loop lento) na porta, atrás de um balcão e com uma vitrine na varanda (recortes de `Objects/Interior/Blacksmith.png`); profundidades logo acima da casa (NPC < vitrine < balcão; o jogador, na rua, fica na frente). **Gatilho**: as células do balcão/NPC (colunas 41-44, linhas 12-13 — todas sólidas, a parede da casa) têm um `ShopCounterInteractable`; como a vizinhança dessas células é toda sólida, `Interactable.approachCell` (novo, `systems/interaction.ts`; `PlayerController.handleBlockedClick` o usa antes de procurar a vizinha mais próxima) diz de onde atender: a rua em frente (linha 14). Clicar leva o jogador até lá, ele vira de frente e o painel abre (ou fecha, alternando). **Painel**: uma SEGUNDA instância do `ShopMenu` (o livro), com uma aba e o catálogo do Ferreiro; a Loja da Fazenda não muda. **Catálogo** (`VILLAGE_SHOP_GOODS`, `data/villageShop.ts`): armas e armaduras PRONTAS, compradas direto em moedas, sem Bancada nem receita, a ~1,5x o valor da receita/arma equivalente — Espada de Ferro 750, Espada de Ouro 1800, Armadura de Madeira 300, Armadura de Ferro 900 (a espada de madeira, inicial, não é vendida). **Compra** (`purchaseVillageShopItem`, `systems/villageShop.ts`): item único (`ownsVillageShopItem` — na Bolsa, inclusive se foi fabricado — vira "Já possui"), exige um slot livre na Bolsa (`Inventory.hasFreeSlot`, senão o item se perderia) e só então debita e entrega (`unlockTool`/`unlockArmor`); em qualquer recusa (sem moedas, Bolsa cheia, já possui) nada é cobrado. A Bancada e as receitas continuam como estão. `MainScene.closeShopMenus` fecha as duas nos mesmos pontos de antes (andar, E, B, Esc) e o saldo atualiza nas duas. Pra mudar o catálogo: editar `VILLAGE_SHOP_GOODS`.
+- **Corrimões das pontes** (`PropertyExpansionSystem.unblockCoreWall`): abrir uma parede não devolve mais ao jogador as células dos corrimões das pontes daquela parede (ficavam andáveis ao comprar a expansão, dando pra contornar o túnel da ponte).
 
 ## Princípios técnicos
 
@@ -870,3 +992,333 @@ os dois relógios paralelos ao testar.
   intencional, escopo deste passo era só o relógio em si.
 - Árvores, Pedras/Minérios, Animais e Produção Animal (demais itens da
   Fase 7).
+
+## Efeito de quebra, SFX e revisão geral de estado
+
+### Efeito de quebra (`systems/breakEffect.ts`)
+
+`playBreakEffect(scene, image, shadow?)` é usado quando a picareta destrói um móvel (`furniturePlacement.ts`) ou o aspersor/bancada
+(`decorationPlacement.ts`, via `removeAt(..., breakEffect = true)`). O sprite treme e pisca (tint FILL), depois é fatiado em 3×3
+pedaços (`setCrop` sobre o mesmo frame) que voam com tweens, além de 3 nuvens de poeira. A remoção lógica (grid, estoque) acontece
+antes; o efeito é só visual e destrói a imagem ao estourar.
+
+### Efeitos sonoros (`data/audio.ts`, `assets/Sounds/Effects/`, `docs/sfx/`)
+
+24 SFX novos gerados com o motor do sfxr.me (jsfxr) por `docs/sfx/generate.cjs`; os parâmetros ficam em
+`docs/sfx/sfxr-definitions.json` — para ajustar um som, edite a definição e rode o script de novo. Cobrem golpes de machado/picareta,
+quebra de madeira/pedra/metal, espada, plantar, colher, limpar planta morta, regar/encher regador, porta, dormir, baú, craft,
+venda, desbloqueio (ponte/expansão), alerta/vitória da horda, martelo (cerca) e inimigo derrotado. Ficam em `ALL_SOUND_EFFECTS`
+(carregados no preload) e são tocados por `playEffect`/`playRandomEffect`.
+
+**Sons sem uso retirados do projeto:** os gerados `Machado madeira 1/2`, `Picareta pedra 1/2` e `Minerio quebrando` (substituídos pelos
+sons novos `Bater em arvore N` / `Picareta`, ou nunca ligados a nada) e os pacotes de música que não tocam (`400 Sounds Pack`,
+`Cozy Tunes`, `Polyshade's Chiptunes` e os `.zip`). Foram movidos para `../Mini Fazenda - sons removidos/`, fora do repositório.
+`docs/sfx/generate.cjs` ainda tem as definições desses sons, caso queira gerá-los de novo.
+
+### Ajustes visuais
+
+- Título do menu principal subiu `TITLE_LIFT_PX = 28` (`MainMenuScene.ts`).
+- Poeira de grama nasce `DUST_ORIGIN_LIFT_PX = 8` acima do pé (`grassDust.ts`).
+- Sombra do Slime/inimigos sobe `SHADOW_OFFSET_Y = 26` (`Enemy.ts`).
+
+### Correções da revisão geral
+
+- **Vazamento de ouvintes** (`systems/sceneEvents.ts`): o Phaser reaproveita a instância da cena e não limpa `scene.events.on` do
+  jogo; todo ouvinte de `player-stepped` passa por `onPlayerStepped`, que se remove no SHUTDOWN.
+- **Decoração sobre muda/árvore**: `DecorationPlacementSystem.canPlaceAt` recusa células com nó em `resourceNodeRegistry`.
+- **Semente/água só gastam se a ação ocorreu**: `farmlandInteraction.ts` planta/rega primeiro e só então consome.
+- **Estoque órfão** (`Inventory.slotOrphanedStock`): item que chegou com bolsa cheia ganha slot quando um é liberado e ao carregar
+  o save. Também: índice de hotbar não inteiro ignorado; `spendCoins` recusa valor negativo/NaN.
+- **Dano de árvores/pedras persiste** (`ResourceNode.hits`, `getNode`/`setHits`): sobrevive à troca de cena, virada de dia e save.
+- **Fail-safe de ação** (`Player.performAction`): `ACTION_FAILSAFE_MS = 4000` encerra a ação se a animação nunca completar, evitando
+  jogador travado em `busy`.
+- **Carregamento atômico** (`SaveManager.load`): o estado é reconstruído em variáveis locais e só então trocado em `gameState`; um
+  save corrompido devolve `false` sem alterar nada.
+- Sprites de árvore já destruídos saem da lista de transparência por sobreposição (`farmResources.getTreeSprites`).
+
+## Vilarejo, moradores, tempo global e campanha
+
+### Água da Floresta (`data/tiles.ts` `WATER_STYLES`, `systems/waterAutotile.ts`)
+
+O autotile animado da água agora tem **estilos** (`WATER_STYLES`): cada um é uma folha 24x16 com o mesmo desenho de 16 tiles em 4 fases, mudando só a
+coluna onde o bloco começa e o tile de água lisa. `beach` (padrão) = `Beach animations tiles.png`; `waterGround` = `Water Ground animations tiles.png`
+(bloco azul com margem de terra nas colunas 12-15, miolo liso em (21, 2) — achados por varredura de pixels). `ExternalMapConfig.waterStyle` escolhe o
+estilo da cena; a Floresta usa `'waterGround'`. A colisão não mudou (continua vindo de `waterCellsFromGround`). O editor de mapas ainda mostra o
+tileset antigo no preview da Floresta (só a renderização em jogo troca).
+
+### Tempo global (`systems/worldTime.ts`, `systems/dayCycle.ts`)
+
+O relógio agora anda em **toda** cena: `advanceWorldTime(delta, onFarm)` é chamado no `update` da Fazenda, dos mapas externos (`ExternalMapScene`) e da
+Casa. Na meia-noite roda `runDayTurn()` (lavoura cresce, clima, aspersores, árvores/pedras renascem — o mesmo que dormir), independente da cena aberta.
+Cada cena tem o véu de noite (`DayNightOverlay`; dentro de casa com `INDOOR_NIGHT_INTENSITY`) e a faixa "DIA n". Regras da horda: ela só é conduzida pela
+Fazenda; se amanhece com o jogador fora, termina **sem bônus** (senão bastava ficar longe), e os mapas externos avisam quando ela chega.
+
+### Vilarejo como cena (`scenes/VillageScene.ts`, `data/maps/villageMap.ts`)
+
+O Vilarejo deixou de ser um trecho colado à Fazenda: é uma cena 30x30 alcançada pela **ponte leste** (`farmMap.bridges`, sem requisito — ponte sem
+moedas/itens já nasce aberta, `BridgeSystem.isFree`); a de volta fica na parede oeste. Layout/colisões vêm de `villageMap.ts` (coordenadas locais, cada casa
+com `door`); a loja do Ferreiro é `systems/villageShop.ts` (`createVillageShop`). A Fazenda desenha a própria cerca leste (`buildFenceSide`).
+
+### Moradores e rotina (`data/npcs.ts`, `entities/Npc.ts`, `systems/npcSystem.ts`)
+
+Três moradores (Bruno/Ferreiro, Alberto/Banqueiro, Capitão Salgado), cada um com casa, porta e **rotina** por hora (`schedule`: casa → trabalho/praça →
+casa). `resolvePlace` escolhe o lugar pelo relógio e pelo clima (na chuva ficam em casa, exceto o Ferreiro no balcão). `Npc` anda por A* célula a célula,
+sai/entra pela porta com fade e para no lugar; ao abrir a cena cada um já nasce onde deveria estar. A loja só atende com o Ferreiro atrás do balcão
+(`post`). Clicar num morador leva o jogador até ele e abre a conversa (`ui/dialoguePanel.ts`, na `UIScene`, via `OPEN_DIALOGUE_EVENT`).
+As folhas dos NPCs têm um bloco de quadros por direção (`DIRECTION_INDEX` em `Npc.ts`).
+
+### Campanha e FIM (`data/campaign.ts`, `systems/campaign.ts`, `scenes/EndingScene.ts`)
+
+12 missões em 4 atos (Raízes, Fronteiras, Preparativos, A Noite Final), dadas pelos moradores (entregar colheita/recursos, pagar, ter arma/armadura, abrir
+pontes, vencer hordas). Estado em `gameState.campaign` (vai pro save; saves antigos começam do zero contando as hordas já vencidas). O marcador de
+objetivo fica no canto do HUD (`ui/questTracker.ts`). A missão final é a **Noite Final**: ao dizer "Estou pronto" ao Alberto o dia é marcado
+(`campaign.finalNightDay`), `horde.ts` o trata como dia de horda (horda nº 4: 14 inimigos) e dormir fica bloqueado. Vencê-la chama `completeCampaign()`
+e abre a `EndingScene` (epílogo + resumo; "Continuar jogando" volta à Fazenda no modo livre). Perder a noite (desmaio, ou dia virar com o jogador longe)
+desmarca a data. As hordas comuns (a cada 10 dias) continuam e contam pra missão "Sobreviver à primeira noite".
+
+## Fazenda maior, mapas maiores, Praia com vida e Pedidos
+
+### Fazenda 56x42 e câmera só no liberado (`data/maps/farmMap.ts`, `scenes/MainScene.ts`, `systems/cameraSetup.ts`)
+
+O núcleo da Fazenda cresceu de 40x30 para 56x42 (terreno novo à direita e embaixo; as coordenadas de casa, lavoura e cercas não mudaram). Os trechos de
+expansão acompanham a nova largura/altura, e as pontes leste (Vilarejo) e sul (Praia) foram para as novas paredes. A câmera passou a mostrar só o núcleo
+mais os trechos **já comprados** (`MainScene.computeFarmCameraBounds`): o que está atrás de uma parede trancada fica fora dela, como no lado leste;
+comprar um trecho amplia os limites na hora (`applyWorldCameraBounds`). As compras de expansão agora vão pro save (`gameState.unlockedExpansions`) — antes
+o trecho voltava trancado ao trocar de cena. Saves antigos: a ponte da Praia migra de `30,29` para `30,41`.
+
+### Floresta, Pedreira e Praia maiores; sem tint na Praia/Caverna
+
+Floresta e Pedreira: 26x20 → 40x30, crescendo à direita/embaixo (as árvores/pedras já salvas continuam nos mesmos lugares; o terreno novo tem mais árvores,
+pedras e enfeites, e os tetos de recursos subiram). A Praia: 26x20 → 40x32 (mais areia ao redor, mais mar). O filtro (`BIOME_TINTS`) que escurecia o chão da
+Praia e da Caverna foi removido — só a Mineração ainda usa tint.
+
+### Praia (`data/maps/beachDecor.ts`, `systems/beachBuilder.ts`, `scenes/BeachScene.ts`)
+
+Casinha do pescador (só a fachada, com porta), feirinha (barracas de peixe e frutas), coqueiros com rede, moai, canoa, guarda-sóis com mesinha, cadeiras,
+toalhas e tapetes. As peças e as colisões vêm da MESMA lista (`BEACH_PLACEMENTS` → `beachBlockedCells`). A sereia **Marina** (`data/npcs.ts`, morador
+`stationary`: não anda, só aparece de dia e some à noite) fica no mar junto da areia; clicar nela leva o jogador até lá e abre a conversa.
+
+### Pedidos: missões secundárias (`data/requests.ts`, `systems/requests.ts`)
+
+Cada morador (Bruno, Alberto, Capitão Salgado e Marina) tem 4 pedidos que apresenta em ciclo, **um por dia**: entregar colheita/recursos ou pagar moedas, com
+recompensa em moedas e materiais. A escolha "Pedido do dia" aparece em toda conversa; cumprido, o próximo só vem no dia seguinte. Estado em
+`gameState.requests` (vai pro save); a tela final mostra quantos foram atendidos. Usa as mesmas regras de entrega da campanha (`evaluateRequirement`,
+`consumeRequirements`, `grantReward` em `systems/campaign.ts`).
+
+### Colheita de 1 a 4 (`data/crops.ts` `rollHarvestAmount`)
+
+Cada plantação pronta rende de 1 a 4 unidades (pesos 50/30/15/5 %, média ≈ 1,75), respeitando o mínimo da cultura. A descrição da semente na Loja foi atualizada.
+
+### Sons de porta
+
+`DOOR_SOUND` agora é `door_open.wav` (a pasta "400 Sounds Pack"): toda vez que se passa por uma porta — entrar/sair da casa e os moradores do Vilarejo quando
+entram/saem de casa perto do jogador (até 10 células). `DOOR_KNOCK_SOUND` (`door_knock.wav`) toca quando batem na porta: na manhã em que a caixa do pet chega.
+
+## Ajustes: arado, poeira, sons, horda × casa, caminha do pet
+
+- **Terra arada sem "furos"** (`data/tiles.ts` `SOIL_TILESET_PATH`): o 9-slice original de `Tilled Soil and wet soil.png` traz um quarto de pontinho escuro em cada canto
+  de tile; numa área arada isso virava uma grade de furos. Usa-se uma cópia (`... (sem pontos).png`) com esses pixels trocados pela cor do miolo; o original continua na pasta.
+- **Poeira nos pés só na TERRA** (`systems/grassDust.ts`, `attachFootDust`/`isDirtGround`): sai no caminho de terra (GID autorado que não é grama/água/areia), nos canteiros
+  arados e nas ruas do Vilarejo; nunca na grama nem na ponte. As borboletas continuam nascendo só na grama.
+- **Sons novos** (`data/audio.ts`): 3 batidas de árvore (`AXE_HIT_SOUNDS`, também na cerca), picareta (`ROCK_HIT_SOUNDS`), miados (3) e latidos (2) em volume baixo
+  (`PET_CAT_SOUNDS`/`PET_DOG_SOUNDS`: no carinho, ao morder e de vez em quando sozinhos, `Pet.maybeSpeakOnItsOwn`) e a ponte destravada usa o som das compras (`SPEND_MONEY_SOUND`).
+- **Horda × casa**: com a horda em andamento (ou prestes a começar) a porta não abre ("A horda chegou!") e quem está em casa é posto pra fora (`HouseScene.update`).
+- **Hotbar**: item novo num slot que já tinha ícone (ex.: aspersor no lugar de uma ferramenta de 16px) herdava a escala do anterior — agora a escala é refeita (`HotbarSlotView.visualKey`).
+- **Criação de personagem**: sem o nome do personagem; "Cachorro Caramelo" virou "Cachorro Cinza".
+- **Caminha do bichinho** (`PET_BED` em `data/decorations.ts`, `grantPetBed` em `systems/petEvent.ts`): móvel de 2 blocos (almofada de `Interior/cats furniture.png`), dado UMA vez ao
+  liberar o pet (quem já tinha o pet recebe ao abrir a Fazenda; `petBedGiven` vai pro save), fora da Loja (`notForSale`). Vai pra Bolsa; posiciona-se dentro de casa como os outros móveis.
+
+## Limpeza de sons sem uso e véu da noite "furado"
+
+- **Sons sem uso retirados do projeto**: os antigos `Machado madeira 1/2`, `Picareta pedra 1/2`, `Minerio quebrando`, `Picareta.mp3` (pickaxe genérico), e os sons de
+  impacto gerados por sfxr que os novos arquivos reais substituíram (`Arvore caindo.wav`, `Pedra quebrando.wav`) foram movidos pra `../Mini Fazenda - sons removidos/`
+  (fora do repositório, não apagados). Os pacotes de música que não tocam (`400 Sounds Pack`, `Cozy Tunes`, `Polyshade's Chiptunes` e os `.zip`) também saíram de lá.
+- **Sons de impacto trocados por gravações reais** (`data/audio.ts`): `AXE_HIT_SOUNDS`/`TREE_FALL_SOUND` (`Impacto madeira 1/2`, `Arvore caindo.mp3`) e
+  `ROCK_HIT_SOUNDS`/`ROCK_BREAK_SOUND` (`Impacto da pedra 1/2`, `Pedra quebrada.mp3`), no lugar dos sons gerados por sfxr.
+- **Canto do galo** (`ROOSTER_SOUND`/`ROOSTER_HOURS` em `data/audio.ts`, `MainScene.playRoosterMorning`): toca uma vez por dia, bem baixinho, entre 06:00 e 06:30 —
+  mesmo esquema do `playSprinklerMorning` (`gameState.roosterSoundDay`, não vai pro save).
+- **Logo do Menu Principal mais alto** (`MainMenuScene.ts` `TITLE_LIFT_PX`, 28 → 90, pedido explícito do usuário).
+- **Véu da noite (`systems/dayNightOverlay.ts`) "furado" na metade de baixo do mapa**: a profundidade fixa do retângulo (999) ficava ABAIXO de qualquer objeto do
+  mundo com Y > 999px — árvore, jogador, decoração etc. usam a própria posição Y como profundidade (`setDepth(sprite.y)`), e a própria Fazenda já passa de 999px
+  de altura (núcleo ~1344px). Agora fica um a mais que `POP_TEXT_DEPTH` (`systems/floatingText.ts`, exportada pra isso — já era "acima de qualquer objeto do
+  mundo" pros textos flutuantes), então nada do mundo consegue ficar por cima dele. Também ganhou uma recriação defensiva (destrói e refaz o retângulo se a
+  câmera rolou mais de 400px desde a última vez): um teste isolado mostrou que o MESMO retângulo, com posição/tamanho/profundidade corretos, podia parar de
+  ser desenhado depois de um salto grande e instantâneo da câmera (não acontece com o jogo real, que só rola aos poucos) — a recriação é uma rede de segurança
+  barata pra esse caso, sem custo perceptível.
+
+## Pedra "rock-boulder-2" dividida em duas
+
+O retângulo de `ROCK_FRAME_2` (`data/tiles.ts`, folha `deep forest stones.png`) na verdade continha DUAS pedras desenhadas uma
+embaixo da outra — uma lisa, outra com musgo — pedido explícito do usuário, que mandou um print apontando isso. Separadas
+varrendo linha a linha (y=16-17 é o único par 100% transparente no meio do retângulo original de 29px de altura): `ROCK_FRAME_2`
+agora é só a metade de cima (lisa, 22x13) e a nova `ROCK_FRAME_3` é a metade de baixo (com musgo, 22x14). `buildRock`
+(`systems/externalMapBuilder.ts`) passou a sortear entre 3 variações (`0 | 1 | 2`) em vez de 2 — os 4 lugares que chamam (Fazenda,
+Floresta, Pedreira, Praia) foram ajustados. O ícone de "Pedra" (`data/resources.ts` `STONE`) passou a usar `ROCK_FRAME_2` (a
+lisa, pedido explícito) — antes usava `ROCK_FRAME_1` (a pedra marrom, outra variação, sem relação com o print).
+
+## Tecla F, desfoque de UI, regador vazio, ícone da armadura, caminha do pet
+
+- **Tecla F interage com Loja/Caixa de Remessas/Porta** (`systems/interaction.ts` `Interactable.keyInteractable`,
+  `PlayerController.handleInteractKey`): F já era "comer a colheita" (`handleEatKey`, renomeado) — agora primeiro testa a célula
+  que o personagem está ENCARANDO (`Player.getFacingVector`) por uma interação marcada `keyInteractable` (só
+  `ShopInteractable`/`ShippingBinInteractable`/`EnterHouseInteractable`, pedido explícito); sem nada lá, cai no comportamento
+  antigo (comer). O clique continua funcionando igual, sem mudança nenhuma nele.
+- **Desfoque leve do mundo com qualquer janela de UI aberta** (`systems/worldBlur.ts` `WorldBlur`, pedido explícito): usa o
+  filtro `Blur` nativo do Phaser 4 (`camera.filters.internal`), só na câmera do MUNDO — a HUD/painéis ficam numa câmera à parte
+  (`systems/uiCamera.ts`) que o filtro nunca toca. Ligado em `MainScene`/`ExternalMapScene`/`HouseScene`, sempre que Loja,
+  Inventário, Bancada, Caixa de Remessas, Baú ou Pausa/Configurações estiverem abertos — a Loja não tinha nem trava de clique
+  antes (bug corrigido junto: dava pra andar/interagir com o cenário por trás dela).
+- **"Regador Vazio" flutuante em cima da Hotbar** (`systems/farmlandInteraction.ts` `handleWater`, `ui/hotbar.ts`
+  `hotbarTopCenter`, `systems/floatingText.ts` `PopTextOptions.screenFixed`): antes só um `console.log`. Reaproveita o mesmo
+  `popText` dos "+1 Madeira" etc., com uma opção nova (`screenFixed`, `scrollFactor(0)`) pra ancorar na tela em vez de seguir o
+  mundo — `hotbarTopCenter` expõe a mesma conta de posição que a própria `Hotbar` usa, sem duplicar os números.
+- **Ícone da armadura equipada menor** (`ui/inventoryScreen.ts` `EQUIPPED_ARMOR_ICON_TARGET_PX`, 75% do tamanho normal de ícone
+  — pedido explícito).
+- **Caminha do pet não recolhe mais com um clique comum** (`data/decorations.ts`, flag `noClickPickup` — depois generalizada a todos os móveis, ver a seção "Móveis: clique não recolhe…",
+  `systems/furniturePlacement.ts` `PlacedFurnitureInteractable.interact`): bug corrigido — qualquer móvel voltava pro estoque
+  num clique só, incluindo a caminha, que devia ficar. Continua saindo com a Picareta selecionada, como os demais móveis.
+- **Pet dorme na caminha** (`entities/Pet.ts` estados `toBed`/`sleeping`, `data/pets.ts` `PET_TUNING.sleepChance/sleepMinMs/
+  sleepMaxMs`, `scenes/HouseScene.ts` cálculo de `petBedCell`, `systems/petCompanion.ts`): a cada decisão de "calmo" (mesma hora
+  do sorteio de vagar), se existe uma caminha nesta cena (só a `HouseScene` passa uma célula — as outras cenas nunca têm),
+  chance de ir até a célula andável ao lado dela e dormir lá por um tempo sorteado, com a pose de descanso já existente
+  (`sit-front`, sem arte nova) — de propósito não vira pro jogador enquanto dorme, pra não parecer só "sentado olhando".
+
+## 3 tiers de Aspersor e respingo d'água novo
+
+- **Aspersor de Madeira/Ferro/Ouro** (`data/decorations.ts` `SPRINKLER_WOOD`/`SPRINKLER_IRON`/`SPRINKLER_GOLD`, pedido
+  explícito — arte nova do usuário): troca o único `SPRINKLER` (arte antiga `Sprinkler.webp`, animada, ainda no repo mas sem
+  uso) por 3 decorações com `waterReach`: madeira = 4 terras em cruz, ferro = 8 (quadrado 3x3), ouro = 24 (quadrado 5x5) — `sprinklerReachCells` em `systems/sprinklers.ts`. Ícones
+  estáticos recortados pixel a pixel de `Objects/Props/Sprinkler Tiers.png` (3 quadros lado a lado, sem grade uniforme — mesmo
+  processo do Poço); `displayScaleMultiplier` = 16/25 (os 3 têm o mesmo recorte, 25x23) encolhe pro tamanho de 1 célula. Sem
+  `animationFrames`: a arte nova não trouxe quadros de água jorrando — quem mostra a rega acontecendo agora é só o respingo
+  sobre a terra. O de madeira manteve o id `'sprinkler'` (o único que já existia) pra não quebrar saves com um já posicionado.
+  Preço do ferro (900) e ouro (4.000) são ponto de partida, fácil de ajustar ali mesmo.
+- **Água do aspersor: sprite sobre cada terreno regado** (`systems/sprinklerWater.ts` `playSprinklerWater`, `data/effects.ts`
+  `SPRINKLER_WATER_*`, `Objects/Props/Sprinkler Water.png`): 8 quadros de 32x32 vindos do usuário, 2 por lado (a ponta fina aponta
+  sempre pro aspersor). Toda manhã (`DecorationPlacementSystem.playMorningAnimations`, o mesmo gancho do `playSprinklerMorning`)
+  cada terreno arado com `wateredToday` dentro do alcance do aspersor (`sprinklerReachCells`) ganha o sprite por cima, alternando os 2 quadros por
+  ~2,6s e sumindo; o par de quadros vem do lado em que o terreno fica (eixo dominante da distância, empate = horizontal) e
+  começa um pouco depois quanto mais longe (efeito de onda). Só visual — quem rega é `systems/sprinklers.ts`. Os quadros
+  vêm em cinza-chapado: `setTint` + `TintModes.FILL` com `SPRINKLER_WATER_TINT` (recolorir, não desenhar). As poças sobre a terra
+  regada pelo aspersor saíram de `MainScene.playDayTurnSplashes` (só a chuva ainda "varre" respingos); o respingo azul original
+  (`Sprash.png`) continua valendo pra regador na mão, chuva e Poço — uma troca global anterior foi desfeita.
+
+## Gerenciador de eventos: o Visitante do Dia 8 e os gatos da Amanda
+
+- **`systems/eventManager.ts`** (pedido explícito): cada evento (`WorldEventDefinition`) diz por `isActive()` se deve rodar AGORA (dia/hora de
+  `gameState.gameClock` + estado salvo em `gameState.events.completed`, `data/events.ts`); o `EventManager` (um por `MainScene`, `update` todo
+  frame fora da Pausa) liga o evento (`start` → `WorldEventRuntime`) quando passa a valer e o desliga quando deixa de valer, esperando o
+  `isBusy()` dele. Lista em `systems/events/index.ts` (`WORLD_EVENTS`) — evento novo = uma definição a mais; `preload` de cada um só carrega a
+  arte enquanto ainda há chance de rodar. Não há gancho na virada do dia: a condição é reavaliada, então serve a qualquer forma de o dia mudar.
+- **Evento 1 — o Visitante do Dia 8** (`systems/events/visitorEvent.ts`): a partir das 06h do dia 8, o Capitão Salgado (arte de `data/npcs.ts`) nasce
+  na ponte leste, anda por A* (`Npc.stepToward`, novo — a rotina do Vilarejo não é usada) até `VISITOR_STAND_CELL` (à direita da saída da porta,
+  pra chegar sem cruzar a célula onde o jogador nasce) e para: célula bloqueada, `Interactable` com `keyInteractable` (clique ou F) e um balão
+  "!" (`UI/speech bubble, emojis, reaction.png`, quadro 16x16) balançando em cima. Interagir abre a fala em 3 páginas; ao fechar na última
+  (`onFinish`) o evento é marcado como concluído, salva, e ele volta andando pela ponte e some (`Npc.leave`). ESC no meio só fecha (não
+  conclui, dá pra falar de novo); o dia 8 passando sem falar com ele, ele some sem registrar.
+- **Paginação no `DialoguePanel`** (`DialoguePayload.pages`/`onFinish`): setas `<` `>` (mesmo estilo dos botões da Criação de Personagem), contador
+  "1/3", teclas ← → e Enter; botões (`actions`, "Fechar") e `details` só na última página. Falas de uma página só não mudam. A `MainScene` agora
+  também trava movimento/clique e não abre a Pausa com o ESC enquanto há conversa (`isDialogueOpen`, `DIALOGUE_ESC_GRACE_MS`).
+- **Evento 2 — Easter egg da Amanda** (`systems/events/amandaCatsEvent.ts`): `isAmandaWithCat` (nome "Amanda" — sem diferenciar maiúsculas/espaços — e pet
+  gato). Ativo do momento em que o pet é liberado (`petUnlocked`) até o dia 10 (`AMANDA_RESOLVE_DAY`): além do companheiro de sempre (`PetCompanion`),
+  6 gatos visitantes (mesma classe `Pet`, peles sorteadas dos gatos de `data/pets.ts`, `Pet` ganhou `spawnCell`; clicar neles também faz carinho).
+  No dia 10 eles somem (`Pet.fadeOutAndDestroy`) e a carta `AMANDA_LETTER` (agendada com `scheduleMail` assim que o evento começa) chega na Caixa
+  de Correio, explicando com humor que já tinham dono. Sem mudança para quem não é a Amanda; se o pet só chegar depois do dia 10 o evento nem começa.
+  Os gatos extras só existem na Fazenda (nas outras cenas continua só o companheiro).
+
+## Chuva molha a terra arada; pet dormindo na caminha (correções)
+
+- **Chuva × arar/plantar** (`Farmland.till`/`plant` ganharam `raining`, `farmlandInteraction.ts` passa `gameState.weather.raining`; `waterAll`): em dia de
+  chuva a terra recém-arada (e a semente recém-plantada) já nasce molhada — mesma regra do solo colhido (`harvest`). Na virada de um dia chuvoso a
+  chuva também molha a terra arada VAZIA (antes só molhava `growing`), então arada e plantada ficam iguais.
+- **Pet dormindo de verdade** (`entities/Pet.ts`, `data/pets.ts`, `scenes/HouseScene.ts`): três causas de ele quase nunca dormir. (1) A coleira do pet
+  (seguir o jogador além de `leashTiles`) valia em qualquer estado e o tirava da caminha assim que o jogador andava pela casa — `toBed`/`sleeping`
+  agora ficam de fora (só `teleportDistance` os traz). (2) O lado livre da caminha era calculado uma vez, ANTES dos outros móveis: um móvel ao lado dela
+  deixava o pet sem destino pra sempre — agora `Pet` recebe um provedor das células da caminha (`petBedCells`, lido de `gameState.placedFurniture`) e
+  escolhe o lado livre mais perto na hora de decidir (`beginGoingToBed`). (3) Poucas chances e sonos curtos: `PET_TUNING.sleepChance` 0,35 → 0,7,
+  sono de 15-35 s. Além disso ele agora SOBE na caminha (pulinho até a célula dela, `onBed`, desenhado à frente) e desce ao lado ao acordar (fim do
+  sono, carinho ou briga).
+- **Animação de dormir do pet** (`getPetSleepAnim`, `PetAnimName` `'sleep'`): usa a linha de dormir da própria folha (pedido do usuário) em vez da pose
+  sentada — gatos: linha 9 (enroladinho); cachorros: linha 8 (deitado com a cabeça nas patas; a folha deles é deslocada uma linha nesse ponto). 4
+  quadros a 2 fps.
+
+- **Pet centralizado na caminha e "Zzz"** (`Pet.sleepSpot`, `emitSleepZ`, pedido explícito): o pet se deita no CENTRO da caminha inteira (média das células
+  dela, a caminha tem 2), `SLEEP_LIFT_PX` acima da base, com a profundidade logo à frente dela. Enquanto dorme, "z" de tamanhos crescentes sobem da
+  cabeça a cada ~0,9 s. Não existe arte de Zzz nos assets (só rostos de emoji, corações, etc.), então é o mesmo texto flutuante do jogo (`popText`,
+  como o "Regador Vazio"); se vier uma arte de "Zzz", é só trocar o `popText` por um sprite em `emitSleepZ`.
+
+- **Descrição da Loja não vaza mais da caixinha** (`ui/shopMenu.ts` `fitDescription`, pedido explícito): as descrições dos 3 aspersores foram resumidas
+  (~100 caracteres) e, como rede de segurança pra qualquer texto longo, a descrição parte da fonte normal (10px) e reduz 1px por vez até caber na altura
+  livre entre o nome e o preço (`DETAIL_DESCRIPTION_MAX_HEIGHT`), com mínimo de 7px. Conferidos todos os itens: cabem, os mais longos (sementes/receitas) em 9px.
+
+## Móveis: clique não recolhe, cadeira com as pernas inteiras e sentar
+
+- **Clique comum não recolhe NENHUM móvel** (`systems/furniturePlacement.ts` `PlacedFurnitureInteractable.interact`, pedido explícito): o bug da caminha do pet
+  (`noClickPickup`, flag removida) valia pra todos — agora só a Picareta (despedaça e devolve à Bolsa) tira um móvel; o Baú continua pelo "Recolher".
+- **Cadeira com as pernas inteiras** (`CHAIR.frameRect`): o recorte tinha 15px de altura, mas a arte vai de y=13 a y=30 (18px) — as pernas ficavam cortadas.
+  Conferidos os outros móveis (mesa, sofá, cômoda, caminha, baú): sem corte.
+- **Sentar na Cadeira e no Sofá** (`DecorationDefinition.seat`, `Player.sitAt/standUp/isSitting`, pedido explícito): interagir (clique com o jogador ao
+  lado, ou tecla F) senta o jogador na célula do móvel mais perto dele, virado pra frente, na pose da folha `Sitting` (a mesma da ação de comer). A célula
+  lógica não muda (volta pra ela ao levantar); o clique (interceptador na `HouseScene`, que só levanta) ou uma tecla de andar (`tryStep`) o levantam.
+  **Bug corrigido:** a 1ª versão fazia `isBusy()` responder "ocupado" quando sentado, e o `PlayerController` ignora clique/teclas de quem está ocupado — então
+  ninguém levantava. `isSitting()` é separado de `isBusy()` (ações e passos checam `sitting` por conta própria). Posição: `DecorationDefinition.seat {x, y}` (px a
+  partir do meio da base da célula do assento; cadeira `{0, -1}`, sofá `{-8, -1}`), com o ponto limitado às bordas do móvel (`SEAT_EDGE_MARGIN_PX`).
+
+- **Baú também na Fazenda e Picareta quebra qualquer móvel** (pedido explícito): (1) `DecorationDefinition.outdoor` (só o Baú): o móvel `placement: 'house'` que também
+  pode ser posicionado fora da casa — `DecorationPlacementSystem.canPlaceAt` e `MainScene.resolveSelectedDecoration` o aceitam (fora da lavoura, como Poço/Bancada).
+  Lá o `PlacedDecorationInteractable` abre o `ChestMenu` (mesmo evento `OPEN_CHEST_MENU_EVENT`, que a `MainScene` agora respeita: trava movimento/clique, E e ESC).
+  O estoque do baú da Fazenda tem id próprio (`farmChestId` = `"farm:col,row"`), pra não colidir com um baú da casa na mesma célula; o dos baús da casa segue
+  `"col,row"` (saves antigos). Vai pro save junto de `placedDecorations`/`chests`. (2) Em ambos os lugares a Picareta agora vem ANTES da abertura do baú (antes o baú
+  abria o menu e nunca quebrava) e quebra o baú — mas só VAZIO: cheio, mostra "Esvazie o baú antes" (os itens sumiriam); o "Recolher" do menu continua.
+
+## Água do mar da Praia e Modo Editor da Vila
+
+- **Mar da Praia sem faixas** (`systems/waterCells.ts` `groundWithWaterRect`, `scenes/BeachScene.ts`, pedido explícito): o mar tinha duas camadas — a água animada do chão
+  autorado (autotile, ciano claro) e, POR CIMA, o retângulo antigo `oceanArea` desenhado como textura de água plana (`buildWaterArea`, azul escuro, só 4 linhas) —, daí as faixas.
+  Agora o retângulo entra no próprio chão (`ground` com GID de água plana nas células dele) e o autotile desenha tudo; o `buildWaterArea` saiu da Praia. A colisão
+  segue igual (`obstacleCells` + `waterCellsFromGround`). O lago da Floresta ainda usa `buildWaterArea`.
+- **Editor da Vila** (`MapEditorScene` `mapType: 'village'`, F2 dentro da Vila, mesmo esquema dos outros: `MAP_TYPE_CONFIGS`, `seedVillage`, `exportVillage`, tecla P):
+  - **Dados** em `data/maps/villageLayout.ts` (formato dos outros mapas: `cols/rows`, `ground`, `backgroundColor`, `blockedArea`, `props`, mais `structures`/`well`/`trees`);
+    `data/maps/villageMap.ts` deixou de ter as posições e passou a derivar tudo de lá (`VILLAGE_STRUCTURES`, `VILLAGE_WELL`, `VILLAGE_TREES`, `VILLAGE_PROPS`, colisão
+    com `blockedArea`); as artes e as máscaras de colisão (`VILLAGE_ASSETS`) continuam no `villageMap.ts` — o editor NÃO as reescreve.
+  - **Paleta**: Casa Abandonada/Azul/de Pedra/de Madeira (Loja), Banca, Chafariz, Poço da Praça (único), Pinheiro + Mover, Bloco de Colisão e Borracha; abas Ground
+    (tiles: Grama/Solo/Água/Praia), Entities e Decoração (props) como nas outras cenas. Estruturas desenhadas como no jogo (canto superior-esquerdo da arte na célula).
+  - **`role` das casas de moradores** (`shop`/`banker`/`pirate`, `VillageStructureRole`): o Ferreiro, o Banqueiro e o Pirata moram nas casas com o `role` deles
+    (`VILLAGE_SHOP_HOUSE`/`BANKER`/`PIRATE` agora procuram por `role`); mover a casa no editor leva o `role` junto (a loja, a porta e a rotina do morador seguem).
+    Apagar uma delas avisa no console e o jogo usa a posição padrão (nunca fica sem casa).
+  - **Chão**: o editor semeia com grama procedural + as ruas de terra (`villageDirtZone`); o que for pintado vira `ground` autorado e a `VillageScene` passa a usá-lo
+    (sem `ground`, continua procedural + ruas). Cor de fundo: o editor agora parte da que o mapa já tem (`mapData.backgroundColor`), em todos os mapas — antes sempre
+    exportava o cinza-padrão do editor por cima.
+  - **Salvar**: tecla P baixa o `villageLayout.ts` completo; é só substituí-lo em `src/data/maps/`. Testado: a exportação sem mexer reproduz exatamente o layout
+    atual, e um layout com chão autorado e a casa da loja movida carregou na cena (fachada, casa do Ferreiro e colisão seguiram).
+
+## Card automático de compra das pontes
+
+`systems/bridgeSystem.ts` (`offerPurchase`/`buy`/`handlePlayerStep`, pedido explícito — a placa da Praia fica na borda de baixo do mapa, por baixo da Hotbar, e era
+difícil de clicar; antes clicar na placa já pagava na hora, sem confirmação): ao chegar a até `OFFER_RANGE_CELLS` (3) células de uma ponte ainda bloqueada, abre sozinho um card
+(o mesmo `DialoguePanel`, por `OPEN_DIALOGUE_EVENT`) com o preço, quanto o jogador tem e os botões "Comprar (preço)" — apagado se faltar moeda ("Faltam N moedas") — e "Fechar".
+Comprar paga (`tryPayRequirement`), libera a ponte e mostra "Ponte liberada". Oferece UMA vez por aproximação (`offered`): fechar o card não o reabre a cada passo — só depois de
+se afastar (mais de 4 células) e voltar. Clicar na placa continua funcionando e abre o mesmo card. A Fazenda trava movimento/clique/ESC durante a conversa (já feito pro visitante do dia 8).
+
+## Caixa de Correio e grid de alcance do aspersor
+
+- **Caixa de Correio** (`data/mail.ts`, `systems/mail.ts`, `systems/mailbox.ts`, pedido explícito): objeto sólido fixo na Fazenda
+  (`MAILBOX_CELL`, à esquerda da casa), com a arte que já existia (uma das 4 caixas de correio em poste de `Objects/Exterior/Exterior.png`,
+  recorte pixel a pixel — nenhuma arte nova). Segue o molde da caixa do pet (`petBox.ts`): bloqueia a célula, o jogador interage ao lado
+  (clique ou tecla F — `keyInteractable`).
+  - **Cartas agendadas** (`MailMessage.deliverOnDay`): uma carta está "na caixa" quando o dia do jogo (`GameClock.getDay`) chegou nela e ela
+    ainda não foi lida — derivado, sem gancho na virada do dia. Duas fontes: `MAIL_SCHEDULE` (fixas, em `data/mail.ts`; uma carta nova é só
+    mais uma entrada) e `scheduleMail(message)` (qualquer sistema agenda por código; um `id` repetido é ignorado). `{nome}` no texto vira o
+    nome do jogador (`renderMail`).
+  - **Leitura**: interagir abre a mais antiga não lida no `LetterPanel` já existente (evento `OPEN_LETTER_EVENT`, mesmo da caixa do pet); o
+    botão termina a leitura → `markMailRead` + `saveGame()`. Várias cartas = uma por interação; sem nenhuma, o aviso flutuante "Sem cartas
+    novas". Enquanto há carta não lida, o papel do `Exterior.png` flutua em cima da caixa (`Mailbox.update`).
+  - **Save** (`gameState.mail`, `MailState`): só `readIds` e `custom` (as agendadas por código); as fixas não são duplicadas no save. Save
+    antigo (sem o campo) carrega sem nenhuma lida — cartas fixas de dias já passados chegam de uma vez. Só existe na `MainScene` (a Fazenda).
+  - Carta de exemplo: `welcome`, no dia 2 (texto provisório — troque em `MAIL_SCHEDULE`).
+- **Grid verde de alcance do aspersor** (`DecorationPlacementSystem.drawCoverage`): no modo de posicionamento de qualquer decoração com
+  `waterReach`, um `Graphics` (fill verde translúcido + contorno, mesmo visual do grid de colisão de `debugGridOverlay.ts`) marca os
+  terrenos que ele regaria a partir da célula sob o cursor — as células vêm de `sprinklerReachCells` (`systems/sprinklers.ts`, a ÚNICA fonte
+  da regra, usada também pela rega e pela água animada; só onde `Farmland.getPlot` existe), então mostra exatamente o que será regado.
+  Alcance por tier (pedido explícito, corrigido — a 1ª versão tratava 4/8/24 como RAIO, e cobria dezenas de terras): madeira 4 terras em
+  cruz (`cross`/1), ferro 8 (`square`/1 = 3x3), ouro 24 (`square`/2 = 5x5). Redesenha só quando a célula muda; some ao cancelar.

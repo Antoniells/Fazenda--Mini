@@ -1,8 +1,16 @@
 import Phaser from 'phaser';
+import { playClick } from '../systems/soundEffects';
 import {
   INVENTORY_PANEL_KEY,
+  INVENTORY_PANEL_FRAME_NAME,
+  INVENTORY_PANEL_RECT,
+  INVENTORY_PANEL_BORDER,
   INVENTORY_SLOT_FRAME_NAME,
   INVENTORY_SLOT_RECT,
+  INVENTORY_LARGE_PANEL_KEY,
+  INVENTORY_LARGE_PANEL_FRAME_NAME,
+  INVENTORY_LARGE_PANEL_RECT,
+  INVENTORY_LARGE_PANEL_BORDER,
   SHOP_BOOK_KEY,
   SHOP_BOOK_FRAME_NAME,
   SHOP_TAB_RIBBONS_KEY,
@@ -10,6 +18,9 @@ import {
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_X_ICON_FRAME,
   CLOSE_X_ICON_PRESSED_FRAME,
+  EXTRAS_UI_KEY,
+  GLOBAL_CURSOR_CORNER_NAMES,
+  GLOBAL_CURSOR_CORNER_RECTS,
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
 
@@ -17,7 +28,7 @@ const BOOK_SCALE = 2.2;
 const SLOT_SCALE = 1.7;
 const SLOT_GAP = 5;
 const ROW_GAP = 16;
-/** Cada página do livro comporta um grid de 6 colunas x 4 linhas. */
+/** A página esquerda comporta um grid de 6 colunas x 4 linhas de itens à venda. */
 const GRID_COLS = 6;
 const GRID_ROWS = 4;
 const ITEMS_PER_PAGE = GRID_COLS * GRID_ROWS;
@@ -60,27 +71,26 @@ const TAB_ICON_TARGET_PX = 28;
 /** Centro da porção da bandeirola que fica PRA FORA do livro (não a que fica em cima da capa), pra não desenhar o ícone em cima da borda de madeira. */
 const TAB_ICON_OFFSET_X = 2;
 const TAB_ICON_OFFSET_Y = -18;
-const TAB_ACTIVE_SHIFT_X = 15;
-
+const TAB_SELECTOR_SCALE = 1.5;
+const TAB_SELECTOR_PADDING = 2;
+type CornerKey = keyof typeof GLOBAL_CURSOR_CORNER_NAMES;
 /**
  * Botão de fechar (lado direito): fundo é o "marcador de página" de couro
  * de `Book.png` (`CLOSE_TAB_BG_FRAME`), mesma técnica de ancoragem das
  * abas espelhada (origin pela esquerda). Depth MAIOR que o do livro —
  * pedido explícito do usuário — desenha por CIMA da capa. O ícone "X"
- * (`CLOSE_X_ICON_FRAME`, de `UI/button.png`) fica centralizado na parte do
+ * (`CLOSE_X_ICON_FRAME`, de `UI/HUD.png`) fica centralizado na parte do
  * marcador que sai pra fora do livro, com depth um pouco maior que o do
  * marcador (só decorativo, pra ficar por cima dele).
  */
 const CLOSE_MARK_SCALE = 1.8;
 const CLOSE_BOOK_OVERLAP = 30;
-// Maior que antes pra ajudar a destacar do marcador de couro por trás — o
-// recorte placeholder de `CLOSE_X_ICON_FRAME` (ver `data/ui.ts`) é um
-// "selo" marrom/laranja (mesma família de cor do couro), não um X vermelho
-// isolado; baixo contraste é esperado até o usuário trocar pela coordenada
-// definitiva.
 const CLOSE_X_TARGET_PX = 30;
 /** Centro da porção visível do marcador (mesma ideia do `TAB_ICON_OFFSET_X`, só que a partir da esquerda). */
 const CLOSE_X_OFFSET_X = CLOSE_BOOK_OVERLAP + (CLOSE_TAB_BG_FRAME.rect.width * CLOSE_MARK_SCALE - CLOSE_BOOK_OVERLAP) / 2;
+/** Ajuste fino do "X" dentro do marcador de couro (negativo = esquerda/cima). */
+const CLOSE_X_ADJUST_X = -16;
+const CLOSE_X_ADJUST_Y = -8;
 
 /**
  * Área de papel em branco de cada página, dentro do frame já recortado do
@@ -96,20 +106,49 @@ const PAGE_RECT = {
   height: 119,
 };
 
+/**
+ * Página direita (detalhe do item selecionado — mesmo esquema da aba
+ * Agricultura do Inventário): painel do ícone grande, painel de texto (nome,
+ * descrição, preço) e o botão "Comprar". Todos `NineSlice` de tamanho FIXO
+ * (cantos preservados, só o miolo estica).
+ */
+const DETAIL_ICON_PANEL_WIDTH = 96;
+const DETAIL_ICON_PANEL_HEIGHT = 84;
+const DETAIL_TEXT_PANEL_WIDTH = 176;
+const DETAIL_TEXT_PANEL_HEIGHT = 128;
+const DETAIL_GAP = 4;
+/** Descrição do item: fonte normal, mínimo legível e altura livre (do fim do nome até logo acima do preço, na caixinha de texto). */
+const DETAIL_DESCRIPTION_FONT_PX = 10;
+const DETAIL_DESCRIPTION_MIN_FONT_PX = 7;
+const DETAIL_DESCRIPTION_MAX_HEIGHT = 63;
+const DETAIL_ICON_TARGET_PX = DETAIL_ICON_PANEL_HEIGHT * 0.55;
+const BUY_BUTTON_WIDTH = 96;
+const BUY_BUTTON_HEIGHT = 28;
+const TEXT_INK = '#4a3524';
+const TEXT_SOFT = '#6b5a4a';
+const TEXT_PRICE = '#6b3f1f';
+const FONT = '"Courier New", Courier, monospace';
+const BUY_ENABLED_TINT = 0xffffff;
+const BUY_DISABLED_TINT = 0x8f8f8f;
+
 /** As 3 categorias da Loja (Fase 8) — preparadas para o upgrade futuro de ferramentas. */
 export type ShopCategory = 'agriculture' | 'tools' | 'construction';
 
 /**
  * Formato mínimo que qualquer coisa vendida na Loja precisa ter — sementes
- * (`CropDefinition`) e decorações (`DecorationDefinition`) são formas
- * diferentes na origem dos dados, mas ambas cabem aqui sem o `ShopMenu`
- * precisar saber a diferença entre elas. Quem monta essa lista (`MainScene`)
- * decide o preço de cada uma (`seedPrice` para culturas, `price` para
- * decorações) e a categoria/aba onde aparece.
+ * (`CropDefinition`), decorações (`DecorationDefinition`) e receitas
+ * (`RecipeDefinition`) são formas diferentes na origem dos dados, mas todas
+ * cabem aqui sem o `ShopMenu` precisar saber a diferença entre elas. Quem
+ * monta essa lista (`MainScene`) decide nome, descrição, preço de cada uma e
+ * a categoria/aba onde aparece.
  */
 export interface ShopItem {
   id: string;
   category: ShopCategory;
+  /** Nome mostrado no painel de detalhe. */
+  name: string;
+  /** Texto do painel de detalhe (o que é / o que faz). */
+  description: string;
   textureKey: string;
   /** Frame do ícone: número (spritesheet, culturas) ou nome (frame recortado à mão, decorações). */
   iconFrame: number | string;
@@ -130,7 +169,7 @@ interface ShopTab {
   category: ShopCategory;
   background: Phaser.GameObjects.Image;
   icon: Phaser.GameObjects.Image;
-  /** Posição X "de repouso" (aba inativa) — a ativa desloca `TAB_ACTIVE_SHIFT_X` a mais pra esquerda. */
+  /** Posição X de repouso da bandeirola. */
   baseX: number;
   y: number;
 }
@@ -144,60 +183,71 @@ interface ShopSlot {
 }
 
 /**
- * Painel de compra com abas (Fase 8): fundo de `UI/Inventory/Book.png` (um
- * livro aberto), com 3 categorias (Agricultura/Ferramentas/Construções)
- * selecionáveis por ícones no canto superior esquerdo — preparando o
- * terreno para vender upgrades de ferramentas mais pra frente (aba já
- * existe, só sem itens ainda).
+ * Loja (Fase 8), no mesmo esquema da aba Agricultura do Inventário (pedido
+ * explícito): fundo de `UI/Inventory/Book.png` (um livro aberto) com 3
+ * categorias (Agricultura/Ferramentas/Construções) nas abas da lateral.
  *
- * Os itens são desenhados num GRID (6 colunas x 4 linhas por página, igual
- * à `InventoryScreen`), não numa barra horizontal — cada slot usa a mesma
- * imagem de quadrado individual de `inventory.png`
- * (`INVENTORY_SLOT_FRAME_NAME`) que o Inventário, para manter a
- * consistência visual entre as duas telas. Posição de cada item calculada
- * por módulo/divisão (`col = index % 6`, `row = Math.floor(index / 6)`);
- * passando de 24 itens (uma página cheia), os seguintes migram para o
- * `startX` da página direita. O pool de slots é dimensionado para a maior
- * categoria (reciclado ao trocar de aba, recicla textura/preço em vez de
- * recriar objetos).
+ * Página ESQUERDA = os itens à venda da aba ativa, num grid de slots (6x4,
+ * o quadrado individual de `inventory.png`, com o preço embaixo); clicar num
+ * slot só SELECIONA o item (cantinhos de destaque ao redor). Página DIREITA
+ * = detalhe do item selecionado: ícone grande, nome, descrição e preço, e o
+ * botão "Comprar" (é ele que pede a compra — nunca o clique no slot).
  *
- * Fica oculto até `open()`/`toggle()`. Puramente visual e de clique: quem
- * decide se a compra é possível é sempre `Inventory`, via o callback
- * `onBuy` passado no construtor — este painel só pede a compra e depois
- * reflete o resultado (`refresh`), nunca decide sozinho.
+ * Puramente visual e de clique: quem decide se a compra é possível é sempre
+ * `Inventory`, via o callback `onBuy` passado no construtor — este painel só
+ * pede a compra e depois reflete o resultado (`refresh`), nunca decide
+ * sozinho. `isOwned` (opcional) diz se um item único (ex.: receita) já foi
+ * comprado — o botão vira "Já possui" e fica desativado.
  *
- * Bug corrigido (mantido nesta refatoração): os slots (e os ícones das
- * abas) ficavam permanentemente interativos mesmo com a Loja fechada —
- * como usam `setScrollFactor(0)` (posição fixa na tela), um clique no
- * MUNDO que caísse por baixo dessa região (ex.: o clique que abre a Loja)
- * também disparava `onBuy` no mesmo evento. `setElementsVisible` habilita/
- * desabilita (`setInteractive`/`disableInteractive`) cada slot junto da
- * visibilidade, e cada handler ainda confere `isOpen_` como segunda camada
- * de proteção.
+ * Os slots/botões só ficam interativos com a Loja aberta (`setElementsVisible`
+ * liga/desliga junto da visibilidade, e cada handler ainda confere
+ * `isOpen_`): como usam `setScrollFactor(0)` (posição fixa na tela), sem isso
+ * um clique no MUNDO que caísse por baixo dessa região (ex.: o clique que
+ * abre a Loja) também dispararia a compra.
  */
 export class ShopMenu {
   private readonly book: Phaser.GameObjects.Image;
   private readonly tabs: ShopTab[] = [];
+  private readonly tabSelector: Record<CornerKey, Phaser.GameObjects.Image>;
+  private readonly gridSelector: Record<CornerKey, Phaser.GameObjects.Image>;
   private readonly slots: ShopSlot[] = [];
   private readonly emptyText: Phaser.GameObjects.Text;
   private readonly closeButton: Phaser.GameObjects.Image;
   private readonly closeButtonMark: Phaser.GameObjects.Image;
+  private readonly detailIconPanel: Phaser.GameObjects.NineSlice;
+  private readonly detailIcon: Phaser.GameObjects.Image;
+  private readonly detailTextPanel: Phaser.GameObjects.NineSlice;
+  private readonly detailName: Phaser.GameObjects.Text;
+  private readonly detailDescription: Phaser.GameObjects.Text;
+  private readonly detailPrice: Phaser.GameObjects.Text;
+  private readonly buyButton: Phaser.GameObjects.NineSlice;
+  private readonly buyLabel: Phaser.GameObjects.Text;
   private readonly itemsByCategory: Map<ShopCategory, ShopItem[]>;
   private activeCategory: ShopCategory;
+  private selectedItemId: string | null = null;
   private isOpen_ = false;
   private lastCoins = 0;
 
-  constructor(scene: Phaser.Scene, tabDefs: ShopTabDefinition[], items: ShopItem[], onBuy: (itemId: string) => void) {
-    const texture = scene.textures.get(INVENTORY_PANEL_KEY);
-    if (!texture.has(INVENTORY_SLOT_FRAME_NAME)) {
-      texture.add(
-        INVENTORY_SLOT_FRAME_NAME,
-        0,
-        INVENTORY_SLOT_RECT.x,
-        INVENTORY_SLOT_RECT.y,
-        INVENTORY_SLOT_RECT.width,
-        INVENTORY_SLOT_RECT.height,
-      );
+  constructor(
+    scene: Phaser.Scene,
+    tabDefs: ShopTabDefinition[],
+    items: ShopItem[],
+    private readonly onBuy: (itemId: string) => void,
+    private readonly isOwned: (itemId: string) => boolean = () => false,
+  ) {
+    const panelTexture = scene.textures.get(INVENTORY_PANEL_KEY);
+    for (const [name, rect] of [
+      [INVENTORY_SLOT_FRAME_NAME, INVENTORY_SLOT_RECT],
+      [INVENTORY_PANEL_FRAME_NAME, INVENTORY_PANEL_RECT],
+    ] as const) {
+      if (!panelTexture.has(name)) panelTexture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+    }
+
+    // A Loja é criada antes da UIScene (que registraria isto via InventoryScreen) — garante o recorte da moldura grande aqui também.
+    const largePanelTexture = scene.textures.get(INVENTORY_LARGE_PANEL_KEY);
+    if (!largePanelTexture.has(INVENTORY_LARGE_PANEL_FRAME_NAME)) {
+      const rect = INVENTORY_LARGE_PANEL_RECT;
+      largePanelTexture.add(INVENTORY_LARGE_PANEL_FRAME_NAME, 0, rect.x, rect.y, rect.width, rect.height);
     }
 
     this.itemsByCategory = new Map();
@@ -222,6 +272,34 @@ export class ShopMenu {
     const bookLeft = centerX - bookWidth / 2;
     const bookTop = centerY - bookHeight / 2;
 
+    // Cantinhos de destaque (mesma arte do cursor global): um conjunto pra aba
+    // ativa, outro pro item selecionado no grid. Criados UMA vez (antes do
+    // loop das abas/slots) — as posições são recalculadas em `renderActiveCategory`.
+    const cursorTexture = scene.textures.get(EXTRAS_UI_KEY);
+    for (const key of Object.keys(GLOBAL_CURSOR_CORNER_NAMES) as CornerKey[]) {
+      const name = GLOBAL_CURSOR_CORNER_NAMES[key];
+      if (!cursorTexture.has(name)) {
+        const rect = GLOBAL_CURSOR_CORNER_RECTS[key];
+        cursorTexture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+      }
+    }
+    const makeSelector = (scale: number, depth: number): Record<CornerKey, Phaser.GameObjects.Image> => {
+      const makeCorner = (key: CornerKey, originX: number, originY: number): Phaser.GameObjects.Image => {
+        const corner = scene.add.image(0, 0, EXTRAS_UI_KEY, GLOBAL_CURSOR_CORNER_NAMES[key]);
+        corner.setOrigin(originX, originY);
+        corner.setScale(scale);
+        corner.setScrollFactor(0);
+        corner.setDepth(depth);
+        return corner;
+      };
+      return {
+        topLeft: makeCorner('topLeft', 0, 0),
+        topRight: makeCorner('topRight', 1, 0),
+        bottomLeft: makeCorner('bottomLeft', 0, 1),
+        bottomRight: makeCorner('bottomRight', 1, 1),
+      };
+    };
+
     // Abas empilhadas verticalmente na lateral ESQUERDA do livro — ver
     // comentário da constante `TAB_SCALE` acima pra técnica de ancoragem
     // (origin 1,0.5 + depth por cima da capa). Empilhamento incrementa o
@@ -231,6 +309,9 @@ export class ShopMenu {
     let tabY = centerY - totalTabsHeight / 2 + TAB_DISPLAY_THICKNESS / 2;
     const tabDepth = this.book.depth + 1;
 
+    this.tabSelector = makeSelector(TAB_SELECTOR_SCALE, tabDepth + 2);
+    this.gridSelector = makeSelector(SLOT_SCALE, 3003);
+
     for (const tabDef of tabDefs) {
       const background = scene.add.image(tabX, tabY, SHOP_TAB_RIBBONS_KEY, tabDef.tabFrame);
       background.setOrigin(1, 0.5);
@@ -238,7 +319,6 @@ export class ShopMenu {
       background.setRotation(TAB_ROTATION);
       background.setScrollFactor(0);
       background.setDepth(tabDepth);
-      
 
       const icon = scene.add.image(tabX + TAB_ICON_OFFSET_X, tabY + TAB_ICON_OFFSET_Y, tabDef.textureKey, tabDef.iconFrame);
       icon.setOrigin(0.5, 0.5);
@@ -258,9 +338,18 @@ export class ShopMenu {
         (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
           if (!this.isOpen_) return;
           event.stopPropagation();
+          playClick(scene);
           this.selectCategory(tabDef.category);
         },
       );
+      background.on('pointerover', () => {
+        if (!this.isOpen_) return;
+        background.setTexture(SHOP_TAB_RIBBONS_KEY, tabDef.tabFrameHover);
+      });
+      background.on('pointerout', () => {
+        if (!this.isOpen_) return;
+        background.setTexture(SHOP_TAB_RIBBONS_KEY, tabDef.tabFrame);
+      });
 
       this.tabs.push({ category: tabDef.category, background, icon, baseX: tabX, y: tabY });
       tabY += TAB_DISPLAY_THICKNESS + TAB_GAP_Y;
@@ -280,40 +369,36 @@ export class ShopMenu {
     this.closeButton.setDepth(closeDepth);
     this.closeButton.setInteractive({ useHandCursor: true });
     this.closeButton.disableInteractive();
-// 1. Ao APERTAR o botão: muda para a arte do X clicado
-this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
-      if (!this.isOpen_) return;
-      event.stopPropagation();
-      
-      // 1. Muda a arte instantaneamente
-      this.closeButtonMark.setFrame(CLOSE_X_ICON_PRESSED_FRAME.name); 
-
-      // 2. O relógio nativo do sistema (setTimeout) conta 100ms e fecha a tela!
-      setTimeout(() => {
-        if (this.isOpen_) {
-          this.closeButtonMark.setFrame(CLOSE_X_ICON_FRAME.name); 
-          this.close(); 
-        }
-      }, 90);
-    });
-
-    const ajusteX = -16; // Valores negativos puxam para a esquerda
-    const ajusteY = -8;  // Valores negativos sobem, positivos descem
-    
-    this.closeButtonMark = scene.add.image(
-      closeX + CLOSE_X_OFFSET_X + ajusteX, 
-      centerY + ajusteY, 
-      CLOSE_BUTTON_SHEET_KEY, 
-      CLOSE_X_ICON_FRAME.name
+    // Ao APERTAR: troca pra arte do X pressionado e, ~90ms depois, fecha a tela.
+    this.closeButton.on(
+      'pointerdown',
+      (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        if (!this.isOpen_) return;
+        event.stopPropagation();
+        playClick(scene);
+        this.closeButtonMark.setFrame(CLOSE_X_ICON_PRESSED_FRAME.name);
+        setTimeout(() => {
+          if (this.isOpen_) {
+            this.closeButtonMark.setFrame(CLOSE_X_ICON_FRAME.name);
+            this.close();
+          }
+        }, 90);
+      },
     );
-    
+
+    this.closeButtonMark = scene.add.image(
+      closeX + CLOSE_X_OFFSET_X + CLOSE_X_ADJUST_X,
+      centerY + CLOSE_X_ADJUST_Y,
+      CLOSE_BUTTON_SHEET_KEY,
+      CLOSE_X_ICON_FRAME.name,
+    );
     this.closeButtonMark.setOrigin(0.5, 0.5);
     this.closeButtonMark.setScale(computeFitScale(this.closeButtonMark, CLOSE_X_TARGET_PX));
     this.closeButtonMark.setScrollFactor(0);
     this.closeButtonMark.setDepth(closeDepth + 1);
 
-    // Geometria do grid: célula = quadrado individual do Inventário,
-    // centralizada dentro da área de papel em branco de cada página.
+    // Página ESQUERDA: grid de itens à venda (célula = quadrado individual do
+    // Inventário, centralizada dentro da área de papel em branco da página).
     const slotWidth = INVENTORY_SLOT_RECT.width * SLOT_SCALE;
     const slotHeight = INVENTORY_SLOT_RECT.height * SLOT_SCALE;
     const gridWidth = GRID_COLS * slotWidth + (GRID_COLS - 1) * SLOT_GAP;
@@ -324,27 +409,12 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     const startY = pageTop + (pageHeight - gridHeight) / 2 + slotHeight / 2;
 
     const leftPageWidth = PAGE_RECT.left.width * BOOK_SCALE;
-    const rightPageWidth = PAGE_RECT.right.width * BOOK_SCALE;
-const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - gridWidth) / 2 + slotWidth / 2;
-    const rightStartX = bookLeft + PAGE_RECT.right.x * BOOK_SCALE + (rightPageWidth - gridWidth) / 2 + slotWidth / 2;
+    const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - gridWidth) / 2 + slotWidth / 2;
 
-    // NOVO: Garantir que sempre crie slots suficientes para preencher as duas páginas do livro (48 slots),
-    // ou mais se você tiver muitos itens à venda.
-    const maxItemsPerCategory = Math.max(1, ...Array.from(this.itemsByCategory.values(), (list) => list.length));
-    const totalSlots = Math.max(ITEMS_PER_PAGE * 2, Math.ceil(maxItemsPerCategory / (ITEMS_PER_PAGE * 2)) * (ITEMS_PER_PAGE * 2));
-
-    for (let index = 0; index < totalSlots; index++) {
-      // Descobre se o slot deve ser desenhado na página da Esquerda ou da Direita
-      const page = Math.floor(index / ITEMS_PER_PAGE);
-      const isLeftPage = page % 2 === 0;
-      
-      const indexInPage = index % ITEMS_PER_PAGE;
-      const col = indexInPage % GRID_COLS;
-      const row = Math.floor(indexInPage / GRID_COLS);
-
-      // Aplica a posição inicial correta dependendo da página
-      const pageStartX = isLeftPage ? leftStartX : rightStartX;
-      const x = pageStartX + col * (slotWidth + SLOT_GAP);
+    for (let index = 0; index < ITEMS_PER_PAGE; index++) {
+      const col = index % GRID_COLS;
+      const row = Math.floor(index / GRID_COLS);
+      const x = leftStartX + col * (slotWidth + SLOT_GAP);
       const y = startY + row * (slotHeight + ROW_GAP);
 
       const frame = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
@@ -355,13 +425,17 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
 
       frame.setInteractive({ useHandCursor: true });
       frame.disableInteractive();
+      // Clicar no slot só SELECIONA o item (detalhe na página direita) — comprar é o botão.
       frame.on(
         'pointerdown',
         (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
           if (!this.isOpen_) return;
           event.stopPropagation();
           const slot = this.slots[index];
-          if (slot.itemId) onBuy(slot.itemId);
+          if (slot.itemId) {
+            playClick(scene);
+            this.selectItem(slot.itemId);
+          }
         },
       );
 
@@ -374,7 +448,7 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
         fontFamily: 'monospace',
         fontSize: '11px',
         fontStyle: 'bold',
-        color: '#6b3f1f',
+        color: TEXT_PRICE,
       });
       priceText.setOrigin(0.5, 0);
       priceText.setScrollFactor(0);
@@ -383,16 +457,128 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
       this.slots.push({ itemId: '', price: 0, frame, icon, priceText });
     }
 
-    this.emptyText = scene.add.text(centerX, centerY, 'Em breve', {
+    // Página DIREITA: painel do ícone grande + painel de texto + botão Comprar
+    // (mesmo esquema do detalhe da aba Agricultura, ver `InventoryScreen`).
+    const rightPageWidth = PAGE_RECT.right.width * BOOK_SCALE;
+    const rightCenterX = bookLeft + PAGE_RECT.right.x * BOOK_SCALE + rightPageWidth / 2;
+    const detailTop = pageTop + 4;
+    const iconPanelY = detailTop + DETAIL_ICON_PANEL_HEIGHT / 2;
+    const textPanelY = detailTop + DETAIL_ICON_PANEL_HEIGHT + DETAIL_GAP + DETAIL_TEXT_PANEL_HEIGHT / 2;
+    const buyY = detailTop + DETAIL_ICON_PANEL_HEIGHT + DETAIL_GAP + DETAIL_TEXT_PANEL_HEIGHT + DETAIL_GAP + BUY_BUTTON_HEIGHT / 2;
+
+    const makeLargePanel = (y: number, width: number, height: number): Phaser.GameObjects.NineSlice => {
+      const panel = scene.add.nineslice(
+        rightCenterX,
+        y,
+        INVENTORY_LARGE_PANEL_KEY,
+        INVENTORY_LARGE_PANEL_FRAME_NAME,
+        width,
+        height,
+        INVENTORY_LARGE_PANEL_BORDER,
+        INVENTORY_LARGE_PANEL_BORDER,
+        INVENTORY_LARGE_PANEL_BORDER,
+        INVENTORY_LARGE_PANEL_BORDER,
+      );
+      panel.setOrigin(0.5, 0.5);
+      panel.setScrollFactor(0);
+      panel.setDepth(3001);
+      return panel;
+    };
+
+    this.detailIconPanel = makeLargePanel(iconPanelY, DETAIL_ICON_PANEL_WIDTH, DETAIL_ICON_PANEL_HEIGHT);
+    this.detailIcon = scene.add.image(rightCenterX, iconPanelY, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
+    this.detailIcon.setOrigin(0.5, 0.5);
+    this.detailIcon.setScrollFactor(0);
+    this.detailIcon.setDepth(3002);
+
+    this.detailTextPanel = makeLargePanel(textPanelY, DETAIL_TEXT_PANEL_WIDTH, DETAIL_TEXT_PANEL_HEIGHT);
+    const textTop = textPanelY - DETAIL_TEXT_PANEL_HEIGHT / 2;
+    const textWrapWidth = DETAIL_TEXT_PANEL_WIDTH - INVENTORY_LARGE_PANEL_BORDER * 2 + 8;
+
+    this.detailName = scene.add.text(rightCenterX, textTop + 22, '', {
+      fontFamily: FONT,
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: TEXT_INK,
+      align: 'center',
+      wordWrap: { width: textWrapWidth },
+    });
+    this.detailName.setOrigin(0.5, 0.5);
+    this.detailName.setScrollFactor(0);
+    this.detailName.setDepth(3002);
+
+    this.detailDescription = scene.add.text(rightCenterX, textTop + 38, '', {
+      fontFamily: FONT,
+      fontSize: '10px',
+      color: TEXT_SOFT,
+      align: 'center',
+      wordWrap: { width: textWrapWidth },
+    });
+    this.detailDescription.setOrigin(0.5, 0);
+    this.detailDescription.setScrollFactor(0);
+    this.detailDescription.setDepth(3002);
+
+    this.detailPrice = scene.add.text(rightCenterX, textTop + DETAIL_TEXT_PANEL_HEIGHT - 20, '', {
+      fontFamily: FONT,
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: TEXT_PRICE,
+      align: 'center',
+    });
+    this.detailPrice.setOrigin(0.5, 0.5);
+    this.detailPrice.setScrollFactor(0);
+    this.detailPrice.setDepth(3002);
+
+    this.buyButton = scene.add.nineslice(
+      rightCenterX,
+      buyY,
+      INVENTORY_PANEL_KEY,
+      INVENTORY_PANEL_FRAME_NAME,
+      BUY_BUTTON_WIDTH,
+      BUY_BUTTON_HEIGHT,
+      INVENTORY_PANEL_BORDER,
+      INVENTORY_PANEL_BORDER,
+      INVENTORY_PANEL_BORDER,
+      INVENTORY_PANEL_BORDER,
+    );
+    this.buyButton.setOrigin(0.5, 0.5);
+    this.buyButton.setScrollFactor(0);
+    this.buyButton.setDepth(3001);
+    this.buyButton.setInteractive({ useHandCursor: true });
+    this.buyButton.disableInteractive();
+    this.buyButton.on(
+      'pointerdown',
+      (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        if (!this.isOpen_) return;
+        event.stopPropagation();
+        if (!this.canBuySelected()) return;
+        playClick(scene);
+        scene.tweens.add({ targets: [this.buyButton, this.buyLabel], scale: 0.94, duration: 60, yoyo: true });
+        this.onBuy(this.selectedItemId!);
+      },
+    );
+
+    this.buyLabel = scene.add.text(rightCenterX, buyY, 'Comprar', {
+      fontFamily: FONT,
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: TEXT_INK,
+    });
+    this.buyLabel.setOrigin(0.5, 0.5);
+    this.buyLabel.setScrollFactor(0);
+    this.buyLabel.setDepth(3002);
+
+    this.emptyText = scene.add.text(bookLeft + PAGE_RECT.left.x * BOOK_SCALE + leftPageWidth / 2, centerY, 'Em breve', {
       fontFamily: 'monospace',
       fontSize: '16px',
       fontStyle: 'bold',
-      color: '#6b5a4a',
+      color: TEXT_SOFT,
     });
     this.emptyText.setOrigin(0.5, 0.5);
     this.emptyText.setScrollFactor(0);
     this.emptyText.setDepth(3002);
 
+    this.selectFirstOfCategory();
     this.renderActiveCategory();
     this.setElementsVisible(false);
   }
@@ -403,6 +589,7 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
 
   open(): void {
     this.isOpen_ = true;
+    this.renderActiveCategory();
     this.setElementsVisible(true);
   }
 
@@ -416,34 +603,58 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
     else this.open();
   }
 
-  /** Escurece os ícones dos itens que o jogador não tem saldo para comprar no momento. */
+  /** Reflete o saldo: escurece os itens que o jogador não pode pagar e liga/desliga o botão Comprar. */
   refresh(coins: number): void {
     this.lastCoins = coins;
     for (const slot of this.slots) {
       if (!slot.itemId) continue;
-      const affordable = coins >= slot.price;
-      slot.icon.setAlpha(affordable ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
+      slot.icon.setAlpha(coins >= slot.price ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
     }
+    this.renderDetail();
   }
 
-  /** Troca a aba ativa e redesenha os slots com os itens dela. */
+  private currentItems(): ShopItem[] {
+    return this.itemsByCategory.get(this.activeCategory) ?? [];
+  }
+
+  private selectedItem(): ShopItem | undefined {
+    return this.currentItems().find((item) => item.id === this.selectedItemId);
+  }
+
+  /** Dá pra comprar o item selecionado agora? (tem saldo e ainda não possui, no caso de itens únicos). */
+  private canBuySelected(): boolean {
+    const item = this.selectedItem();
+    return !!item && this.lastCoins >= item.price && !this.isOwned(item.id);
+  }
+
+  /** Troca a aba ativa, seleciona o 1º item dela e redesenha. */
   private selectCategory(category: ShopCategory): void {
     if (category === this.activeCategory) return;
     this.activeCategory = category;
+    this.selectFirstOfCategory();
     this.renderActiveCategory();
     this.refresh(this.lastCoins);
   }
 
+  private selectFirstOfCategory(): void {
+    this.selectedItemId = this.currentItems()[0]?.id ?? null;
+  }
+
+  private selectItem(itemId: string): void {
+    this.selectedItemId = itemId;
+    this.positionGridSelector();
+    this.renderDetail();
+  }
+
   /** Redesenha o pool de slots com os itens da categoria ativa — sobra fica vazia/invisível; sem itens, mostra "Em breve". */
   private renderActiveCategory(): void {
-    const items = this.itemsByCategory.get(this.activeCategory) ?? [];
+    const items = this.currentItems();
 
-    // Aba ativa: "puxada" pra fora (mais pra esquerda) em relação às inativas.
     for (const tab of this.tabs) {
-      const x = tab.category === this.activeCategory ? tab.baseX - TAB_ACTIVE_SHIFT_X : tab.baseX;
-      tab.background.setPosition(x, tab.y);
-      tab.icon.setPosition(x + TAB_ICON_OFFSET_X, tab.y + TAB_ICON_OFFSET_Y);
+      tab.background.setPosition(tab.baseX, tab.y);
+      tab.icon.setPosition(tab.baseX + TAB_ICON_OFFSET_X, tab.y + TAB_ICON_OFFSET_Y);
     }
+    this.positionTabSelector();
 
     this.slots.forEach((slot, index) => {
       const item = items[index];
@@ -463,14 +674,101 @@ const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - g
       // isso o Poço vazava pra fora do slot.
       slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
       slot.priceText.setText(`${item.price}`);
-      slot.icon.setVisible(true);
-      slot.priceText.setVisible(true);
+      slot.icon.setVisible(this.isOpen_);
+      slot.priceText.setVisible(this.isOpen_);
+      if (this.isOpen_) slot.frame.setInteractive();
     });
+    for (const slot of this.slots) {
+      if (!slot.itemId) slot.frame.disableInteractive();
+    }
 
-    this.emptyText.setVisible(items.length === 0);
+    this.emptyText.setVisible(this.isOpen_ && items.length === 0);
+    this.positionGridSelector();
+    this.renderDetail();
   }
 
-private setElementsVisible(visible: boolean): void {
+  /** Página direita: ícone grande, nome, descrição, preço e estado do botão do item selecionado. */
+  /**
+   * Mostra a descrição sem vazar da caixinha: parte da fonte normal e vai reduzindo 1px até o texto caber na altura livre (entre o nome e
+   * o preço) ou chegar ao mínimo legível (`DETAIL_DESCRIPTION_MIN_FONT_PX`). Descrições curtas continuam no tamanho de sempre.
+   */
+  private fitDescription(text: string): void {
+    this.detailDescription.setText(text);
+    let size = DETAIL_DESCRIPTION_FONT_PX;
+    this.detailDescription.setFontSize(size);
+    while (this.detailDescription.height > DETAIL_DESCRIPTION_MAX_HEIGHT && size > DETAIL_DESCRIPTION_MIN_FONT_PX) {
+      size -= 1;
+      this.detailDescription.setFontSize(size);
+    }
+  }
+
+  private renderDetail(): void {
+    const item = this.selectedItem();
+    const showDetail = this.isOpen_ && !!item;
+
+    this.detailIconPanel.setVisible(this.isOpen_);
+    this.detailTextPanel.setVisible(this.isOpen_);
+    this.buyButton.setVisible(showDetail);
+    this.buyLabel.setVisible(showDetail);
+    this.detailIcon.setVisible(showDetail);
+    this.detailName.setVisible(showDetail);
+    this.detailDescription.setVisible(showDetail);
+    this.detailPrice.setVisible(showDetail);
+    if (!item) return;
+
+    this.detailIcon.setTexture(item.textureKey, item.iconFrame);
+    this.detailIcon.setScale(computeFitScale(this.detailIcon, DETAIL_ICON_TARGET_PX));
+    this.detailName.setText(item.name);
+    this.fitDescription(item.description);
+
+    const owned = this.isOwned(item.id);
+    const affordable = this.lastCoins >= item.price;
+    this.detailPrice.setText(owned ? 'Já possui' : `Preço: ${item.price} moedas`);
+    this.detailPrice.setColor(owned || affordable ? TEXT_PRICE : '#a8322d');
+
+    const enabled = !owned && affordable;
+    this.buyLabel.setText(owned ? 'Já possui' : 'Comprar');
+    this.buyButton.setTint(enabled ? BUY_ENABLED_TINT : BUY_DISABLED_TINT);
+    this.buyLabel.setAlpha(enabled ? 1 : 0.6);
+    if (this.isOpen_ && enabled) this.buyButton.setInteractive();
+    else this.buyButton.disableInteractive();
+  }
+
+  private positionTabSelector(): void {
+    const activeTab = this.tabs.find((tab) => tab.category === this.activeCategory);
+    if (!activeTab) return;
+
+    const bounds = activeTab.background.getBounds();
+    const left = bounds.left - TAB_SELECTOR_PADDING;
+    const top = bounds.top - TAB_SELECTOR_PADDING;
+    const right = bounds.right + TAB_SELECTOR_PADDING;
+    const bottom = bounds.bottom + TAB_SELECTOR_PADDING;
+
+    this.tabSelector.topLeft.setPosition(left, top);
+    this.tabSelector.topRight.setPosition(right, top);
+    this.tabSelector.bottomLeft.setPosition(left, bottom);
+    this.tabSelector.bottomRight.setPosition(right, bottom);
+  }
+
+  /** Cantinhos de destaque ao redor do slot do item selecionado (somem se não houver seleção ou a Loja estiver fechada). */
+  private positionGridSelector(): void {
+    const slot = this.slots.find((candidate) => candidate.itemId && candidate.itemId === this.selectedItemId);
+    for (const corner of Object.values(this.gridSelector)) corner.setVisible(this.isOpen_ && !!slot);
+    if (!slot) return;
+
+    const bounds = slot.frame.getBounds();
+    const left = bounds.left - TAB_SELECTOR_PADDING;
+    const top = bounds.top - TAB_SELECTOR_PADDING;
+    const right = bounds.right + TAB_SELECTOR_PADDING;
+    const bottom = bounds.bottom + TAB_SELECTOR_PADDING;
+
+    this.gridSelector.topLeft.setPosition(left, top);
+    this.gridSelector.topRight.setPosition(right, top);
+    this.gridSelector.bottomLeft.setPosition(left, bottom);
+    this.gridSelector.bottomRight.setPosition(right, bottom);
+  }
+
+  private setElementsVisible(visible: boolean): void {
     this.book.setVisible(visible);
     for (const tab of this.tabs) {
       tab.background.setVisible(visible);
@@ -478,7 +776,7 @@ private setElementsVisible(visible: boolean): void {
       if (visible) tab.background.setInteractive();
       else tab.background.disableInteractive();
     }
-
+    for (const corner of Object.values(this.tabSelector)) corner.setVisible(visible);
     this.closeButton.setVisible(visible);
     if (visible) this.closeButton.setInteractive();
     else this.closeButton.disableInteractive();
@@ -489,11 +787,14 @@ private setElementsVisible(visible: boolean): void {
       slot.frame.setVisible(visible); // O fundo sempre aparece
       slot.icon.setVisible(slotVisible);
       slot.priceText.setVisible(slotVisible);
-      
-      // NOVO: Só permite interagir (clicar) se tiver item dentro!
+
+      // Só permite interagir (clicar) se tiver item dentro!
       if (visible && slot.itemId) slot.frame.setInteractive();
       else slot.frame.disableInteractive();
     }
-    this.emptyText.setVisible(visible && (this.itemsByCategory.get(this.activeCategory)?.length ?? 0) === 0);
+    this.emptyText.setVisible(visible && this.currentItems().length === 0);
+
+    this.positionGridSelector();
+    this.renderDetail();
   }
 }

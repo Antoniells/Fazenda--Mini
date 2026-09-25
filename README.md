@@ -2,7 +2,7 @@
 
 Mini Fazenda é um jogo 2D de fazenda, inspirado na experiência da Mini Fazenda do Orkut: possuir uma propriedade, plantar, colher, cuidar de animais, comprar objetos, construir, decorar, expandir a fazenda e evoluir progressivamente a propriedade. A referência é de conceito e sensação de jogo — o projeto constrói identidade própria e evolui durante o desenvolvimento.
 
-O projeto está sendo desenvolvido de forma **incremental**, seguindo um roadmap de fases, com TypeScript, Phaser e Vite — e futura distribuição como aplicativo desktop via Electron.
+O projeto está sendo desenvolvido de forma **incremental**, seguindo um roadmap de fases, com TypeScript, Phaser e Vite — e distribuição como aplicativo desktop via Electron.
 
 > Estado atual: fundação e documentação do projeto. Nenhuma funcionalidade de jogo foi implementada ainda.
 
@@ -27,4 +27,4 @@ src/      código-fonte
 - TypeScript
 - Phaser
 - Vite
-- Electron (integração futura, para build desktop)
+- Electron (build desktop — ver [docs/TECHNICAL.md](docs/TECHNICAL.md#integração-com-electron-fase-10))

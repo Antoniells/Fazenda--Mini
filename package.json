@@ -1,18 +1,61 @@
 {
   "name": "mini-fazenda",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.7",
+  "description": "Mini Fazenda — jogo 2D de fazenda",
+  "author": "Mini Fazenda",
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "phaser": "^4.2.1"
+    "preview": "vite preview",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "dev:electron": "npm run electron:compile && concurrently -k -n vite,electron -c cyan,green \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
+    "start:electron": "npm run build && npm run electron:compile && electron .",
+    "build:electron": "npm run build && npm run electron:compile && electron-builder --win"
   },
   "devDependencies": {
+    "concurrently": "^10.0.5",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "phaser": "^4.2.1",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.minifazenda.game",
+    "productName": "Mini Fazenda",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "!**/*.aseprite",
+      "!dist/Sounds/Music/**/*.zip",
+      "!dist/Sounds/Music/400 Sounds Pack/**",
+      "!dist/Sounds/Music/Cozy Tunes/**",
+      "!dist/Sounds/Music/Polyshade's Chiptunes/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Mini Fazenda",
+      "artifactName": "Mini-Fazenda-Setup-${version}.${ext}"
+    }
   }
 }

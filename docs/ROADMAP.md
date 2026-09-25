@@ -68,7 +68,8 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 - [ ] Níveis e Experiência (XP ganho por colher/cortar/minerar)
 - [ ] Upgrade de Ferramentas (melhorar ferramentas usando minérios coletados)
 - [ ] Desbloqueios e Novos Itens (lojas que vendem sementes/itens melhores à medida que novas áreas são expandidas)
-- [ ] Missões/Pedidos (entregar itens específicos para ganhar recompensas)
+- [x] Missões/Pedidos (campanha em 4 atos dada pelos moradores do Vilarejo, com FIM na Noite Final — ver [TECHNICAL.md](TECHNICAL.md#vilarejo-moradores-tempo-global-e-campanha))
+- [x] NPCs (moradores do Vilarejo, com casa, rotina por horário e conversa)
 
 ## Fase 9 — Polimento Final
 - [ ] Interface (Refinamento final de menus, relógio/calendário HUD)
@@ -86,11 +87,11 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 > roadmap. Detalhes: ver [TECHNICAL.md](TECHNICAL.md#polimento-visual-pit-stop-antes-da-fase-9).
 
 ## Fase 10 — Desktop
-- [ ] Integração com Electron
-- [ ] Build
+- [x] Integração com Electron (janela, save em `Documentos/Mini Fazenda`, tela cheia — ver [TECHNICAL.md](TECHNICAL.md#integração-com-electron-fase-10))
+- [x] Build (`npm run build:electron`)
 - [ ] Testes
-- [ ] Geração do executável
-- [ ] Criação do instalador
+- [x] Geração do executável
+- [x] Criação do instalador (NSIS, `release/Mini-Fazenda-Setup-<versão>.exe`)
 
 ---
 

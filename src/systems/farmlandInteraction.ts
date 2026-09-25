@@ -5,6 +5,14 @@ import { Inventory } from './inventory';
 import { Player } from '../entities/Player';
 import { FarmMapData } from '../data/maps/farmMap';
 import { CROPS } from '../data/crops';
+import { HOE_SOUNDS, WATER_SOUND, PLANT_SOUND, HARVEST_SOUND } from '../data/audio';
+import { playEffect, playRandomEffect } from './soundEffects';
+import { spawnLoot } from './lootDrops';
+import { gameState } from './gameState';
+import { isToolOfFamily } from '../data/toolProgression';
+import { tutorial } from './tutorial';
+import { popText } from './floatingText';
+import { hotbarTopCenter } from '../ui/hotbar';
 
 /**
  * Uma célula cultivável, quando interagida, decide a ação a partir do
@@ -13,6 +21,7 @@ import { CROPS } from '../data/crops';
  *
  * - `untilled` + Enxada selecionada = ara.
  * - `tilled` + uma semente selecionada = planta (consome 1 do estoque).
+ * - `tilled` (vazio) + Picareta selecionada (qualquer tier) = desfaz o arado: volta a terra normal.
  * - `growing` (não pronta) + Regador selecionado = rega.
  * - `dead` + Foice selecionada = remove a plantação morta.
  * - `growing` pronta = colhe sempre, "com as mãos" — sem exigir ferramenta
@@ -47,7 +56,9 @@ class PlotInteractable implements Interactable {
     if (plot.state === 'untilled') {
       this.handleTill();
     } else if (plot.state === 'tilled') {
-      this.handlePlant();
+      const selected = this.inventory.getSelectedSlot();
+      if (selected?.category === 'tool' && isToolOfFamily(selected.id, 'pickaxe')) this.handleUntill();
+      else this.handlePlant();
     } else if (plot.state === 'dead') {
       this.handleClearDead();
     } else if (plot.state === 'growing') {
@@ -63,10 +74,28 @@ class PlotInteractable implements Interactable {
       return;
     }
 
+    // Bloco travado (aspersor em cima): a enxada não age até o aspersor ser removido — sem animação, como qualquer clique sem efeito.
+    if (this.farmland.isTillLocked(this.col, this.row)) {
+      console.log('Há um aspersor neste bloco — remova-o (clique nele sem a enxada) para arar.');
+      return;
+    }
+
     this.player.performAction('hoe', () => {
-      this.farmland.till(this.col, this.row);
+      const tilled = this.farmland.till(this.col, this.row, gameState.weather.raining);
+      playRandomEffect(this.player.sprite.scene, HOE_SOUNDS);
       this.renderer.spawnHoeDust(this.col, this.row);
       this.refreshWithNeighbors();
+      if (tilled) tutorial.notify({ kind: 'act', action: 'till' });
+    });
+  }
+
+  /** A Picareta bate no canteiro arado (vazio) e ele volta a ser terra normal — mesma poeira/som de terra da enxada, pela mesma animação de golpe da Picareta. */
+  private handleUntill(): void {
+    this.player.performAction('pickaxe', () => {
+      if (!this.farmland.untill(this.col, this.row)) return;
+      playRandomEffect(this.player.sprite.scene, HOE_SOUNDS);
+      this.renderer.spawnHoeDust(this.col, this.row);
+      this.refreshWithNeighbors(); // A borda do autotile dos vizinhos muda junto.
     });
   }
 
@@ -87,9 +116,13 @@ class PlotInteractable implements Interactable {
     }
 
     this.player.performAction('plant', () => {
+      // O canteiro pode ter mudado entre o clique e o impacto do golpe (ex.: a terra arada voltou a seca na virada do dia): planta PRIMEIRO
+      // e só gasta a semente se a plantação de fato aconteceu — antes a semente sumia sem nada plantado.
+      if (this.inventory.getSeedCount(seedId) <= 0 || !this.farmland.plant(this.col, this.row, seedId, gameState.weather.raining)) return;
       this.inventory.useSeed(seedId);
-      this.farmland.plant(this.col, this.row, seedId);
+      playEffect(this.player.sprite.scene, PLANT_SOUND);
       this.refresh();
+      tutorial.notify({ kind: 'act', action: 'plant' });
     });
   }
 
@@ -101,16 +134,26 @@ class PlotInteractable implements Interactable {
     }
 
     if (this.inventory.getWateringCanCharges() <= 0) {
-      console.log('Regador vazio — encha no Poço.');
+      // Aviso flutuante em cima da Hotbar (pedido explícito do usuário) — mesma fonte/estilo do "+1 Madeira" etc. (`popText`), só
+      // fixo na tela (`screenFixed`) em vez de nascer em cima do canteiro, já que é sobre o ITEM (o regador), não sobre a célula.
+      const scene = this.player.sprite.scene;
+      const { x, y } = hotbarTopCenter(scene);
+      popText(scene, x, y, 'Regador Vazio', { screenFixed: true, color: '#ff8a8a' });
       return;
     }
 
-    this.player.performAction('water', () => {
-      this.inventory.useWaterCharge();
-      this.farmland.water(this.col, this.row);
-      this.renderer.spawnWaterSplash(this.col, this.row);
-      this.refresh();
-    });
+    this.player.performAction(
+      'water',
+      () => {
+        // Mesma regra: só gasta a carga se o canteiro ainda aceita água (a plantação pode ter morrido/sido colhida durante o golpe).
+        const watered = this.farmland.water(this.col, this.row);
+        if (watered) this.inventory.useWaterCharge();
+        this.renderer.spawnWaterSplash(this.col, this.row);
+        this.refresh();
+        if (watered) tutorial.notify({ kind: 'act', action: 'water' });
+      },
+      () => playEffect(this.player.sprite.scene, WATER_SOUND),
+    );
   }
 
   private handleClearDead(): void {
@@ -122,6 +165,7 @@ class PlotInteractable implements Interactable {
 
     this.player.performAction('harvest', () => {
       this.farmland.clearDead(this.col, this.row);
+      playEffect(this.player.sprite.scene, HARVEST_SOUND);
       // `clearDead` vai de 'dead' pra 'tilled' — as duas já contam como
       // "arada" (`Farmland.isTilled`), então a borda dos vizinhos não muda
       // de verdade aqui. Mesmo assim atualiza os vizinhos por pedido
@@ -137,11 +181,13 @@ class PlotInteractable implements Interactable {
       // encontrar a célula vazia) não tenta destruí-la de novo por cima
       // da animação.
       this.renderer.playHarvestPop(this.col, this.row);
-      const result = this.farmland.harvest(this.col, this.row, this.inventory);
+      playEffect(this.player.sprite.scene, HARVEST_SOUND);
+      const result = this.farmland.harvest(this.col, this.row, gameState.weather.raining);
       if (result) {
-        console.log(
-          `Colheita: +${result.amount} ${result.cropId} (total: ${this.inventory.getCount(result.cropId)})`,
-        );
+        // A colheita cai no chão (o som de coleta toca quando o jogador pega — ver `systems/lootDrops.ts`).
+        const { x, y } = this.renderer.getCellCenter(this.col, this.row);
+        spawnLoot(this.player.sprite.scene, this.player, x, y, { category: 'crop', id: result.cropId, amount: result.amount });
+        console.log(`Colheita: ${result.amount} ${result.cropId} caiu no chão.`);
       }
       this.refresh();
     });

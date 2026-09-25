@@ -1,16 +1,8 @@
-import { TILE_SIZE, PLAYER_HOUSE_TILE_COLS, PLAYER_HOUSE_TILE_ROWS, PLAYER_HOUSE_DOOR_OFFSET } from '../tiles';
-
+// Gerado pelo MapEditorScene (tecla P) — arquivo COMPLETO e pronto pra uso.
+// Arraste pra dentro de src/data/maps/, substituindo farmMap.ts.
 export type ExpansionDirection = 'north' | 'south' | 'east' | 'west';
 
-/**
- * Identidade temática de cada região do mundo (Fase 6.1 — Biomas): o núcleo
- * original e os 4 trechos de expansão ao redor, cada um inspirado num bioma
- * do Forager. Só descreve "o que é" cada região — as mecânicas de cada
- * bioma (minerar pedra, pescar, combater na caverna) são de fases futuras;
- * por ora isso só orienta a tintagem do chão (`systems/mapBuilder.ts`) e o
- * texto das placas de compra (`systems/propertyExpansion.ts`).
- */
-export type BiomeId = 'core' | 'mining' | 'lumber' | 'beach' | 'cave';
+export type BiomeId = 'core' | 'mining' | 'lumber' | 'beach' | 'cave' | 'village';
 
 /** Nome exibido de cada bioma — usado nos logs/textos da placa de compra. */
 export const BIOME_LABELS: Record<BiomeId, string> = {
@@ -19,74 +11,37 @@ export const BIOME_LABELS: Record<BiomeId, string> = {
   lumber: 'Madeireira',
   beach: 'Praia',
   cave: 'Cavernas',
+  village: 'Vilarejo',
 };
 
-/**
- * Um trecho de terra bloqueado ao redor da propriedade original (o
- * "núcleo", `cols` x `rows`), comprável individualmente — inspirado no
- * Forager: vários trechos ao redor, cada um com sua própria placa física,
- * em vez de uma única expansão genérica. `col0/row0/cols/rows` são
- * absolutos (podem ser negativos, para norte/oeste) — a grama e a câmera já
- * alcançam esse retângulo desde o início (ver `MainScene.create`), mas ele
- * fica isolado pela parede do núcleo nesse lado até a compra.
- */
 export interface ExpansionChunk {
   direction: ExpansionDirection;
-  /** Bioma temático deste trecho (ver `BiomeId`) — norte=cavernas, sul=praia, leste=madeireira, oeste=mineração. */
   biome: BiomeId;
   col0: number;
   row0: number;
   cols: number;
   rows: number;
   price: number;
-  /** Célula (col, row) DENTRO do núcleo, encostada na parede desse lado — onde fica a placa de compra. */
   signPosition: [number, number];
+  /** Já nasce aberto (sem parede nem placa de compra) — o Vilarejo a leste. */
+  startsUnlocked?: boolean;
 }
 
-/**
- * Requisito para atravessar uma ponte (Sistema de Cenas) — ver `BridgeDefinition`.
- * `items` reaproveita `Inventory.getCount` (estoque de colheita por id, a
- * única contagem "genérica por id" que já existe): fica pronto pra quando
- * houver recursos coletáveis de outras áreas (madeira, pedra — Fase 7,
- * ainda pendente), mas nenhuma ponte usa isso ainda porque esses itens
- * não existem de verdade no jogo hoje.
- */
 export interface BridgeRequirement {
-  /** Moedas necessárias para atravessar (ausente/0 = sem custo em moedas). */
   coins?: number;
   items?: Array<{ itemId: string; amount: number; label: string }>;
 }
 
-/**
- * Uma ponte de transição de CENA (não confundir com `ExpansionChunk`, que
- * expande a MESMA cena): cada lado do núcleo tem uma, ligando a
- * `MainScene` a uma cena de destino totalmente separada (Fase "Sistema de
- * Cenas") — troca real de `Phaser.Scene` (hard cut), não câmera contínua.
- *
- * `col`/`row` ficam sobre a própria parede do núcleo (a mesma linha onde a
- * cerca é desenhada) — célula sempre bloqueada no `WalkableGrid` (o anel
- * externo do núcleo já é bloqueado incondicionalmente, ver
- * `systems/grid.ts`), então nunca colide com a posição da placa de compra
- * de expansão daquele lado (que fica UMA célula pra dentro, não na própria
- * parede). Ver `systems/bridgeSystem.ts` para a interação/travessia.
- */
 export interface BridgeDefinition {
   direction: ExpansionDirection;
   col: number;
   row: number;
-  /** Nome de exibição do destino (ex.: "Floresta") — mostrado na placa/mensagem de bloqueio. */
   destinationName: string;
-  /**
-   * Chave da cena Phaser de destino (string solta de propósito — `data/`
-   * não deve importar de `scenes/`, ver CLAUDE.md regra 6). Precisa bater
-   * com a chave registrada em `scenes/ExternalAreaScene.ts` e na lista de
-   * cenas de `config/gameConfig.ts`.
-   */
   destinationSceneKey: string;
   requirement: BridgeRequirement;
 }
 
-/** Área retangular (canto superior-esquerdo + tamanho, em células) de uma estrutura estática do mapa — ver `FarmMapData.housePosition`. */
+/** Área retangular (canto superior-esquerdo + tamanho, em células) de uma estrutura estática do mapa. */
 export interface RectArea {
   col0: number;
   row0: number;
@@ -96,62 +51,176 @@ export interface RectArea {
 
 export interface FarmMapData {
   tileSize: number;
-  /** Dimensões do núcleo original da propriedade — não mudam com expansões. */
   cols: number;
   rows: number;
-  /** Trechos de terra ao redor do núcleo, um por direção, compráveis independentemente. */
+  ground?: number[][];
+  backgroundColor?: string;
+  blockedArea?: Array<[number, number]>;
   expansions: ExpansionChunk[];
-  /** Posições (col, row) da base das árvores decorativas. */
   treePositions: Array<[number, number]>;
-  /** Células (col, row) que podem ser cultivadas (aradas, plantadas). */
   farmlandArea: Array<[number, number]>;
-  /**
-   * Célula (col, row) onde a Caixa de Remessas (ponto de venda, Fase 5)
-   * fica — um objeto sólido, bloqueado no grid (`systems/grid.ts`), não
-   * uma célula andável. O jogador interage encostado nela, não em cima.
-   */
   shippingBinPosition: [number, number];
-  /**
-   * Célula (col, row) onde a banca da Loja fica — também um objeto sólido,
-   * bloqueado no grid, com interação adjacente (mesmo mecanismo da Caixa
-   * de Remessas).
-   */
   shopPosition: [number, number];
-  /**
-   * Área retangular ocupada pela Casa do jogador (Fase 9) — bloqueada por
-   * inteiro no grid (`systems/grid.ts`), igual a um objeto sólido gigante.
-   * Tamanho vem de `PLAYER_HOUSE_TILE_COLS/ROWS` (o asset já é exatamente
-   * 8x7 tiles, sem sobra).
-   */
   housePosition: RectArea;
-  /**
-   * Célula (col, row) da porta da casa — a única célula da casa com
-   * interação própria (dormir, ver `systems/sleepInteraction.ts`); as
-   * demais só bloqueiam passagem. Calculada a partir de `housePosition` +
-   * `PLAYER_HOUSE_DOOR_OFFSET`.
-   */
   houseDoorPosition: [number, number];
-  /**
-   * Posições (col, row) de pedras no bioma de Mineração — placeholder vazio
-   * (Fase 6.1): a mecânica de quebrar pedra é de uma fase futura, isso só
-   * reserva o campo em `FarmMapData` pra quando formos popular o bioma.
-   */
   rockPositions: Array<[number, number]>;
-  /** Posições (col, row) de veios de minério no bioma de Mineração — mesmo status de `rockPositions`, placeholder pra fase futura. */
   orePositions: Array<[number, number]>;
-  /** As 4 pontes de transição de cena, uma por lado do núcleo (ver `BridgeDefinition`). */
   bridges: BridgeDefinition[];
   foliagePositions: Array<[number, number]>;
+  props?: Array<[number, number, string]>;
 }
 
-/**
- * Geometria da cerca (decorativa e colisora, Fase 9) ao redor do retângulo
- * que contém `farmlandArea`, uma célula fora dela — mais o "portão"
- * (a única abertura, sem cerca nem colisão), alinhado com a coluna da
- * porta de casa pra um caminho natural de entrada. Fonte única usada tanto
- * por `systems/mapBuilder.ts` (desenho) quanto por `systems/grid.ts`
- * (colisão), pra nunca desenhar cerca onde não há colisão ou vice-versa.
- */
+export const farmMap: FarmMapData = {
+  tileSize: 16,
+  cols: 56,
+  rows: 42,
+  ground: [
+    [69, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 539, 57, 57, 69, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57, 69, 57, 69, 57, 57, 69, 69, 69, 57, 57, 510, 491, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 69, 69, 57],
+    [57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 69, 57, 57, 57, 57, 57, 57, 539, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 69, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 69, 57, 69, 57, 57, 57, 539, 57, 57, 57, 57, 488, 490, 490, 509, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 69, 57],
+    [57, 57, 69, 69, 57, 69, 57, 69, 57, 69, 57, 57, 57, 57, 69, 57, 57, 69, 69, 57, 57, 69, 57, 69, 57, 69, 57, 57, 69, 57, 57, 510, 490, 491, 441, 488, 509, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57],
+    [69, 69, 69, 69, 57, 57, 69, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 69, 57, 510, 490, 509, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 69, 57, 69, 57, 69, 57, 57, 57, 57, 57],
+    [69, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 69, 57, 69, 69, 69, 69, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57],
+    [57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 192, 57, 57, 57, 57, 57, 200, 203, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 69, 57, 57, 57, 57, 69, 69, 69, 57, 57, 69, 57, 57, 57, 57, 200, 201, 202, 202, 202, 202, 202, 221, 222, 202, 202, 202, 202, 202, 202, 202, 202, 203, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57],
+    [202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 298, 298, 221, 246, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 245, 249, 251, 57, 57, 69, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57],
+    [273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 273, 245, 251, 57, 69, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 224, 249, 251, 57, 69, 57, 57, 57, 57, 69, 57, 69, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57, 69, 57],
+    [69, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 69, 57, 272, 275, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 224, 249, 251, 57, 57, 57, 296, 299, 57, 57, 69, 69, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57],
+    [57, 69, 57, 69, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 69, 69, 57, 57, 57, 57, 57, 57, 224, 249, 251, 57, 69, 57, 368, 371, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57],
+    [57, 57, 57, 57, 69, 57, 69, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 224, 249, 251, 69, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [69, 57, 57, 69, 69, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 224, 249, 251, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 224, 249, 251, 57, 57, 57, 69, 57, 57, 69, 57, 57, 69, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 224, 249, 251, 57, 69, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [69, 57, 57, 57, 57, 69, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 224, 249, 251, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57],
+    [57, 57, 200, 202, 202, 202, 203, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 224, 249, 222, 202, 202, 203, 57, 69, 57, 57, 57, 69, 69, 69, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57],
+    [57, 57, 224, 249, 249, 249, 251, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 69, 57, 57, 57, 57, 200, 203, 57, 57, 57, 224, 249, 249, 249, 249, 227, 266, 266, 266, 266, 266, 266, 266, 266, 266, 266, 266, 266, 266, 266, 197, 202, 202, 202],
+    [57, 69, 272, 273, 273, 273, 343, 57, 69, 57, 69, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 272, 343, 57, 57, 57, 272, 370, 273, 273, 273, 275, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 224, 249, 249, 249],
+    [69, 57, 57, 57, 57, 57, 216, 69, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 57, 57, 312, 57, 57, 57, 57, 216, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 272, 273, 273, 273],
+    [69, 57, 57, 57, 57, 57, 216, 57, 57, 69, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 69, 69, 57, 69, 312, 57, 57, 69, 57, 312, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 69, 57, 69, 69, 216, 69, 57, 69, 57, 69, 69, 69, 69, 69, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 312, 57, 57, 57, 57, 216, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 216, 57, 57, 57, 57, 69, 57, 57, 57, 57, 200, 203, 69, 57, 57, 57, 69, 69, 69, 57, 69, 57, 312, 57, 57, 57, 57, 312, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 241, 266, 266, 266, 266, 266, 266, 266, 266, 266, 248, 227, 362, 362, 362, 362, 362, 362, 362, 362, 362, 362, 371, 69, 57, 69, 69, 312, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 69, 57, 57, 272, 275, 57, 69, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 193, 362, 362, 371, 441, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 69, 57, 69, 69, 57, 69, 57, 57, 69, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 312, 69, 441, 441, 441, 57, 57, 57, 57, 57, 57, 69, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 69, 57, 69, 69, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 312, 57, 57, 441, 57, 57, 57, 57, 69, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 312, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 312, 57, 57, 57, 57, 69, 57, 57, 69, 57, 69, 57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 69, 69, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 216, 57, 57, 69, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 69, 69, 69, 69, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 69, 57, 57, 216, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57],
+    [57, 69, 57, 69, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 69, 57, 216, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57],
+    [57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 69, 57, 216, 57, 69, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 69, 69, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 216, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 216, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 69, 69, 69, 57, 57, 57, 216, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 69, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 216, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 216, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 69, 69, 57],
+    [57, 57, 69, 57, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 69, 69, 216, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 57],
+  ],
+  backgroundColor: '#7ec433',
+  expansions: [{"direction":"west","biome":"mining","col0":-12,"row0":0,"cols":12,"rows":42,"price":120,"signPosition":[1,21]},{"direction":"north","biome":"cave","col0":0,"row0":-8,"cols":56,"rows":8,"price":100,"signPosition":[28,1]},{"direction":"south","biome":"beach","col0":0,"row0":42,"cols":56,"rows":8,"price":100,"signPosition":[28,40]}],
+  bridges: [{"direction":"east","col":55,"row":21,"destinationName":"Vilarejo","destinationSceneKey":"VillageScene","requirement":{}},{"direction":"north","col":10,"row":0,"destinationName":"Cavernas","destinationSceneKey":"CaveScene","requirement":{"coins":200}},{"direction":"south","col":30,"row":41,"destinationName":"Praia","destinationSceneKey":"BeachScene","requirement":{"coins":300}},{"direction":"west","col":0,"row":10,"destinationName":"Pedreira","destinationSceneKey":"QuarryScene","requirement":{"coins":250}},{"direction":"west","col":0,"row":20,"destinationName":"Floresta","destinationSceneKey":"ForestScene","requirement":{"coins":250}}],
+  treePositions: [
+    [3, 3],
+    [3, 26],
+    [36, 26],
+    [12, 4],
+    [27, 4],
+    [33, 3],
+    [46, 4],
+    [51, 9],
+    [44, 19],
+    [52, 25],
+    [48, 33],
+    [40, 38],
+    [28, 36],
+    [18, 38],
+    [8, 35],
+    [53, 38],
+  ],
+  farmlandArea: buildRectangle(14, 13, 12, 8),
+  shippingBinPosition: [19, 11],
+  shopPosition: [25, 7],
+  // Casa não tem ferramenta no editor (fora do escopo pedido) — valor atual preservado.
+  housePosition: { col0: 16, row0: 2, cols: 8, rows: 7 },
+  houseDoorPosition: [18, 8],
+  rockPositions: [
+    [8, 8],
+    [5, 13],
+    [9, 17],
+    [8, 23],
+    [17, 23],
+    [26, 23],
+    [32, 7],
+    [4, 7],
+    [44, 10],
+    [50, 15],
+    [46, 25],
+    [53, 30],
+    [36, 34],
+    [24, 37],
+    [14, 34],
+    [6, 39],
+    [42, 40],
+  ],
+  orePositions: [],
+  foliagePositions: [
+    [10, 12],
+    [15, 8],
+  ],
+  blockedArea: [
+    [32, 4],
+    [32, 3],
+    [33, 4],
+    [34, 4],
+    [31, 1],
+    [35, 4],
+    [36, 4],
+    [36, 3],
+    [37, 3],
+    [38, 3],
+    [32, 2],
+    [31, 0],
+    [30, 0],
+    [30, 1],
+    [31, 2],
+    [31, 3],
+    [31, 4],
+    [33, 5],
+    [34, 5],
+    [35, 5],
+    [39, 3],
+  ],
+  props: [
+    [36, 1, 'prop-flower-pink'],
+    [32, 0, 'prop-flower-pink'],
+    [38, 1, 'prop-tuft-teal'],
+    [29, 7, 'prop-tuft-teal'],
+    [38, 10, 'prop-tuft-teal'],
+    [28, 15, 'prop-tuft-teal'],
+    [26, 0, 'prop-tuft-teal'],
+    [15, 1, 'prop-tuft-teal'],
+    [37, 11, 'prop-rock-boulder-brown'],
+    [45, 7, 'prop-flower-white-cluster'],
+    [49, 12, 'prop-tuft-teal'],
+    [52, 18, 'prop-flower-blue-1'],
+    [43, 23, 'prop-mushroom-tan'],
+    [50, 29, 'prop-flower-pink'],
+    [38, 36, 'prop-tuft-teal'],
+    [22, 34, 'prop-flower-white-small'],
+    [12, 38, 'prop-mushroom-orange'],
+    [4, 34, 'prop-flower-blue-2'],
+    [47, 36, 'prop-rock-boulder-brown'],
+  ],
+};
+
+// "Cerca" pintada no editor — isto NÃO é um campo de FarmMapData: o jogo
+// desenha a cerca sozinho a partir de farmlandArea/limites do núcleo (ver
+// getFarmlandFenceLayout abaixo). Guia visual apenas, já com a variante
+// (orientação) exata escolhida pra cada célula:
+// [{"col":13,"row":12,"variantId":"topLeft"},{"col":26,"row":12,"variantId":"topRight"},{"col":13,"row":21,"variantId":"bottomLeft"},{"col":26,"row":21,"variantId":"bottomRight"},{"col":14,"row":12,"variantId":"horizontal"},{"col":14,"row":21,"variantId":"horizontal"},{"col":15,"row":12,"variantId":"horizontal"},{"col":15,"row":21,"variantId":"horizontal"},{"col":16,"row":12,"variantId":"horizontal"},{"col":16,"row":21,"variantId":"horizontal"},{"col":17,"row":21,"variantId":"horizontal"},{"col":18,"row":21,"variantId":"horizontal"},{"col":19,"row":12,"variantId":"horizontal"},{"col":19,"row":21,"variantId":"horizontal"},{"col":20,"row":12,"variantId":"horizontal"},{"col":20,"row":21,"variantId":"horizontal"},{"col":21,"row":12,"variantId":"horizontal"},{"col":21,"row":21,"variantId":"horizontal"},{"col":22,"row":12,"variantId":"horizontal"},{"col":22,"row":21,"variantId":"horizontal"},{"col":23,"row":12,"variantId":"horizontal"},{"col":23,"row":21,"variantId":"horizontal"},{"col":24,"row":12,"variantId":"horizontal"},{"col":24,"row":21,"variantId":"horizontal"},{"col":25,"row":12,"variantId":"horizontal"},{"col":25,"row":21,"variantId":"horizontal"},{"col":13,"row":13,"variantId":"vertical"},{"col":26,"row":13,"variantId":"vertical"},{"col":13,"row":14,"variantId":"vertical"},{"col":26,"row":14,"variantId":"vertical"},{"col":13,"row":15,"variantId":"vertical"},{"col":26,"row":15,"variantId":"vertical"},{"col":13,"row":16,"variantId":"vertical"},{"col":26,"row":16,"variantId":"vertical"},{"col":13,"row":17,"variantId":"vertical"},{"col":26,"row":17,"variantId":"vertical"},{"col":13,"row":18,"variantId":"vertical"},{"col":26,"row":18,"variantId":"vertical"},{"col":13,"row":19,"variantId":"vertical"},{"col":26,"row":19,"variantId":"vertical"},{"col":13,"row":20,"variantId":"vertical"},{"col":26,"row":20,"variantId":"vertical"}]
+
 export interface FarmlandFenceLayout {
   col0: number;
   row0: number;
@@ -178,103 +247,9 @@ export function getFarmlandFenceLayout(map: FarmMapData): FarmlandFenceLayout {
     row0,
     colEnd: maxCol + 1,
     rowEnd: maxRow + 1,
-    // Portão no topo da cerca, na mesma coluna da porta de casa — o
-    // caminho mais natural entre a casa e a lavoura.
     gate: [map.houseDoorPosition[0], row0],
   };
 }
-
-/**
- * Definição do mapa da fazenda: dimensões, grid, árvores e a área
- * cultivável. É a única fonte de verdade para essas posições — tanto o
- * desenho do mapa (`mapBuilder`) quanto a grade de colisão (`systems/grid`)
- * e a agricultura (`systems/farmland`) leem daqui, em vez de duplicar as
- * coordenadas. Novos elementos (construções, etc.) serão adicionados aqui
- * nas próximas fases, sem precisar alterar cena ou sistemas.
- *
- * Fase 9 — Expansão de mapa: núcleo ampliado de 25x18 para 40x30 e a área
- * de plantio de 4x3 (12 canteiros) para 12x8 (96 canteiros), para o
- * jogador ter espaço real de lucrar. Casa nova, posicionada acima da
- * lavoura com espaço de sobra pra circular; `PLAYER_START`
- * (`data/player.ts`) nasce bem na porta dela.
- */
-const HOUSE_COL0 = 16;
-const HOUSE_ROW0 = 2;
-
-const housePosition: RectArea = {
-  col0: HOUSE_COL0,
-  row0: HOUSE_ROW0,
-  cols: PLAYER_HOUSE_TILE_COLS,
-  rows: PLAYER_HOUSE_TILE_ROWS,
-};
-
-export const farmMap: FarmMapData = {
-  tileSize: TILE_SIZE,
-  cols: 40,
-  rows: 30,
-  // Um trecho por lado do núcleo (40x30) — leste/oeste com a mesma altura
-  // do núcleo, norte/sul com a mesma largura, sem cantos diagonais (formato
-  // "cruz", igual ao Forager: você vê a terra travada ao redor da ilha
-  // atual, mas cada trecho só se conecta a UM lado do que já é seu).
-  // Cada trecho carrega seu bioma (ver `BiomeId`), pedido explícito do
-  // usuário: oeste=Mineração (pedra, cobre, ferro, ouro), leste=Madeireira
-  // (árvores, arbustos, plantio de frutíferas), sul=Praia/Mar,
-  // norte=Cavernas — a mecânica de cada um (minerar, cortar árvore, pescar)
-  // vem em fases futuras, isso só define QUAL região é qual.
-  expansions: [
-    { direction: 'east', biome: 'lumber', col0: 40, row0: 0, cols: 12, rows: 30, price: 120, signPosition: [38, 15] },
-    { direction: 'west', biome: 'mining', col0: -12, row0: 0, cols: 12, rows: 30, price: 120, signPosition: [1, 15] },
-    { direction: 'north', biome: 'cave', col0: 0, row0: -8, cols: 40, rows: 8, price: 100, signPosition: [20, 1] },
-    { direction: 'south', biome: 'beach', col0: 0, row0: 30, cols: 40, rows: 8, price: 100, signPosition: [20, 28] },
-  ],
-  // Pontes de transição de cena (ver `BridgeDefinition`) — uma por lado do
-  // núcleo, sobre a própria parede (linha da cerca), em colunas/linhas
-  // diferentes das placas de expansão (que ficam uma célula pra dentro),
-  // então nunca colidem fisicamente. `destinationSceneKey` precisa bater
-  // com a chave (`super(key)`) de cada cena concreta em `scenes/*.ts` — ver
-  // `scenes/ExternalMapScene.ts`. `destinationName` foi renomeado por
-  // pedido explícito do usuário: a cena além da ponte se chama "Floresta"/
-  // "Pedreira", mesmo a faixa de expansão dentro da Fazenda continuando
-  // "Madeireira"/"Mineração" (`BIOME_LABELS` acima) — são nomes de coisas
-  // diferentes (a faixa expansível vs. o mapa depois da ponte), só
-  // coincidem pro par Praia/Cavernas.
-  bridges: [
-    { direction: 'north', col: 10, row: 0, destinationName: 'Cavernas', destinationSceneKey: 'CaveScene', requirement: { coins: 200 } },
-    { direction: 'south', col: 30, row: 29, destinationName: 'Praia', destinationSceneKey: 'BeachScene', requirement: { coins: 300 } },
-    { direction: 'west', col: 0, row: 10, destinationName: 'Pedreira', destinationSceneKey: 'QuarryScene', requirement: { coins: 250 } },
-    { direction: 'east', col: 39, row: 20, destinationName: 'Floresta', destinationSceneKey: 'ForestScene', requirement: { coins: 250 } },
-  ],
-  treePositions: [
-    [3, 3],
-    [36, 3],
-    [3, 26],
-    [36, 26],
-    [12, 4],
-    [27, 4],
-  ],
-  // 12x8 = 96 canteiros, centralizada logo abaixo da casa/loja, com espaço
-  // de sobra pra circular entre elas (linhas 9-12 ficam livres).
-  farmlandArea: buildRectangle(14, 13, 12, 8),
-  // Do lado de FORA da cerca da lavoura, no quintal, colada ao portão —
-  // perto o bastante da entrada pra ser conveniente logo depois de colher,
-  // sem ficar em cima da própria cerca/portão (pedido explícito: não
-  // dentro do vão do portão, uma célula acima dele, já na grama).
-  shippingBinPosition: [19, 11],
-  // Ao lado direito da Casa (não mais no caminho entre a porta e a
-  // lavoura, onde atrapalhava a passagem) — perto o bastante da entrada
-  // pra ser conveniente, sem ficar bloqueando o corredor principal.
-  shopPosition: [25, 7],
-  housePosition,
-  houseDoorPosition: [HOUSE_COL0 + PLAYER_HOUSE_DOOR_OFFSET[0], HOUSE_ROW0 + PLAYER_HOUSE_DOOR_OFFSET[1]],
-  // Vazios por ora — bioma de Mineração ainda não tem a mecânica de
-  // quebrar pedra/minério (fases futuras), só a região reservada.
-  rockPositions: [],
-  orePositions: [],
-  foliagePositions: [
-    [10, 12], // Coloque aqui as colunas e linhas onde as plantinhas estão!
-    [15, 8],
-  ],
-};
 
 /** Gera a lista de células (col, row) de um retângulo de `w` x `h` a partir de (`col0`, `row0`). */
 function buildRectangle(col0: number, row0: number, w: number, h: number): Array<[number, number]> {

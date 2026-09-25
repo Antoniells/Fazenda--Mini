@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { playClick } from '../systems/soundEffects';
 import {
   INVENTORY_PANEL_KEY,
   INVENTORY_SLOT_FRAME_NAME,
@@ -15,6 +16,7 @@ import { Inventory } from '../systems/inventory';
 import { RECIPES, RecipeDefinition } from '../data/recipes';
 import { RESOURCES } from '../data/resources';
 import { resolveSlotVisual } from '../data/items';
+import { getToolUpgradeBlock, previousToolName } from '../systems/toolUpgrade';
 
 const BOOK_SCALE = 2.2;
 const SLOT_SCALE = 1.7;
@@ -116,6 +118,7 @@ export class CraftingMenu {
 this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
       if (!this.isOpen_) return;
       event.stopPropagation();
+      playClick(scene);
       
       // 1. Muda a arte instantaneamente
       this.closeButtonMark.setFrame(CLOSE_X_ICON_PRESSED_FRAME.name); 
@@ -192,7 +195,10 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
           if (!this.isOpen_) return;
           event.stopPropagation();
           const slot = this.slots[index];
-          if (slot.recipeId) onCraft(slot.recipeId);
+          if (slot.recipeId) {
+            playClick(scene);
+            onCraft(slot.recipeId);
+          }
         },
       );
 
@@ -277,13 +283,18 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
         slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
       }
 
-      const ingredientsLabel = recipe.ingredients
-        .map((ingredient) => `${ingredient.amount} ${RESOURCES[ingredient.resourceId]?.name ?? ingredient.resourceId}`)
-        .join('\n');
-      slot.ingredientsText.setFontSize(recipe.ingredients.length > 1 ? 9 : 11);
+      // Upgrade de ferramenta (Madeira > Pedra > Ferro > Ouro): mostra o motivo quando não dá pra fabricar agora.
+      const block = getToolUpgradeBlock(inventory, recipe);
+      const ingredientsLabel =
+        block === 'owned'
+          ? 'Já tem'
+          : block === 'needsPrevious'
+            ? `Precisa:\n${previousToolName(recipe.itemId)}`
+            : recipe.ingredients.map((ingredient) => `${ingredient.amount} ${RESOURCES[ingredient.resourceId]?.name ?? ingredient.resourceId}`).join('\n');
+      slot.ingredientsText.setFontSize(block === 'needsPrevious' || recipe.ingredients.length > 1 ? 9 : 11);
       slot.ingredientsText.setText(ingredientsLabel);
 
-      const canAfford = recipe.ingredients.every((ingredient) => inventory.getResourceCount(ingredient.resourceId) >= ingredient.amount);
+      const canAfford = !block && recipe.ingredients.every((ingredient) => inventory.getResourceCount(ingredient.resourceId) >= ingredient.amount);
       slot.icon.setAlpha(canAfford ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
 
       slot.icon.setVisible(true);

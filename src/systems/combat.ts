@@ -2,6 +2,14 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 
+/**
+ * Evento da CENA emitido quando um inimigo acerta (ou tenta acertar — a
+ * invencibilidade pós-dano não conta) o jogador; o payload é o `Enemy` que
+ * atacou. Quem quiser reagir (hoje o pet companheiro, `systems/petCompanion.ts`)
+ * só escuta — o emissor (`SlimeSpawner`) não conhece ninguém.
+ */
+export const PLAYER_ATTACKED_EVENT = 'player-attacked';
+
 /** Alcance (px) da hitbox de ataque à frente do jogador, e seu tamanho (quadrado). */
 const ATTACK_RANGE_PX = 26;
 const ATTACK_SIZE_PX = 42;

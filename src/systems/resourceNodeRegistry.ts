@@ -3,17 +3,26 @@ import Phaser from 'phaser';
 export type ResourceNodeKind = 'tree' | 'smallRock' | 'bigRock';
 /** Só relevante para `kind: 'tree'` — pedras não crescem, nascem sempre prontas pra quebrar. */
 export type TreeStage = 'sprout' | 'young' | 'mature';
+/** Espécie da árvore (só `kind: 'tree'`): ausente = pinheiro. A bétula só existe adulta (sem broto/muda) e nunca é sorteada pelo respawn selvagem. */
+export type TreeSpecies = 'pine' | 'birch';
 
 export interface ResourceNode {
   col: number;
   row: number;
   kind: ResourceNodeKind;
   stage: TreeStage;
+  species?: TreeSpecies;
+  /** Dano já acumulado (em "golpes de madeira") numa árvore/pedra ainda de pé — sobrevive a trocar de cena, à virada do dia e ao save (antes voltava a zero). */
+  hits?: number;
 }
 
 export interface ResourceCaps {
   maxTrees: number;
   maxRocks: number;
+  /** Quantos brotos novos nascem por virada de dia ([mín, máx], sorteado). Padrão [1, 3] — a Fazenda usa menos. */
+  newTreesPerDay?: [number, number];
+  /** Quantas pedras novas nascem por virada de dia ([mín, máx], sorteado). Padrão [1, 2]. */
+  newRocksPerDay?: [number, number];
 }
 
 function nodeKey(col: number, row: number): string {
@@ -40,18 +49,51 @@ function nodeKey(col: number, row: number): string {
 class ResourceNodeRegistry {
   private readonly scenes = new Map<string, Map<string, ResourceNode>>();
   private readonly caps = new Map<string, ResourceCaps>();
+  /** Os nós originais de cada cena (de `data/maps/*.ts`) — pra uma partida nova/um save antigo voltarem ao mundo do começo (`resetToInitial`). */
+  private readonly initial = new Map<string, ResourceNode[]>();
 
   ensureInitialized(sceneKey: string, initialNodes: ResourceNode[], caps: ResourceCaps): void {
     if (this.scenes.has(sceneKey)) return;
 
-    const nodes = new Map<string, ResourceNode>();
-    for (const node of initialNodes) nodes.set(nodeKey(node.col, node.row), node);
-    this.scenes.set(sceneKey, nodes);
+    this.initial.set(sceneKey, initialNodes.map((node) => ({ ...node })));
+    this.scenes.set(sceneKey, new Map(initialNodes.map((node) => [nodeKey(node.col, node.row), { ...node }])));
     this.caps.set(sceneKey, caps);
+  }
+
+  /** Volta TODAS as cenas aos nós originais do mapa — partida nova, ou save anterior aos recursos persistentes (senão o mundo da partida anterior vazaria pra esta). */
+  resetToInitial(): void {
+    for (const [sceneKey, nodes] of this.initial) {
+      this.scenes.set(sceneKey, new Map(nodes.map((node) => [nodeKey(node.col, node.row), { ...node }])));
+    }
+  }
+
+  /** Estado atual de todas as cenas, pro save (`SaveManager`): o que já foi cortado/quebrado e o que nasceu/cresceu continua assim ao carregar. */
+  serialize(): Record<string, ResourceNode[]> {
+    const data: Record<string, ResourceNode[]> = {};
+    for (const [sceneKey, nodes] of this.scenes) data[sceneKey] = Array.from(nodes.values()).map((node) => ({ ...node }));
+    return data;
+  }
+
+  /** Restaura de `serialize()`. Cenas que o save não conhece ficam como estão (nos originais, depois de `resetToInitial`). */
+  restore(data: Record<string, ResourceNode[]>): void {
+    for (const [sceneKey, nodes] of Object.entries(data)) {
+      if (!this.scenes.has(sceneKey) || !Array.isArray(nodes)) continue;
+      this.scenes.set(sceneKey, new Map(nodes.map((node) => [nodeKey(node.col, node.row), { ...node }])));
+    }
   }
 
   getNodes(sceneKey: string): ResourceNode[] {
     return Array.from(this.scenes.get(sceneKey)?.values() ?? []);
+  }
+
+  getNode(sceneKey: string, col: number, row: number): ResourceNode | undefined {
+    return this.scenes.get(sceneKey)?.get(nodeKey(col, row));
+  }
+
+  /** Grava o dano acumulado do nó (árvore/pedra ainda de pé) — ver `ResourceNode.hits`. */
+  setHits(sceneKey: string, col: number, row: number, hits: number): void {
+    const node = this.scenes.get(sceneKey)?.get(nodeKey(col, row));
+    if (node) node.hits = hits;
   }
 
   hasNodeAt(sceneKey: string, col: number, row: number): boolean {
@@ -90,8 +132,9 @@ class ResourceNodeRegistry {
       else if (node.stage === 'young') nodes.set(key, { ...node, stage: 'mature' });
     }
 
+    // O teto de árvores conta só os pinheiros (as bétulas fixas do mapa não entram na conta do respawn).
     const countOf = (kind: ResourceNodeKind | 'rock'): number =>
-      Array.from(nodes.values()).filter((n) => (kind === 'rock' ? n.kind !== 'tree' : n.kind === kind)).length;
+      Array.from(nodes.values()).filter((n) => (kind === 'rock' ? n.kind !== 'tree' : n.kind === kind && n.species !== 'birch')).length;
 
     const findFreeCell = (): { col: number; row: number } | null => {
       for (let attempt = 0; attempt < 40; attempt++) {
@@ -102,14 +145,16 @@ class ResourceNodeRegistry {
       return null;
     };
 
-    const newTrees = Phaser.Math.Between(1, 3);
+    const [minTrees, maxTrees] = caps.newTreesPerDay ?? [1, 3];
+    const newTrees = Phaser.Math.Between(minTrees, maxTrees);
     for (let i = 0; i < newTrees && countOf('tree') < caps.maxTrees; i++) {
       const cell = findFreeCell();
       if (!cell) break;
       nodes.set(nodeKey(cell.col, cell.row), { col: cell.col, row: cell.row, kind: 'tree', stage: 'sprout' });
     }
 
-    const newRocks = Phaser.Math.Between(1, 2);
+    const [minRocks, maxRocks] = caps.newRocksPerDay ?? [1, 2];
+    const newRocks = Phaser.Math.Between(minRocks, maxRocks);
     for (let i = 0; i < newRocks && countOf('rock') < caps.maxRocks; i++) {
       const cell = findFreeCell();
       if (!cell) break;
