@@ -10,17 +10,19 @@ import { UNLOCK_SOUND } from '../data/audio';
 import { HORDE_START_HOUR } from '../data/horde';
 import { getCurrentRequest, getRequestStatus, turnInRequest } from './requests';
 
-/** O que a conversa precisa da cena: o painel da loja (só o Ferreiro) e um jeito de tocar som. */
+/** O que a conversa precisa da cena: o painel da loja (dos moradores que vendem) e um jeito de tocar som. */
 export interface NpcTalkContext {
   scene: Phaser.Scene;
-  /** A loja está aberta agora (o Ferreiro está atrás do balcão)? */
-  canOpenShop: () => boolean;
-  openShop: () => void;
+  /** A loja do vendedor `id` está aberta agora (ele está em expediente)? */
+  canOpenShop: (id: NpcId) => boolean;
+  openShop: (id: NpcId) => void;
 }
 
 const COMPLETED_LINES: Record<NpcId, string[]> = {
   blacksmith: ['A Fazenda está salva graças a você! A forja nunca esteve tão animada.', 'Se precisar de um fio novo na lâmina, é só chamar.'],
-  banker: ['A lenda da Fazenda! Meu cofre e eu agradecemos.', 'Continue prosperando — o Vilarejo inteiro torce por você.'],
+  banker: ['A lenda da Fazenda! Meu forno e eu agradecemos.', 'Continue prosperando — o Vilarejo inteiro torce por você (e come o meu pão).'],
+  supplier: ['Você salvou a Fazenda e ainda arruma tempo pra plantar? Que orgulho!', 'Sementes novas chegaram: passe na loja quando quiser.'],
+  carpenter: ['Uma fazenda salva merece obra nova! Quando quiser construir, me procure.', 'Bom trabalho, herói. A madeira aqui é por minha conta... quase.'],
   pirate: ['Arr! Um verdadeiro herói de terra firme. Quem diria!', 'Quando quiser navegar de novo, o convés é seu, marujo.'],
   mermaid: ['Ouvi dizer que a Fazenda foi salva! Até as ondas comemoraram.', 'Volte sempre à praia, herói. O mar nunca esquece quem protege a terra.'],
 };
@@ -50,11 +52,10 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
 
   const base = { speaker: def.name, subtitle: def.title, portrait: { key: def.portrait.key, frame: def.portrait.frame } };
   const shopAction: DialogueAction | null =
-    id === 'blacksmith'
+    def.sells && context.canOpenShop(id)
       ? {
           label: 'Ver a loja',
-          enabled: context.canOpenShop(),
-          onSelect: () => context.openShop(),
+          onSelect: () => context.openShop(id),
         }
       : null;
   // Pedido do dia (missão secundária): sempre disponível como escolha; quem já cumpriu o de hoje recebe um "volte amanhã".

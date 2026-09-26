@@ -364,31 +364,27 @@ export const WOOD_PATH = 'Icons/RPG icons/Extras/Wood.png';
 export const WOOD_FRAME = { name: 'wood-pile-icon', rect: { x: 0, y: 0, width: 16, height: 16 } };
 
 /**
- * Veios de minério (Pedreira): `Exterior/Mine and Dungeon/stone with
- * minerals.png` (176x272, grid uniforme 16x16) tem várias fileiras de
- * cristais coloridos — usadas aqui como "veio visível" de cada minério
- * (não a mecânica de minerar em si, ainda não implementada): cinza/prateado
- * para ferro, azul-marinho escuro (o mais próximo de preto na folha, que
+ * Veios de minério (Pedreira, minerados com a Picareta — `systems/oreInteraction.ts`, `data/ores.ts`): `Exterior/Mine and Dungeon/stone with
+ * minerals.png` (176x176, grid uniforme 16x16) tem várias fileiras de
+ * cristais coloridos — a 1ª linha (a pedra com o minério embutido; todas com o mesmo recorte 11x10 em y=4) dá o "veio visível" de cada minério: laranja
+ * para cobre, cinza/prateado para ferro, amarelo para ouro, azul-marinho escuro (o mais próximo de preto na folha, que
  * não tem uma variação realmente preta) para carvão. Bounds confirmados
  * pixel a pixel.
  */
 export const ORE_KEY = 'ore-minerals';
 export const ORE_PATH = 'Objects/Exterior/Mine and Dungeon/stone with minerals.png';
-export const ORE_IRON_FRAME = { name: 'ore-iron', rect: { x: 18, y: 34, width: 13, height: 14 } };
-export const ORE_COAL_FRAME = { name: 'ore-coal', rect: { x: 130, y: 34, width: 13, height: 14 } };
+export const ORE_IRON_FRAME = { name: 'ore-iron', rect: { x: 18, y: 4, width: 11, height: 10 } };
+export const ORE_COAL_FRAME = { name: 'ore-coal', rect: { x: 130, y: 4, width: 11, height: 10 } };
+export const ORE_COPPER_FRAME = { name: 'ore-copper', rect: { x: 2, y: 4, width: 11, height: 10 } };
+export const ORE_GOLD_FRAME = { name: 'ore-gold', rect: { x: 34, y: 4, width: 11, height: 10 } };
 
 /**
- * Entrada de caverna (Caverna): `Tileset Grass Cliff Tileset Summer.png`
- * tem, dentro do tileset de penhasco, 3 arcos escuros lado a lado
- * entalhados na parede de terra/grama — usados aqui como o rosto rochoso
- * de uma entrada de mina, no estilo pedido (parecido com a entrada das
- * minas do Stardew Valley). Bounds (os 3 arcos juntos) confirmados pixel a
- * pixel — cada arco individual é 16px, mas junto formam uma estrutura mais
- * larga e "importante" que um arco só.
+ * Entrada de caverna (Caverna): a escadaria descendo pra dentro da terra de `Objects/Exterior/Deep Forest/Hidden Entrance.png` (80x96, um kit de peças: 4 colunas e essa
+ * escadaria no meio). Recorte pixel a pixel (33x31 em (22, 49)) — só a escadaria; as colunas ao redor ficam de fora.
  */
 export const CAVE_ENTRANCE_KEY = 'cave-entrance';
-export const CAVE_ENTRANCE_PATH = 'Tileset/Tileset Grass Cliff Tileset Summer.png';
-export const CAVE_ENTRANCE_FRAME = { name: 'cave-entrance', rect: { x: 224, y: 0, width: 48, height: 32 } };
+export const CAVE_ENTRANCE_PATH = 'Objects/Exterior/Deep Forest/Hidden Entrance.png';
+export const CAVE_ENTRANCE_FRAME = { name: 'cave-entrance', rect: { x: 22, y: 49, width: 33, height: 31 } };
 
 /**
  * Ícone de Ferro (recompensa da horda, ver `data/horde.ts`): a barra de ferro (cinza, 3ª coluna da 1ª linha) de
@@ -397,6 +393,23 @@ export const CAVE_ENTRANCE_FRAME = { name: 'cave-entrance', rect: { x: 224, y: 0
 export const IRON_KEY = 'iron-bar';
 export const IRON_PATH = 'Icons/RPG icons/Extras/Bars and ores.png';
 export const IRON_FRAME = { name: 'iron-bar-icon', rect: { x: 32, y: 0, width: 16, height: 16 } };
+
+/**
+ * Ícones do resto dos metais (`data/resources.ts`), da MESMA folha (`IRON_KEY`, células 16x16): linha 0 = cobre (barra, minério bruto), ferro (barra — `IRON_FRAME` —, minério bruto);
+ * linha 1 = ouro (barra, minério bruto). Registrados na `MainScene`.
+ */
+export const METAL_ICON_FRAMES = {
+  copperBar: { name: 'metal-copper-bar', rect: { x: 0, y: 0, width: 16, height: 16 } },
+  copperOre: { name: 'metal-copper-ore', rect: { x: 16, y: 0, width: 16, height: 16 } },
+  ironOre: { name: 'metal-iron-ore', rect: { x: 48, y: 0, width: 16, height: 16 } },
+  goldBar: { name: 'metal-gold-bar', rect: { x: 0, y: 16, width: 16, height: 16 } },
+  goldOre: { name: 'metal-gold-ore', rect: { x: 16, y: 16, width: 16, height: 16 } },
+};
+
+/** Ícone do Carvão: `Icons/RPG icons/Extras/Coal.png` (32x32, 2x2 células de 16x16) — a 1ª célula. */
+export const COAL_KEY = 'coal-icons';
+export const COAL_PATH = 'Icons/RPG icons/Extras/Coal.png';
+export const COAL_FRAME = { name: 'coal-icon', rect: { x: 0, y: 0, width: 16, height: 16 } };
 
 /**
  * Água plana (pequeno lago da Floresta, mar da Praia): `Water tile.png` é
@@ -431,11 +444,32 @@ export const WATER_AUTOTILE_KEY = 'water-autotile';
 export const WATER_AUTOTILE_PATH = 'Tileset/Beach animations tiles.png';
 const WATER_SHEET_COLS = 24;
 const waterFrame = (col: number, row: number): number => row * WATER_SHEET_COLS + col;
+/** Primeira coluna do LAGO 4x4 (sem rosquinhas) — colunas 8-11 na folha da Praia; a da Floresta é a mesma deslocada de 12 colunas. */
+const WATER_LAKE_COL = 8;
 
 export const WATER_NEIGHBOR = { N: 1, E: 2, S: 4, W: 8 } as const;
 const { N, E, S, W } = WATER_NEIGHBOR;
 
-/** Frame (na fase 0) de cada máscara de vizinhos — ver o layout acima. Cada estilo de água (`WATER_STYLES`) reaproveita este mesmo desenho, só deslocando as colunas. */
+/** As 4 diagonais de uma célula (onde pode haver um canto interno de areia — ver `WaterStyle.innerCorners`). */
+export type WaterDiagonal = 'NW' | 'NE' | 'SW' | 'SE';
+/**
+ * Cantos internos do bloco do MEIO (colunas 4-7): ali as "rosquinhas" (areia com anel) ficam cada uma no cruzamento de 4 tiles, então cada
+ * tile do miolo 2x2 (colunas 5-6, linhas 1-2) leva um QUARTO de rosquinha no canto — exatamente o que falta quando a areia encosta na água só
+ * pela diagonal (sem ele, o miolo liso deixa um "quadrado azul" avançando sobre a areia). Usados só nessas células, nunca nas bordas retas.
+ */
+const WATER_INNER_CORNER_FRAMES: Record<WaterDiagonal, number> = {
+  NW: waterFrame(5, 1), //  areia no canto superior esquerdo
+  NE: waterFrame(6, 1),
+  SW: waterFrame(5, 2),
+  SE: waterFrame(6, 2),
+};
+
+/**
+ * Frame (na fase 0) de cada máscara de vizinhos. Só as formas FINAS — ilhota e cápsulas (água com 0, 1 ou 2 vizinhos opostos) — vêm do
+ * bloco 1 (colunas 0-3), que é o único com esses formatos. Cantos e bordas (água com 2 vizinhos em L ou 3 vizinhos) NÃO usam o 9-slice do bloco 1:
+ * ele tem "rosquinhas" (pontinhas de areia/terra com anel) nos cantos internos, que apareciam como arcos ao longo da margem. Vêm do LAGO 4x4
+ * das colunas 8-11 (`WATER_LAKE_COL`), que não tem rosquinha nenhuma — ver `WATER_AUTOTILE_ALTERNATES` pras bordas.
+ */
 export const WATER_AUTOTILE_FRAMES: Record<number, number> = {
   0: waterFrame(0, 3), //           ilhota
   [S]: waterFrame(0, 0), //         só vizinho embaixo → capa de cima da cápsula vertical
@@ -444,15 +478,31 @@ export const WATER_AUTOTILE_FRAMES: Record<number, number> = {
   [E]: waterFrame(1, 3), //         só vizinho à direita → capa da esquerda da cápsula horizontal
   [E | W]: waterFrame(2, 3), //     meio da cápsula horizontal
   [W]: waterFrame(3, 3), //         só vizinho à esquerda → capa da direita
-  [E | S]: waterFrame(1, 0), //     canto superior esquerdo
-  [E | S | W]: waterFrame(2, 0), // borda de cima
-  [S | W]: waterFrame(3, 0), //     canto superior direito
-  [N | E | S]: waterFrame(1, 1), // borda da esquerda
+  [E | S]: waterFrame(WATER_LAKE_COL, 0), //         canto superior esquerdo
+  [E | S | W]: waterFrame(WATER_LAKE_COL + 1, 0), // borda de cima (alterna com a coluna vizinha, ver abaixo)
+  [S | W]: waterFrame(WATER_LAKE_COL + 3, 0), //     canto superior direito
+  [N | E | S]: waterFrame(WATER_LAKE_COL, 1), //     borda da esquerda (alterna por linha)
   [N | E | S | W]: waterFrame(9, 2), // miolo (água lisa)
-  [N | S | W]: waterFrame(3, 1), // borda da direita
-  [N | E]: waterFrame(1, 2), //     canto inferior esquerdo
-  [N | E | W]: waterFrame(2, 2), // borda de baixo
-  [N | W]: waterFrame(3, 2), //     canto inferior direito
+  [N | S | W]: waterFrame(WATER_LAKE_COL + 3, 1), // borda da direita (alterna por linha)
+  [N | E]: waterFrame(WATER_LAKE_COL, 3), //         canto inferior esquerdo
+  [N | E | W]: waterFrame(WATER_LAKE_COL + 1, 3), // borda de baixo (alterna com a coluna vizinha)
+  [N | W]: waterFrame(WATER_LAKE_COL + 3, 3), //     canto inferior direito
+};
+
+/**
+ * As bordas do lago (blocos 4x4) não se repetem sozinhas: o topo é feito de DOIS tiles diferentes (colunas 9 e 10 do bloco), com uma onda
+ * que só fecha com o par. Por isso as bordas alternam entre os dois: a de cima/de baixo pela COLUNA da célula, a da esquerda/direita pela
+ * LINHA. `axis` diz qual; `frames` são [par, ímpar] (fase 0).
+ */
+export interface WaterEdgeAlternate {
+  axis: 'col' | 'row';
+  frames: [number, number];
+}
+export const WATER_AUTOTILE_ALTERNATES: Record<number, WaterEdgeAlternate> = {
+  [E | S | W]: { axis: 'col', frames: [waterFrame(WATER_LAKE_COL + 1, 0), waterFrame(WATER_LAKE_COL + 2, 0)] },
+  [N | E | W]: { axis: 'col', frames: [waterFrame(WATER_LAKE_COL + 1, 3), waterFrame(WATER_LAKE_COL + 2, 3)] },
+  [N | E | S]: { axis: 'row', frames: [waterFrame(WATER_LAKE_COL, 1), waterFrame(WATER_LAKE_COL, 2)] },
+  [N | S | W]: { axis: 'row', frames: [waterFrame(WATER_LAKE_COL + 3, 1), waterFrame(WATER_LAKE_COL + 3, 2)] },
 };
 
 /**
@@ -467,19 +517,48 @@ export interface WaterStyle {
   path: string;
   /** Frame (fase 0) de cada máscara de vizinhos. */
   frames: Record<number, number>;
+  /** Canto INTERNO (água com os 4 vizinhos ortogonais, mas areia/terra numa DIAGONAL): frame (fase 0) por diagonal onde está a areia. */
+  innerCorners: Record<WaterDiagonal, number>;
+  /** Bordas que alternam entre dois tiles (fase 0) — ver `WATER_AUTOTILE_ALTERNATES`. */
+  alternates: Record<number, WaterEdgeAlternate>;
 }
+/**
+ * Bordas de um estilo de água deslocado de colunas. `single` (opcional) escolhe, por máscara, UM dos dois tiles alternados (0 = par, 1 = ímpar) e o usa em
+ * todas as células — pra folhas em que um dos dois tiles tem a água encostando na borda de fora do bloco (um "buraco" na margem de terra), como na Floresta.
+ */
+const shiftedAlternates = (colOffset: number, single: Partial<Record<number, 0 | 1>> = {}): Record<number, WaterEdgeAlternate> =>
+  Object.fromEntries(
+    Object.entries(WATER_AUTOTILE_ALTERNATES).map(([mask, alt]) => {
+      const frames: [number, number] = [alt.frames[0] + colOffset, alt.frames[1] + colOffset];
+      const pick = single[Number(mask)];
+      return [mask, { axis: alt.axis, frames: pick === undefined ? frames : ([frames[pick], frames[pick]] as [number, number]) }];
+    }),
+  );
 const shiftedFrames = (colOffset: number, interior: number): Record<number, number> => {
   const frames: Record<number, number> = {};
   for (const [mask, frame] of Object.entries(WATER_AUTOTILE_FRAMES)) frames[Number(mask)] = frame + colOffset;
   frames[N | E | S | W] = interior;
   return frames;
 };
+/**
+ * Qual dos dois tiles alternados de cada lado do lago NÃO deixa a água encostar na beirada de fora (o outro abre um "buraco" na margem de terra/areia): cima e direita
+ * o 2º, baixo e esquerda o 1º. Vale pras duas folhas (Praia e Floresta têm o mesmo desenho de bloco).
+ */
+const LAKE_CONTINUOUS_EDGE: Partial<Record<number, 0 | 1>> = { [E | S | W]: 1, [N | E | W]: 0, [N | E | S]: 0, [N | S | W]: 1 };
 export const WATER_STYLES = {
-  beach: { textureKey: WATER_AUTOTILE_KEY, path: WATER_AUTOTILE_PATH, frames: WATER_AUTOTILE_FRAMES },
+  beach: {
+    textureKey: WATER_AUTOTILE_KEY,
+    path: WATER_AUTOTILE_PATH,
+    frames: WATER_AUTOTILE_FRAMES,
+    innerCorners: WATER_INNER_CORNER_FRAMES,
+    alternates: shiftedAlternates(0, LAKE_CONTINUOUS_EDGE),
+  },
   waterGround: {
     textureKey: 'water-ground-autotile',
     path: 'Tileset/Water Ground animations tiles.png',
     frames: shiftedFrames(12, waterFrame(21, 2)),
+    innerCorners: { NW: WATER_INNER_CORNER_FRAMES.NW + 12, NE: WATER_INNER_CORNER_FRAMES.NE + 12, SW: WATER_INNER_CORNER_FRAMES.SW + 12, SE: WATER_INNER_CORNER_FRAMES.SE + 12 },
+    alternates: shiftedAlternates(12, LAKE_CONTINUOUS_EDGE),
   },
 } satisfies Record<string, WaterStyle>;
 export type WaterStyleId = keyof typeof WATER_STYLES;
@@ -487,7 +566,7 @@ export type WaterStyleId = keyof typeof WATER_STYLES;
 /** Fases da animação: blocos de 4 linhas empilhados (fase p = frame + p * `WATER_AUTOTILE_PHASE_STRIDE`) e quanto dura cada fase. */
 export const WATER_AUTOTILE_PHASES = 4;
 export const WATER_AUTOTILE_PHASE_STRIDE = 4 * WATER_SHEET_COLS;
-export const WATER_AUTOTILE_PHASE_MS = 240;
+export const WATER_AUTOTILE_PHASE_MS = 520;
 /** Máscara do miolo (água lisa, sem borda) — igual em todas as fases, então não precisa ser animada. */
 export const WATER_AUTOTILE_INTERIOR_MASK = N | E | S | W;
 /** Índices de `Beach animations tiles.png` que são AREIA lisa (não água) — o chão de areia da Praia é pintado com eles no editor. */

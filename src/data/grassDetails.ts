@@ -51,3 +51,20 @@ export const GRASS_DETAILS: GrassDetailDefinition[] = [
     frameRect: { x: 144, y: 51, width: 15, height: 13 },
   },
 ];
+
+/**
+ * Os 4 desenhos de mato da fileira y≈128-143 da mesma folha (limites medidos varrendo o canal alfa, sem pegar nada dos vizinhos):
+ * - `WILD_GRASS_DETAIL` — a moita folhosa (14x14): o MATO colhível com a Foice (`systems/wildGrass.ts`), também o ícone do item Capim.
+ * - `GRASS_BLADE_DETAILS` — os 3 tufos de lâminas finas: decoração espalhada pela grama da Fazenda (`systems/grassDetails.ts`), que balança ao pisar.
+ */
+export const WILD_GRASS_DETAIL: GrassDetailDefinition = {
+  id: 'wild-grass',
+  frameName: 'wild-grass-bush',
+  frameRect: { x: 145, y: 129, width: 14, height: 14 },
+};
+
+export const GRASS_BLADE_DETAILS: GrassDetailDefinition[] = [
+  { id: 'blade-a', frameName: 'grass-blade-a', frameRect: { x: 163, y: 133, width: 10, height: 9 } },
+  { id: 'blade-b', frameName: 'grass-blade-b', frameRect: { x: 180, y: 133, width: 7, height: 9 } },
+  { id: 'blade-c', frameName: 'grass-blade-c', frameRect: { x: 195, y: 131, width: 9, height: 12 } },
+];

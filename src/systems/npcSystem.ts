@@ -3,6 +3,7 @@ import { Npc, NpcPost } from '../entities/Npc';
 import { Player } from '../entities/Player';
 import { NPCS, NpcDefinition, NpcId, NpcPlace } from '../data/npcs';
 import { gameState } from './gameState';
+import { isCarpenterBusy } from './construction';
 import { WalkableGrid } from './grid';
 import { PlayerController } from './playerController';
 import { findPath, GridPoint } from './pathfinding';
@@ -19,6 +20,26 @@ export function preloadNpcs(scene: Phaser.Scene, ids: NpcId[]): void {
     if (sprite.walkKey && sprite.walkPath) scene.load.spritesheet(sprite.walkKey, encodeURI(`/${sprite.walkPath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize });
     scene.load.image(portrait.key, encodeURI(`/${portrait.path}`));
   }
+}
+
+/** Texto do expediente de um vendedor ("07:00–12:00 e 13:00–18:00"), lido das entradas `working` da rotina dele. */
+export function workingHoursText(def: NpcDefinition): string {
+  const spans: string[] = [];
+  const fmt = (hour: number): string => `${String(Math.floor(hour)).padStart(2, '0')}:00`;
+  def.schedule.forEach((entry, index) => {
+    if (!entry.working) return;
+    const end = def.schedule[(index + 1) % def.schedule.length].fromHour;
+    spans.push(`${fmt(entry.fromHour)}–${fmt(end)}`);
+  });
+  return spans.length > 0 ? `Atende das ${spans.join(' e das ')}.` : '';
+}
+
+/** O vendedor está em EXPEDIENTE agora (o trecho atual da rotina tem `working`)? Na chuva, quem estaria na rua fica em casa e não atende. Função pura. */
+export function isWorkingNow(def: NpcDefinition, hours: number, raining: boolean): boolean {
+  let entry = def.schedule[0];
+  for (const candidate of def.schedule) if (hours >= candidate.fromHour) entry = candidate;
+  if (!entry.working) return false;
+  return !(raining && entry.place.kind === 'spot' && !def.staysInRain);
 }
 
 /**
@@ -42,8 +63,6 @@ export interface NpcSystemOptions {
   ids: NpcId[];
   /** Posição dos pés e profundidade de quem trabalha atrás de um balcão (o Ferreiro). */
   posts: Partial<Record<NpcId, NpcPost>>;
-  /** Abre o painel da loja (só chamado com o Ferreiro no balcão); só o Vilarejo tem loja. */
-  openShop?: () => void;
 }
 
 /**
@@ -61,17 +80,23 @@ export class NpcSystem {
     private readonly player: Player,
     controller: PlayerController,
     tilePx: number,
-    private readonly options: NpcSystemOptions,
+    options: NpcSystemOptions,
   ) {
     const hours = gameState.gameClock.getHours();
     for (const id of options.ids) {
       const def = NPCS[id];
       const npc = new Npc(scene, def, grid, tilePx, options.posts[id] ?? null, (door) => this.playDoorSound(door));
-      npc.snapTo(resolvePlace(def, hours, gameState.weather.raining));
+      npc.snapTo(this.placeNow(npc, hours, gameState.weather.raining));
       this.npcs.set(id, npc);
     }
     controller.addWorldClickHandler((x, y) => this.handleClick(x, y));
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+  }
+
+  /** Onde o morador deve estar agora: a rotina dele — salvo o Marceneiro, que está na Fazenda (não aparece no Vilarejo) enquanto constrói (`systems/construction.ts`). */
+  private placeNow(npc: Npc, hours: number, raining: boolean): NpcPlace {
+    if (npc.def.id === 'carpenter' && isCarpenterBusy()) return { kind: 'inside' };
+    return resolvePlace(npc.def, hours, raining);
   }
 
   /** Porta abrindo, só se o jogador está por perto. */
@@ -83,17 +108,12 @@ export class NpcSystem {
     return this.npcs.get(id);
   }
 
-  /** O Ferreiro está atrás do balcão (loja aberta)? */
-  isShopOpen(): boolean {
-    return this.npcs.get('blacksmith')?.isAtPost() ?? false;
-  }
-
   update(time: number, delta: number): void {
     if (isDialogueOpen()) return; // Conversando: ninguém sai andando no meio da fala.
     const hours = gameState.gameClock.getHours();
     const raining = gameState.weather.raining;
     const playerCell = { col: this.player.col, row: this.player.row };
-    for (const npc of this.npcs.values()) npc.update(time, delta, resolvePlace(npc.def, hours, raining), playerCell);
+    for (const npc of this.npcs.values()) npc.update(time, delta, this.placeNow(npc, hours, raining), playerCell);
 
     // O jogador foi até o morador (clique): quando para, fala com ele se estiver ao lado.
     if (this.pendingTalk && !this.player.isMoving()) {
@@ -147,7 +167,8 @@ export class NpcSystem {
   private talk(npc: Npc): void {
     const anchor = npc.getTalkAnchor();
     this.player.faceDirection(anchor.col - this.player.col, anchor.row - this.player.row);
-    const context: NpcTalkContext = { scene: this.scene, canOpenShop: () => this.isShopOpen(), openShop: this.options.openShop ?? (() => {}) };
+    // Na rua ninguém abre loja: elas ficam DENTRO das casas (`ShopInteriorScene`), que fazem o próprio contexto.
+    const context: NpcTalkContext = { scene: this.scene, canOpenShop: () => false, openShop: () => {} };
     talkToNpc(npc.def.id, context);
   }
 

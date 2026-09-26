@@ -1,7 +1,6 @@
 /**
  * Caverna (Sistema de Cenas): uma entrada para as minas/cavernas, estética
- * parecida com a entrada das minas do Stardew Valley (arco escuro entalhado
- * numa parede de penhasco/grama — ver `CAVE_ENTRANCE_FRAME` em
+ * uma escadaria de pedra descendo pra dentro da terra (ver `CAVE_ENTRANCE_FRAME` em
  * `data/tiles.ts`) — só o "visual básico" pedido, sem nada além disso por
  * enquanto (inimigos/minérios raros são Fase 7, pendente).
  */

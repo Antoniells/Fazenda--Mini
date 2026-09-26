@@ -31,7 +31,7 @@ export type QuestRequirement =
   | { kind: 'deliverResource'; id: string; amount: number }
   /** Pagar moedas ao morador. */
   | { kind: 'pay'; coins: number }
-  /** Ter uma arma/armadura (comprada no Ferreiro ou fabricada na Bancada). */
+  /** Ter uma arma/armadura (comprada no Ferreiro). */
   | { kind: 'own'; category: 'tool' | 'armor'; id: string; label: string }
   /** Ter aberto N pontes de obra (Cavernas, Praia, Pedreira, Floresta — a estrada do Vilarejo não conta). */
   | { kind: 'bridges'; count: number }
@@ -74,7 +74,7 @@ export const QUESTS: QuestDefinition[] = [
     giver: 'banker',
     title: 'A primeira colheita',
     intro:
-      'Então você é quem herdou a velha Fazenda! Terra parada não paga imposto, meu jovem. Traga-me 10 Cenouras colhidas por você e eu apresento o Vilarejo a quem trabalha de verdade.',
+      'Então você é quem herdou a velha Fazenda! Terra parada não dá pão, meu jovem. Traga-me 10 Cenouras colhidas por você e eu apresento o Vilarejo a quem trabalha de verdade.',
     requirements: [{ kind: 'deliverCrop', id: 'carrot', amount: 10 }],
     reward: { coins: 150 },
     outro: 'Cenouras lindas! Prova de que a Fazenda tem futuro. Aqui está um adiantamento pelo trabalho.',
@@ -133,8 +133,8 @@ export const QUESTS: QuestDefinition[] = [
     act: 2,
     giver: 'pirate',
     title: 'Minério de verdade',
-    intro: 'Tem ferro escondido nas pedras da Pedreira. Se me trouxer 15 de Ferro, eu conto o que sei sobre as noites de horda que assombram a Fazenda...',
-    requirements: [{ kind: 'deliverResource', id: 'iron', amount: 15 }],
+    intro: 'Tem ferro escondido nas pedras da Pedreira. Se me trouxer 15 de Ferro Bruto, eu conto o que sei sobre as noites de horda que assombram a Fazenda...',
+    requirements: [{ kind: 'deliverResource', id: 'iron-ore', amount: 15 }],
     reward: { coins: 400 },
     outro:
       'Ferro puro! Então escute: de tempos em tempos, criaturas descem sobre a Fazenda à noite. Cada horda vem mais forte que a anterior. Prepare-se.',
@@ -146,7 +146,7 @@ export const QUESTS: QuestDefinition[] = [
     act: 3,
     giver: 'blacksmith',
     title: 'Uma lâmina de ferro',
-    intro: 'Ouvi falar das hordas... Com a espada de madeira você não dura uma noite. Tenha uma Espada de Ferro: compre na minha loja ou fabrique na Bancada.',
+    intro: 'Ouvi falar das hordas... Com a espada de madeira você não dura uma noite. Tenha uma Espada de Ferro: compre na minha loja.',
     requirements: [{ kind: 'own', category: 'tool', id: 'sword-iron', label: 'Espada de Ferro' }],
     reward: { coins: 200 },
     outro: 'Bela lâmina! Cuide bem dela — o fio é o que separa você dos monstros.',
@@ -156,7 +156,7 @@ export const QUESTS: QuestDefinition[] = [
     act: 3,
     giver: 'blacksmith',
     title: 'Uma armadura à altura',
-    intro: 'Espada sem armadura é coragem sem juízo. Consiga uma Armadura de Ferro — comprada aqui ou fabricada — e vista-a no Inventário.',
+    intro: 'Espada sem armadura é coragem sem juízo. Consiga uma Armadura de Ferro — comprada aqui — e vista-a no Inventário.',
     requirements: [{ kind: 'own', category: 'armor', id: 'armor-iron', label: 'Armadura de Ferro' }],
     reward: { coins: 250 },
     outro: 'Agora você parece um verdadeiro defensor. Falta pouco.',
@@ -190,7 +190,7 @@ export const QUESTS: QuestDefinition[] = [
     title: 'O fundo de defesa',
     intro: 'A Noite Final se aproxima. Preciso reunir um fundo para reforçar a defesa da Fazenda e do Vilarejo: 2000 moedas. É um investimento — você vai ver.',
     requirements: [{ kind: 'pay', coins: 2000 }],
-    reward: { resources: { wood: 60, stone: 40, iron: 20 } },
+    reward: { resources: { wood: 60, stone: 40, 'iron-ore': 20 } },
     outro: 'O fundo está feito. Aqui estão materiais para reforçar suas defesas. Falta só você dizer que está pronto.',
   },
   {
@@ -208,6 +208,6 @@ export const QUESTS: QuestDefinition[] = [
 /** Texto de epílogo mostrado na tela final (`scenes/EndingScene.ts`), página a página. */
 export const EPILOGUE_PAGES: string[] = [
   'O sol nasce sobre a Fazenda.\n\nA última horda se foi, e o silêncio da manhã nunca foi tão doce.',
-  'No Vilarejo, Alberto abre o cofre, Bruno acende a forja e o Capitão Salgado iça as velas: todos sabem que aquela terra agora tem dono — e ele não desiste.',
+  'No Vilarejo, Alberto acende o forno, Bruno acende a forja e o Capitão Salgado iça as velas: todos sabem que aquela terra agora tem dono — e ele não desiste.',
   'Do que era um terreno abandonado, nasceram hortas, pontes e amizades.\n\nA Fazenda será lembrada por gerações.',
 ];

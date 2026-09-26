@@ -1,5 +1,7 @@
 import { CROPS, ALL_CROPS_ICONS_KEY } from './crops';
 import { RESOURCES } from './resources';
+import { Quality, STAR_QUALITIES, parseQualityId, priceForQuality } from './quality';
+import { resolveSlotVisual } from './items';
 import type { Inventory } from '../systems/inventory';
 
 /**
@@ -34,17 +36,25 @@ export function getSellables(): Sellable[] {
     take: (inventory, amount) => inventory.takeCrop(crop.id, amount),
   }));
 
+  // Cada material com preço; os que têm qualidade (o ovo) entram uma vez por estrela, com o preço multiplicado (`priceForQuality`) e o ícone com a estrela.
   const resources: Sellable[] = Object.values(RESOURCES)
     .filter((resource) => (resource.sellPrice ?? 0) > 0)
-    .map((resource) => ({
-      key: `resource:${resource.id}`,
-      name: resource.name,
-      price: resource.sellPrice!,
-      textureKey: resource.textureKey,
-      iconFrame: resource.frameName,
-      count: (inventory) => inventory.getResourceCount(resource.id),
-      take: (inventory, amount) => inventory.takeResource(resource.id, amount),
-    }));
+    .flatMap((resource) => {
+      const qualities: Quality[] = resource.hasQuality ? ['normal', ...STAR_QUALITIES] : ['normal'];
+      return qualities.map((quality): Sellable => {
+        const id = quality === 'normal' ? resource.id : `${resource.id}@${quality}`;
+        const visual = resolveSlotVisual({ category: 'resource', id })!;
+        return {
+          key: `resource:${id}`,
+          name: visual.name,
+          price: priceForQuality(resource.sellPrice!, parseQualityId(id).quality),
+          textureKey: visual.textureKey,
+          iconFrame: visual.iconFrame,
+          count: (inventory) => inventory.getResourceCount(id),
+          take: (inventory, amount) => inventory.takeResource(id, amount),
+        };
+      });
+    });
 
   return [...crops, ...resources];
 }

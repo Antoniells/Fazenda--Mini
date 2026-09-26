@@ -22,7 +22,7 @@ const DUST_COUNT = 3;
 const DUST_MS = 460;
 
 /**
- * Animação de QUEBRA de um objeto do mundo (móvel, aspersor, bancada…): o objeto treme e pisca de branco (o golpe), estoura em
+ * Animação de QUEBRA de um objeto do mundo (móvel, aspersor, fornalha…): o objeto treme e pisca de branco (o golpe), estoura em
  * fragmentos — o sprite é fatiado em uma grade de pedaços que voam pra fora, giram, caem e somem — com uma nuvenzinha de poeira na base.
  * Os pedaços usam a textura/frame do próprio objeto (`setCrop`), então qualquer arte quebra "com a cara dela" sem asset novo.
  *

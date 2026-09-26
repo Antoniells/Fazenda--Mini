@@ -10,6 +10,8 @@ import { CaveScene } from '../scenes/CaveScene';
 import { BeachScene } from '../scenes/BeachScene';
 import { HouseScene } from '../scenes/HouseScene';
 import { VillageScene } from '../scenes/VillageScene';
+import { ShopInteriorScene } from '../scenes/ShopInteriorScene';
+import { CaveFloorScene } from '../scenes/CaveFloorScene';
 import { EndingScene } from '../scenes/EndingScene';
 
 // Tamanho da JANELA (viewport) — fixo, independente de `farmMap.cols/rows`:
@@ -46,5 +48,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   // UIScene não entra nessa lógica: nunca é a "cena inicial", só é iniciada
   // sob demanda via `scene.launch` (ver `scenes/UIScene.ensureUIScene`),
   // chamado pela MainScene e por cada cena externa assim que criam.
-  scene: [MainMenuScene, CharacterCreationScene, MainScene, MapEditorScene, UIScene, ForestScene, QuarryScene, CaveScene, BeachScene, HouseScene, VillageScene, EndingScene],
+  scene: [MainMenuScene, CharacterCreationScene, MainScene, MapEditorScene, UIScene, ForestScene, QuarryScene, CaveScene, BeachScene, HouseScene, VillageScene, ShopInteriorScene, CaveFloorScene, EndingScene],
 };

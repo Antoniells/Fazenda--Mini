@@ -17,6 +17,13 @@ export const SHADOW_FRAME_NAME = 'fx-shadow-blob';
 export const SHADOW_FRAME = { x: 0, y: 48, width: 16, height: 16 };
 
 /**
+ * Sombra de CONSTRUÇÃO (casas): o único quadro 100% liso da mesma folha `Shadow.png` (16x16 de preto a 30% de opacidade, sem borda — no meio do
+ * bloco grande da direita). Esticado, vira uma faixa RETA de bordas retas (`systems/shadow.ts` `createBuildingShadow`), colada na base da parede.
+ */
+export const SHADOW_FLAT_FRAME_NAME = 'fx-shadow-flat';
+export const SHADOW_FLAT_FRAME = { x: 144, y: 32, width: 16, height: 16 };
+
+/**
  * `Objects/Props/Sprash.png` (64x16): respingo d'água já azul, 4 frames de
  * 16x16 (espalha e desaparece) — confirmado visualmente, spritesheet
  * simples em grade, sem precisar de recorte manual.

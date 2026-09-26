@@ -46,6 +46,16 @@ export const REQUESTS: Record<NpcId, RequestDefinition[]> = {
     { id: 'pi-anchor', title: 'Ferro pra âncora', text: 'A âncora se foi com a última tempestade. Me traga 5 de Ferro e eu forjo outra!', requirements: [{ kind: 'deliverResource', id: 'iron', amount: 5 }], reward: { coins: 220 } },
     { id: 'pi-rations', title: 'Rango de bordo', text: 'Marinheiro sem comida vira motim! Me arranje 6 Batatas.', requirements: [{ kind: 'deliverCrop', id: 'potato', amount: 6 }], reward: { coins: 120 } },
   ],
+  supplier: [
+    { id: 'su-onions', title: 'Cebolas pro caldo da vila', text: 'Estou testando uma receita nova. Traga-me 8 Cebolas fresquinhas, por favor!', requirements: [{ kind: 'deliverCrop', id: 'onion', amount: 8 }], reward: { coins: 120 } },
+    { id: 'su-acorns', title: 'Bolotas pra plantar', text: 'Quero ver um pinheiro nascer da minha janela. Me arranje 4 Bolotas?', requirements: [{ kind: 'deliverResource', id: 'acorn', amount: 4 }], reward: { coins: 100 } },
+    { id: 'su-carrots', title: 'Cenouras pro celeiro', text: 'As cenouras acabaram na prateleira! Traga 10 e eu te pago bem.', requirements: [{ kind: 'deliverCrop', id: 'carrot', amount: 10 }], reward: { coins: 150 } },
+  ],
+  carpenter: [
+    { id: 'ca-stone', title: 'Pedra pra fundação', text: 'Uma boa obra começa por uma boa fundação: 12 de Pedra, por favor.', requirements: [{ kind: 'deliverResource', id: 'stone', amount: 12 }], reward: { coins: 110, resources: { wood: 6 } } },
+    { id: 'ca-wood', title: 'Tábuas extras', text: 'Recebi uma encomenda grande. Me traga 25 de Madeira e eu dobro o pagamento.', requirements: [{ kind: 'deliverResource', id: 'wood', amount: 25 }], reward: { coins: 160 } },
+    { id: 'ca-goo', title: 'Cola de gosma', text: 'Descobri que a gosma de Slime é uma cola incrível. Traga-me 5.', requirements: [{ kind: 'deliverResource', id: 'slime-goo', amount: 5 }], reward: { coins: 140 } },
+  ],
   mermaid: [
     { id: 'me-carrots', title: 'Cenouras crocantes', text: 'Nunca provei uma cenoura! Você me traz 6? Em troca eu te dou o que o mar devolveu.', requirements: [{ kind: 'deliverCrop', id: 'carrot', amount: 6 }], reward: { coins: 100, resources: { stone: 8 } } },
     { id: 'me-onions', title: 'Cebolas pro caldo', text: 'Os pescadores fazem um caldo divino, mas faltam 6 Cebolas. Você ajuda?', requirements: [{ kind: 'deliverCrop', id: 'onion', amount: 6 }], reward: { coins: 90, resources: { wood: 10 } } },

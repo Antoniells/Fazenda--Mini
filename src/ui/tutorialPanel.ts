@@ -103,12 +103,14 @@ export class TutorialPanel {
     const { index, total } = tutorial.getPosition();
     const progress = tutorial.getProgressLabel();
 
-    this.counter.setText(`Tutorial ${index}/${total}`);
+    const isHint = tutorial.isHint();
+    this.counter.setText(isHint ? 'Dica' : `Tutorial ${index}/${total}`);
     this.title.setText(step.title);
     this.body.setText(progress ? `${step.text}  (${progress})` : step.text);
 
     // Altura pelo texto: título + corpo (+ botão nos passos "info").
     const buttonBlock = isInfo ? BUTTON_HEIGHT + 12 : SKIP_HEIGHT + 8;
+    // A dica avulsa não tem "Pular tutorial" (o botão principal já a fecha) e o botão principal fica centralizado.
     const height = PADDING + this.title.height + 8 + this.body.height + buttonBlock + PADDING;
     this.panel.setSize(PANEL_WIDTH, height);
 
@@ -134,6 +136,10 @@ export class TutorialPanel {
       this.buttonLabel.setText(step.goal.buttonLabel);
     }
     this.setVisible(true, isInfo);
+    if (isHint) {
+      this.skipButton.setVisible(false).disableInteractive();
+      this.skipLabel.setVisible(false);
+    }
   }
 
   private setVisible(visible: boolean, isInfo: boolean): void {

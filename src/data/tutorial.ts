@@ -1,4 +1,4 @@
-import { HOE, WATERING_CAN_TOOL } from './tools';
+import { HOE, SICKLE, WATERING_CAN_TOOL } from './tools';
 import { DEFAULT_CROP_ID } from './crops';
 
 /**
@@ -14,7 +14,7 @@ export interface TutorialItem {
 }
 
 /** Ações do mundo que um passo pode exigir (avisadas por `tutorial.notify`, quando de fato aconteceram). */
-export type TutorialAction = 'till' | 'plant' | 'water';
+export type TutorialAction = 'till' | 'plant' | 'water' | 'cut';
 
 /**
  * O que termina o passo:
@@ -37,6 +37,7 @@ export interface TutorialStep {
 }
 
 const HOE_ITEM: TutorialItem = { category: 'tool', id: HOE.id };
+const SICKLE_ITEM: TutorialItem = { category: 'tool', id: SICKLE.id };
 const WATER_ITEM: TutorialItem = { category: 'tool', id: WATERING_CAN_TOOL.id };
 const SEED_ITEM: TutorialItem = { category: 'seed', id: DEFAULT_CROP_ID };
 
@@ -55,6 +56,18 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     title: 'Andar',
     text: 'Use W A S D ou as setas — ou clique no chão — para andar pela fazenda.',
     goal: { kind: 'move', steps: 6 },
+  },
+  {
+    id: 'select-sickle',
+    title: 'Pegar a Foice',
+    text: 'Tem mato crescendo dentro da cerca. Aperte 3 (ou clique na Foice na barra de baixo) para segurá-la.',
+    goal: { kind: 'select', item: SICKLE_ITEM },
+  },
+  {
+    id: 'cut',
+    title: 'Cortar o mato',
+    text: 'Com a Foice na mão, clique no matinho verde dentro da cerca para cortá-lo.',
+    goal: { kind: 'act', action: 'cut', item: SICKLE_ITEM },
   },
   {
     id: 'select-hoe',
@@ -99,3 +112,21 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     goal: { kind: 'info', buttonLabel: 'Concluir' },
   },
 ];
+
+/** Índice do passo em que o jogador corta o mato — enquanto o tutorial não passou dele, o mato do tutorial precisa existir na lavoura (`FarmResources.ensureTutorialWeed`). */
+export const TUTORIAL_CUT_STEP_INDEX = TUTORIAL_STEPS.findIndex((step) => step.id === 'cut');
+
+/**
+ * Dica do primeiro regador vazio (`systems/tutorial.ts` `notifyWaterEmpty`): aparece no mesmo painel do tutorial, uma única vez por partida nova, no momento em que a
+ * água acaba. Manda o jogador ao Vilarejo (ponte a LESTE da Fazenda; vira um objetivo na lista, `WATER_OBJECTIVE_TEXT`) encher o regador no poço da praça e avisa que dá pra
+ * comprar um Poço do Marceneiro (o Tomás) pra ter água em casa. Não é um passo da fila: não trava o resto do tutorial.
+ */
+export const WATER_EMPTY_HINT: TutorialStep = {
+  id: 'water-empty',
+  title: 'O regador secou!',
+  text: 'Sua água acabou. Vá ao Vilarejo pela ponte a leste da fazenda e encha o regador no poço da praça (isso fica na sua lista de objetivos). Dica: o Tomás, o marceneiro do Vilarejo, vende um Poço pra sua fazenda — assim você não precisa ir até lá toda vez.',
+  goal: { kind: 'info', buttonLabel: 'Entendi' },
+};
+
+/** O objetivo que aparece no marcador do HUD depois da dica, enquanto o regador está vazio (`gameState.waterObjective`). */
+export const WATER_OBJECTIVE_TEXT = 'Encher o regador no poço do Vilarejo (ponte a leste)';

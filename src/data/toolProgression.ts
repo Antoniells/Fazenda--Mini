@@ -1,23 +1,29 @@
 import type { ToolId } from './tools';
 
 /**
- * Progressão LINEAR de ferramentas: Madeira > Pedra > Ferro > Ouro. Cada família (Machado, Picareta) é uma
- * lista ordenada de ids de `data/tools.ts`; o tier N só pode ser fabricado por quem TEM o tier N-1, e o item
+ * Progressão LINEAR de ferramentas: Madeira > Cobre > Ferro > Ouro. Cada família (Machado, Picareta) é uma
+ * lista ordenada de ids de `data/tools.ts`; o tier N só pode ser comprado (no Ferreiro, `data/toolShop.ts`) por quem TEM o tier N-1, e o item
  * novo SUBSTITUI o anterior no mesmo slot do Inventário (`Inventory.upgradeTool`) — nunca vira um item extra.
  * Adicionar outra família (Enxada, Foice…) é uma linha em `TOOL_PROGRESSION` + os 4 `ToolDefinition`s.
  */
 export type ToolFamily = 'axe' | 'pickaxe';
 
-export const TOOL_TIER_NAMES = ['Madeira', 'Pedra', 'Ferro', 'Ouro'] as const;
+export const TOOL_TIER_NAMES = ['Madeira', 'Cobre', 'Ferro', 'Ouro'] as const;
 
 export const TOOL_PROGRESSION: Record<ToolFamily, readonly ToolId[]> = {
-  axe: ['axe', 'axe-stone', 'axe-iron', 'axe-gold'],
-  pickaxe: ['pickaxe', 'pickaxe-stone', 'pickaxe-iron', 'pickaxe-gold'],
+  axe: ['axe', 'axe-copper', 'axe-iron', 'axe-gold'],
+  pickaxe: ['pickaxe', 'pickaxe-copper', 'pickaxe-iron', 'pickaxe-gold'],
+};
+
+/** Ids antigos das ferramentas do 2º tier (era Pedra; hoje é Cobre) → o id atual, pra migrar saves e slots. */
+export const LEGACY_TOOL_IDS: Record<string, ToolId> = {
+  'axe-stone': 'axe-copper',
+  'pickaxe-stone': 'pickaxe-copper',
 };
 
 /**
  * Força de cada tier por golpe: um golpe conta `power` "golpes de madeira". Árvore (8) e pedra (4) caem quando o
- * total chega ao alvo — Machado: Madeira 8 golpes, Pedra 6, Ferro 4, Ouro 2; Picareta: 4 / 3 / 2 / 1.
+ * total chega ao alvo — Machado: Madeira 8 golpes, Cobre 6, Ferro 4, Ouro 2; Picareta: 4 / 3 / 2 / 1.
  */
 export const TOOL_TIER_POWER = [1, 1.5, 2, 4] as const;
 

@@ -13,6 +13,10 @@ import { CampaignState, createCampaignState } from '../data/campaign';
 import { RequestsState, createRequestsState } from '../data/requests';
 import { MailState, createMailState } from '../data/mail';
 import { EventsState, createEventsState } from '../data/events';
+import { SkillsState, createSkillsState } from '../data/skills';
+import { AnimalsState, createAnimalsState } from '../data/animals';
+import { ConstructionState, createConstructionState } from '../data/construction';
+import { REMOVED_DECORATIONS } from '../data/decorations';
 import { resourceNodeRegistry, ResourceNode } from './resourceNodeRegistry';
 
 /** Fase 10 — Estrutura Base e Persistência: 3 slots fixos, pedido explícito ("3 Slots de Save"). */
@@ -75,10 +79,20 @@ export interface SaveData {
   mail?: MailState;
   /** Eventos do mundo já realizados — ausente em saves anteriores a eles (nenhum). */
   events?: EventsState;
+  /** Progressão (XP e habilidades compradas) — ausente em saves anteriores a ela: começa do zero. */
+  skills?: SkillsState;
+  /** Galinhas e ovos por galinheiro — ausente em saves anteriores aos animais (nenhum). */
+  animals?: AnimalsState;
+  /** Encomendas ao Marceneiro — ausente em saves anteriores a elas (nenhuma). */
+  construction?: ConstructionState;
+  /** Andar mais fundo alcançado na Caverna — ausente em saves antigos (0). */
+  caveDeepest?: number;
   /** Cercas destruídas aguardando conserto — ausente em saves antigos (nenhuma). */
   destroyedFences?: string[];
   /** O tutorial de novos jogadores já foi concluído? Ausente em saves antigos (que já jogavam) = concluído. */
   tutorialCompleted?: boolean;
+  /** A dica do regador vazio já foi mostrada? Ausente em saves antigos = já (não recebem a dica). */
+  waterHintSeen?: boolean;
 }
 
 /** O que o Menu Principal precisa pra desenhar um slot — sem ler/parsear o `SaveData` inteiro fora deste módulo. */
@@ -193,8 +207,13 @@ export function save(slot?: number): void {
     requests: { completed: { ...gameState.requests.completed }, availableFromDay: { ...gameState.requests.availableFromDay } },
     mail: { readIds: [...gameState.mail.readIds], custom: gameState.mail.custom.map((message) => ({ ...message })) },
     events: { completed: [...gameState.events.completed] },
+    animals: { coops: JSON.parse(JSON.stringify(gameState.animals.coops)) as AnimalsState['coops'] },
+    skills: { xp: gameState.skills.xp, totalXp: gameState.skills.totalXp, ranks: { ...gameState.skills.ranks } },
+    construction: { orders: gameState.construction.orders.map((order) => ({ ...order })), nextId: gameState.construction.nextId },
+    caveDeepest: gameState.cave.deepest,
     destroyedFences: [...gameState.destroyedFences],
     tutorialCompleted: gameState.tutorialCompleted,
+    waterHintSeen: gameState.waterHintSeen,
   };
   storage.write(saveKey(targetSlot), JSON.stringify(data));
 }
@@ -235,7 +254,20 @@ export function load(slot: number): boolean {
     if (unlockedBridges.delete('30,29')) unlockedBridges.add('30,41');
     unlockedBridges.delete('39,15');
     const farmland = Farmland.deserialize(data.farmland, weather.raining);
-    const placedDecorations = new Map(data.placedDecorations.map((entry) => [`${entry.col},${entry.row}`, entry] as const));
+    // Decorações que saíram do jogo (a Bancada de Trabalho): somem do mundo, da fila do Marceneiro e da Bolsa, e o valor volta em moedas.
+    let removedRefund = 0;
+    for (const [id, price] of Object.entries(REMOVED_DECORATIONS)) {
+      while (inventory.getDecorationCount(id) > 0 && inventory.useDecoration(id)) removedRefund += price;
+    }
+    const placedDecorations = new Map(
+      data.placedDecorations
+        .filter((entry) => {
+          const price = REMOVED_DECORATIONS[entry.decorationId];
+          if (price !== undefined) removedRefund += price;
+          return price === undefined;
+        })
+        .map((entry) => [`${entry.col},${entry.row}`, entry] as const),
+    );
     const placedFurniture = new Map((data.placedFurniture ?? []).map((entry) => [`${entry.col},${entry.row}`, entry] as const));
     const chests = data.chests ? JSON.parse(JSON.stringify(data.chests)) : {};
     const horde = data.horde ? { ...createHordeState(), ...data.horde, drops: { ...(data.horde.drops ?? {}) } } : createHordeState();
@@ -245,6 +277,19 @@ export function load(slot: number): boolean {
     const campaign: CampaignState = { ...createCampaignState(), hordesWon: Math.max(0, legacyHordesWon), ...(data.campaign ?? {}) };
     const mail: MailState = { readIds: [...(data.mail?.readIds ?? [])], custom: (data.mail?.custom ?? []).map((message) => ({ ...message })) };
     const events: EventsState = { completed: [...(data.events?.completed ?? [])] };
+    const animals: AnimalsState = { coops: data.animals?.coops ? (JSON.parse(JSON.stringify(data.animals.coops)) as AnimalsState['coops']) : {} };
+    const construction: ConstructionState = {
+      orders: (data.construction?.orders ?? [])
+        .filter((order) => {
+          if (REMOVED_DECORATIONS[order.decorationId] === undefined) return true;
+          removedRefund += order.paid;
+          return false;
+        })
+        .map((order) => ({ ...order })),
+      nextId: data.construction?.nextId ?? 1,
+    };
+    if (removedRefund > 0) inventory.addCoins(removedRefund);
+    const skills: SkillsState = { xp: data.skills?.xp ?? 0, totalXp: data.skills?.totalXp ?? 0, ranks: { ...(data.skills?.ranks ?? {}) } };
 
     // Tudo reconstruído sem erro: aplica.
     gameState.profile = profile;
@@ -270,8 +315,14 @@ export function load(slot: number): boolean {
     gameState.requests = requests;
     gameState.mail = mail;
     gameState.events = events;
+    gameState.skills = skills;
+    gameState.animals = animals;
+    gameState.construction = construction;
+    gameState.cave = { deepest: data.caveDeepest ?? 0 };
     gameState.destroyedFences = new Set(data.destroyedFences ?? []);
     gameState.tutorialCompleted = data.tutorialCompleted ?? true;
+    gameState.waterHintSeen = data.waterHintSeen ?? true;
+    gameState.waterObjective = false;
     gameState.tutorialStep = 0;
     gameState.tutorialProgress = 0;
     gameState.sprinklerAnimDay = 0;
@@ -314,10 +365,16 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.requests = createRequestsState();
   gameState.mail = createMailState();
   gameState.events = createEventsState();
+  gameState.skills = createSkillsState();
+  gameState.animals = createAnimalsState();
+  gameState.construction = createConstructionState();
+  gameState.cave = { deepest: 0 };
   gameState.destroyedFences = new Set();
   gameState.sprinklerAnimDay = 0;
   gameState.roosterSoundDay = 0;
   gameState.tutorialCompleted = false; // Partida nova: o tutorial roda uma vez (`systems/tutorial.ts`).
+  gameState.waterHintSeen = false; // ...e a dica do primeiro regador vazio também.
+  gameState.waterObjective = false;
   gameState.tutorialStep = 0;
   gameState.tutorialProgress = 0;
   activeSlot = slot;

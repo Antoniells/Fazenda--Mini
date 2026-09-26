@@ -24,6 +24,8 @@ import {
   TAB_FRAME_AGRICULTURE_LIGHT,
   TAB_FRAME_CONSTRUCTION,
   TAB_FRAME_CONSTRUCTION_LIGHT,
+  TAB_FRAME_SKILLS,
+  TAB_FRAME_SKILLS_LIGHT,
   CLOSE_TAB_BG_FRAME,
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_X_ICON_FRAME,
@@ -39,6 +41,8 @@ import {
 import { computeFitScale } from './slotIcon';
 import { Tooltip } from './tooltip';
 import { PointerInputInterceptor } from '../systems/playerController';
+import { SkillTreePanel } from './skillTreePanel';
+import { SKILLS_TAB_ICON } from '../data/skills';
 
 type CornerKey = keyof typeof GLOBAL_CURSOR_CORNER_NAMES;
 
@@ -175,8 +179,8 @@ const QUESTION_MARK_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   color: '#4a3524',
 };
 
-/** As 3 abas do Inventário (pedido explícito): Mochila (equipáveis, com seleção de Hotbar), Pesca (ainda sem mecânica) e Agricultura (colheita, só visualização). */
-export type InventoryTabCategory = 'backpack' | 'fishing' | 'agriculture';
+/** As 4 abas do Inventário (pedido explícito): Mochila (equipáveis, com seleção de Hotbar), Pesca (ainda sem mecânica), Agricultura (colheita, só visualização) e Habilidades (XP e árvore de habilidades — `ui/skillTreePanel.ts`). */
+export type InventoryTabCategory = 'backpack' | 'fishing' | 'agriculture' | 'skills';
 
 interface InventoryTabDefinition {
   category: InventoryTabCategory;
@@ -208,6 +212,13 @@ const TAB_DEFS: InventoryTabDefinition[] = [
     iconFrame: Object.values(CROPS)[0]?.cropFrameName ?? '',
     tabFrame: TAB_FRAME_AGRICULTURE.name,
     tabFrameLight: TAB_FRAME_AGRICULTURE_LIGHT.name,
+  },
+  {
+    category: 'skills',
+    textureKey: SKILLS_TAB_ICON.key,
+    iconFrame: SKILLS_TAB_ICON.frame.name,
+    tabFrame: TAB_FRAME_SKILLS.name,
+    tabFrameLight: TAB_FRAME_SKILLS_LIGHT.name,
   },
 ];
 
@@ -304,6 +315,9 @@ export class InventoryScreen implements PointerInputInterceptor {
   /** Cantinhos de destaque (mesma técnica de `tabSelector`) ao redor do slot selecionado no grid da Agricultura — referência visual pedida pelo usuário. */
   private readonly gridSelector: Record<CornerKey, Phaser.GameObjects.Image>;
 
+  // Aba Habilidades (Progressão e RPG): as duas páginas são do painel próprio.
+  private readonly skillPanel: SkillTreePanel;
+
   constructor(scene: Phaser.Scene, private readonly onSelectHotbarSlot: (index: number) => void, private readonly tooltip: Tooltip) {
     this.activePointer = scene.input.activePointer;
     const panelTexture = scene.textures.get(INVENTORY_PANEL_KEY);
@@ -347,6 +361,17 @@ export class InventoryScreen implements PointerInputInterceptor {
     if (!fishingRodTexture.has(FISHING_ROD_ICON_FRAME.name)) {
       const rect = FISHING_ROD_ICON_FRAME.rect;
       fishingRodTexture.add(FISHING_ROD_ICON_FRAME.name, 0, rect.x, rect.y, rect.width, rect.height);
+    }
+
+    // Fita vermelha e ícone da aba Habilidades (a fita vem da mesma folha das outras; o ícone, da folha carregada pela UIScene).
+    const ribbonsTexture = scene.textures.get(SHOP_TAB_RIBBONS_KEY);
+    for (const ribbon of [TAB_FRAME_SKILLS, TAB_FRAME_SKILLS_LIGHT]) {
+      if (!ribbonsTexture.has(ribbon.name)) ribbonsTexture.add(ribbon.name, 0, ribbon.rect.x, ribbon.rect.y, ribbon.rect.width, ribbon.rect.height);
+    }
+    const skillsTabTexture = scene.textures.get(SKILLS_TAB_ICON.key);
+    if (!skillsTabTexture.has(SKILLS_TAB_ICON.frame.name)) {
+      const rect = SKILLS_TAB_ICON.frame.rect;
+      skillsTabTexture.add(SKILLS_TAB_ICON.frame.name, 0, rect.x, rect.y, rect.width, rect.height);
     }
 
     const centerX = scene.scale.width / 2;
@@ -615,7 +640,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       });
       badgeText.setOrigin(1, 1);
       badgeText.setScrollFactor(0);
-      badgeText.setDepth(3002);
+      badgeText.setDepth(3004); // Acima do ícone (3002; 3500 enquanto arrasta): a quantidade nunca fica atrás dele.
 
       const questionMark = scene.add.text(x, y, '?', QUESTION_MARK_STYLE);
       questionMark.setOrigin(0.5, 0.5);
@@ -760,6 +785,15 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       bottomLeft: makeGridSelectorCorner('bottomLeft', 0, 1),
       bottomRight: makeGridSelectorCorner('bottomRight', 1, 1),
     };
+
+    this.skillPanel = new SkillTreePanel(scene, {
+      leftX: bookLeft + PAGE_RECT.left.x * BOOK_SCALE,
+      leftWidth: leftPageWidth,
+      rightX: bookLeft + PAGE_RECT.right.x * BOOK_SCALE,
+      rightWidth: rightPageWidth,
+      top: pageTop,
+      height: pageHeight,
+    });
 
     this.emptyText = scene.add.text(centerX, centerY, 'Em breve', {
       fontFamily: 'monospace',
@@ -936,11 +970,13 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     const content = this.computeContent(inventory);
     const isBackpack = this.activeCategory === 'backpack';
     const isAgriculture = this.activeCategory === 'agriculture';
+    const isSkills = this.activeCategory === 'skills';
 
     this.slots.forEach((slot, index) => {
       const entry: InventorySlotContent | undefined = content[index];
       slot.onClick = entry?.onClick ?? null;
       slot.name = entry?.name ?? '';
+      slot.frame.setVisible(this.isOpen_ && !isSkills); // A aba Habilidades tem as páginas dela: sem o grid de slots.
 
       // A moldura precisa estar interativa pra receber o hover do balão: com ação de clique (como antes) OU com um item dentro.
       const frameInteractive = this.isOpen_ && (!!slot.onClick || !!slot.name);
@@ -991,7 +1027,9 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       slot.questionMark.setVisible(false);
     });
 
-    this.emptyText.setVisible(content.length === 0);
+    this.emptyText.setVisible(content.length === 0 && !isSkills);
+    this.skillPanel.setVisible(this.isOpen_ && isSkills);
+    this.skillPanel.refresh();
     this.updateTooltip(this.activePointer); // O conteúdo do slot sob o mouse pode ter mudado (troca de slot, aba).
 
     this.characterSprite.setVisible(isBackpack);
@@ -1101,8 +1139,9 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     else this.closeButton.disableInteractive();
     this.closeButtonMark.setVisible(visible);
 
+    this.skillPanel.setVisible(visible && this.activeCategory === 'skills');
     for (const slot of this.slots) {
-      slot.frame.setVisible(visible);
+      slot.frame.setVisible(visible && this.activeCategory !== 'skills');
       const slotVisible = visible && slot.icon.visible;
       slot.icon.setVisible(slotVisible);
       slot.badgeText.setVisible(visible && slot.badgeText.visible);

@@ -12,10 +12,14 @@ import {
   COIN_PLAQUE_DIGIT_PITCH,
   COIN_PLAQUE_DIGIT_CENTER_Y,
 } from '../data/ui';
+import { SEASON_CLOCK_KEY, SEASON_LENGTH_DAYS, seasonClockFrame, seasonForDay } from '../data/seasons';
 
 const SCALE = 2.6;
 const MARGIN_TOP = 20;
 const MARGIN_RIGHT = 20;
+/** O medalhão da estação (32x32 nativos) fica à esquerda das janelas de dia/hora: centro em `SEASON_CENTER_X` (contado da borda esquerda da placa, em px nativos) e no meio da altura dela. */
+const SEASON_CENTER_X = 11;
+const SEASON_CENTER_Y = 14;
 /** Espaço entre as duas placas empilhadas — pequeno o bastante pra lerem como uma peça só. */
 const PLAQUE_GAP = 2;
 
@@ -44,6 +48,10 @@ export class TimeMoneyHud {
   private readonly timeText: Phaser.GameObjects.Text;
   private readonly digitTexts: Phaser.GameObjects.Text[] = [];
   private readonly scene: Phaser.Scene;
+  /** O relógio de estação: medalhão redondo (`data/seasons.ts`) que mostra a estação do ano e a fase do dia; passar o mouse mostra o nome da estação. */
+  private readonly seasonClock: Phaser.GameObjects.Image;
+  private readonly seasonHint: Phaser.GameObjects.Text;
+  private lastSeasonFrame = -1;
   private lastDayLabel: string | null = null;
   private lastTimeLabel: string | null = null;
   private lastCoins: number | null = null;
@@ -143,7 +151,25 @@ export class TimeMoneyHud {
       this.digitTexts.push(digitText);
     }
 
-    this.playEntrance([clockPlaque, coinPlaque], SCALE);
+    // Relógio de estação: o medalhão por cima do canto esquerdo da placa. Sem a folha carregada (cena de teste isolada), não cria nada.
+    const seasonX = clockLeft + SEASON_CENTER_X * SCALE;
+    const seasonY = clockTopY + SEASON_CENTER_Y * SCALE;
+    this.seasonClock = scene.add.image(seasonX, seasonY, SEASON_CLOCK_KEY, 0);
+    this.seasonClock.setScale(SCALE).setScrollFactor(0).setDepth(1002);
+    this.seasonHint = scene.add.text(seasonX - 20 * SCALE, seasonY, '', {
+      fontFamily: TEXT_FONT,
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: TEXT_COLOR,
+      stroke: TEXT_STROKE,
+      strokeThickness: 3,
+    });
+    this.seasonHint.setOrigin(1, 0.5).setScrollFactor(0).setDepth(1003).setVisible(false);
+    this.seasonClock.setInteractive({ useHandCursor: false });
+    this.seasonClock.on('pointerover', () => this.seasonHint.setVisible(this.seasonHint.text !== ''));
+    this.seasonClock.on('pointerout', () => this.seasonHint.setVisible(false));
+
+    this.playEntrance([clockPlaque, coinPlaque, this.seasonClock], SCALE);
     this.playEntrance([this.dayText, this.timeText, ...this.digitTexts], 1);
   }
 
@@ -158,8 +184,8 @@ export class TimeMoneyHud {
     });
   }
 
-  /** Atualiza dia + hora ("DIA N" / "HH:MM"); só redesenha o texto que mudou de fato. */
-  refreshTime(day: number, timeString: string): void {
+  /** Atualiza dia + hora ("DIA N" / "HH:MM"); só redesenha o texto que mudou de fato. `hours` (0-24) escolhe a fase do dia no relógio de estação. */
+  refreshTime(day: number, timeString: string, hours: number): void {
     const dayLabel = `DIA ${day}`;
     if (dayLabel !== this.lastDayLabel) {
       this.lastDayLabel = dayLabel;
@@ -169,6 +195,19 @@ export class TimeMoneyHud {
       this.lastTimeLabel = timeString;
       this.timeText.setText(timeString);
     }
+    this.refreshSeason(day, hours);
+  }
+
+  /** O medalhão: quadro da estação + fase do dia (só troca quando muda) e a dica ("Outono — dia 3 de 10"). */
+  private refreshSeason(day: number, hours: number): void {
+    const frame = seasonClockFrame(day, hours);
+    if (frame !== this.lastSeasonFrame) {
+      this.lastSeasonFrame = frame;
+      this.seasonClock.setFrame(frame);
+    }
+    const { season, dayOfSeason } = seasonForDay(day);
+    const hint = `${season.name} — dia ${dayOfSeason} de ${SEASON_LENGTH_DAYS}`;
+    if (hint !== this.seasonHint.text) this.seasonHint.setText(hint);
   }
 
   /** Atualiza o saldo, um dígito por janelinha (alinhado à direita — janelinhas sobrando à esquerda ficam em branco). */

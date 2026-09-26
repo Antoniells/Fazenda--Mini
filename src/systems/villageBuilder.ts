@@ -14,7 +14,7 @@ import { PINE_TREE_KEY, PINE_TREE_PATH, PINE_TREE_FRAME_NAME, PINE_TREE_FRAME, T
 import { DISPLAY_SCALE } from './mapBuilder';
 import { buildExternalTree, registerFrame } from './externalMapBuilder';
 import { buildMapProps } from './mapProps';
-import { createGroundShadow } from './shadow';
+import { addBuildingShadows, createGroundShadow } from './shadow';
 
 /** Carrega as artes do vilarejo (casas, banca, chafariz, pinheiro e a arte do poço) — chamado no `preload` da `VillageScene`. */
 export function preloadVillage(scene: Phaser.Scene): void {
@@ -43,7 +43,7 @@ export function buildVillage(scene: Phaser.Scene): { trees: Phaser.GameObjects.I
     image.setDepth((structureBaseRow(structure) + 1) * tile);
 
     if (structure.asset === 'fountain') animateFountain(scene, image);
-  }
+    else if (HOUSE_ASSETS.has(structure.asset)) addBuildingShadows(scene, image);  }
 
   // Poço da praça: mesma arte do Poço construível, ocupando 2x1 células.
   registerFrame(scene, WELL.textureKey, { name: WELL.frameName, rect: WELL.frameRect });
@@ -60,6 +60,8 @@ export function buildVillage(scene: Phaser.Scene): { trees: Phaser.GameObjects.I
   return { trees };
 }
 
+/** Estruturas que são CASAS (ganham sombra colada na base da parede, `addBuildingShadows`): a banca e o chafariz não. */
+const HOUSE_ASSETS = new Set<string>(['house2', 'house3', 'house7', 'house8']);
 /** Chafariz: troca os 4 quadros da folha em loop (o timer se remove sozinho quando a imagem some, com a cena). */
 function animateFountain(scene: Phaser.Scene, image: Phaser.GameObjects.Image): void {
   const asset = VILLAGE_ASSETS.fountain;

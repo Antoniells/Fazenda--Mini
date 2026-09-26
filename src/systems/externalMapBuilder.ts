@@ -15,12 +15,11 @@ import {
   ROCK_FRAME_3,
   ROCK_BIG_SCALE_MULT,
   ORE_KEY,
-  ORE_IRON_FRAME,
-  ORE_COAL_FRAME,
   CAVE_ENTRANCE_KEY,
   CAVE_ENTRANCE_FRAME,
   WATER_KEY,
 } from '../data/tiles';
+import { ORES, ORE_DISPLAY_SCALE_MULT, OreKind } from '../data/ores';
 import { createGroundShadow } from './shadow';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { TreeStage, TreeSpecies } from './resourceNodeRegistry';
@@ -148,11 +147,9 @@ export function buildRock(scene: Phaser.Scene, tileSize: number, col: number, ro
   return { sprite, shadow };
 }
 
-export type OreType = 'iron' | 'coal';
-
-/** Veio de minério (Pedreira) — só decorativo por ora (ver comentário de `ORE_KEY` em `data/tiles.ts`), sem mecânica de minerar ainda. */
-export function buildOreDeposit(scene: Phaser.Scene, tileSize: number, col: number, row: number, type: OreType): Phaser.GameObjects.Image {
-  const frame = type === 'iron' ? ORE_IRON_FRAME : ORE_COAL_FRAME;
+/** Veio de minério da Pedreira (`data/ores.ts`, minerado por `systems/oreInteraction.ts`): o cristal do minério, ancorado pela base. */
+export function buildOreDeposit(scene: Phaser.Scene, tileSize: number, col: number, row: number, type: OreKind): Phaser.GameObjects.Image {
+  const frame = ORES[type].frame;
   registerFrame(scene, ORE_KEY, frame);
 
   const tile = tileSize * DISPLAY_SCALE;
@@ -161,7 +158,7 @@ export function buildOreDeposit(scene: Phaser.Scene, tileSize: number, col: numb
 
   const ore = scene.add.image(x, y, ORE_KEY, frame.name);
   ore.setOrigin(0.5, 1);
-  ore.setScale(DISPLAY_SCALE);
+  ore.setScale(DISPLAY_SCALE * ORE_DISPLAY_SCALE_MULT);
   ore.setDepth(ore.y);
 
   return ore;

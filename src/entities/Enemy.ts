@@ -44,18 +44,21 @@ export abstract class Enemy {
   protected readonly scene: Phaser.Scene;
   protected readonly stats: EnemyStats;
   protected readonly shadow: Phaser.GameObjects.Image; // <-- NOVA VARIÁVEL
+  /** Quanto acima dos pés fica a sombra (a arte de cada bicho tem uma margem vazia diferente embaixo). */
+  private readonly shadowOffsetY: number;
 
   private hp: number;
   private dead = false;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, textureKey: string, frame: number | string, stats: EnemyStats) {
+  constructor(scene: Phaser.Scene, x: number, y: number, textureKey: string, frame: number | string, stats: EnemyStats, shadowOffsetY: number = SHADOW_OFFSET_Y) {
     this.scene = scene;
+    this.shadowOffsetY = shadowOffsetY;
     this.stats = stats;
     this.hp = stats.maxHp;
 
     // Cria a sombra antes do sprite com a mesma escala do player
     // Mude a criação da sombra para subtrair 20 no eixo Y
-    this.shadow = createGroundShadow(scene, x, y - SHADOW_OFFSET_Y, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
+    this.shadow = createGroundShadow(scene, x, y - shadowOffsetY, DISPLAY_SCALE * 1.1, DISPLAY_SCALE * 0.5);
     this.shadow.setDepth(y - 0.1);
 
     this.sprite = scene.add.sprite(x, y, textureKey, frame);
@@ -151,7 +154,7 @@ update(time: number, delta: number, playerX: number, playerY: number): void {
     
     // Atualiza a posição e a profundidade da sombra
     // Atualiza a posição da sombra para y - 20
-    this.shadow.setPosition(this.sprite.x, this.sprite.y - SHADOW_OFFSET_Y);
+    this.shadow.setPosition(this.sprite.x, this.sprite.y - this.shadowOffsetY);
     this.shadow.setDepth(this.sprite.y - 0.1);
   }
 }

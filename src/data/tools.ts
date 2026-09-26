@@ -16,8 +16,8 @@ export type ToolId =
   | 'sickle'
   | 'axe'
   | 'pickaxe'
-  | 'axe-stone'
-  | 'pickaxe-stone'
+  | 'axe-copper'
+  | 'pickaxe-copper'
   | 'axe-iron'
   | 'axe-gold'
   | 'pickaxe-iron'
@@ -34,11 +34,8 @@ export interface ToolDefinition {
 
 const TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/1. Wood';
 /** Mesmas pastas de tier já usadas em `data/weapons.ts` (Ferro/Ouro) — o pacote também tem `Axe.png`/`Pickaxe.png` em cada uma. */
-/**
- * O pacote de ícones NÃO tem uma pasta "Pedra": o 2º tier dele é `2. Cooper` (cobre), que é o que o tier Pedra da
- * progressão (Madeira > Pedra > Ferro > Ouro, `data/toolProgression.ts`) usa de arte.
- */
-const STONE_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/2. Cooper';
+/** O 2º tier da progressão (Madeira > Cobre > Ferro > Ouro, `data/toolProgression.ts`) usa a pasta `2. Cooper` (cobre) do pacote de ícones. */
+const COPPER_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/2. Cooper';
 const IRON_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/3. Iron';
 const GOLD_TOOLS_BASE_PATH = 'Icons/RPG icons/Weapons and Armor/4. Gold';
 
@@ -102,25 +99,24 @@ export const HAMMER: ToolDefinition = {
 /**
  * Ferramentas de progressão (Fase 8 — Upgrade de Ferramentas): diferente
  * das 5 acima (dadas de graça no início, nunca compradas), estas só
- * existem via Receita + Bancada de Trabalho (`data/recipes.ts`) — não têm
- * `price`/`resourceCost` aqui porque essa economia agora vive inteira na
- * própria `RecipeDefinition`, não no item. Mesma convenção de tier
+ * existem comprando no Ferreiro (`data/toolShop.ts`: moedas + 5 barras do metal) — não têm
+ * `price` aqui porque essa economia vive inteira na oferta da loja, não no item. Mesma convenção de tier
  * (Madeira/Ferro/Ouro) e mesma folha 32x16 (só o frame 0) já usada pelas
  * Espadas em `data/weapons.ts`.
  */
-export const STONE_AXE: ToolDefinition = {
-  id: 'axe-stone',
-  name: 'Machado de Pedra',
-  textureKey: 'tool-axe-stone',
-  texturePath: `${STONE_TOOLS_BASE_PATH}/Axe.png`,
+export const COPPER_AXE: ToolDefinition = {
+  id: 'axe-copper',
+  name: 'Machado de Cobre',
+  textureKey: 'tool-axe-copper',
+  texturePath: `${COPPER_TOOLS_BASE_PATH}/Axe.png`,
   iconFrame: 0,
 };
 
-export const STONE_PICKAXE: ToolDefinition = {
-  id: 'pickaxe-stone',
-  name: 'Picareta de Pedra',
-  textureKey: 'tool-pickaxe-stone',
-  texturePath: `${STONE_TOOLS_BASE_PATH}/Pickaxe.png`,
+export const COPPER_PICKAXE: ToolDefinition = {
+  id: 'pickaxe-copper',
+  name: 'Picareta de Cobre',
+  textureKey: 'tool-pickaxe-copper',
+  texturePath: `${COPPER_TOOLS_BASE_PATH}/Pickaxe.png`,
   iconFrame: 0,
 };
 
@@ -162,8 +158,8 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
   sickle: SICKLE,
   axe: AXE,
   pickaxe: PICKAXE,
-  'axe-stone': STONE_AXE,
-  'pickaxe-stone': STONE_PICKAXE,
+  'axe-copper': COPPER_AXE,
+  'pickaxe-copper': COPPER_PICKAXE,
   'axe-iron': IRON_AXE,
   'axe-gold': GOLD_AXE,
   'pickaxe-iron': IRON_PICKAXE,

@@ -5,6 +5,9 @@ type Scrollable = Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.
 /** Marca (com `setData`) um objeto de tela cheia que deve ficar na câmera do MUNDO mesmo com `scrollFactor` 0 — o véu da noite (`systems/dayNightOverlay.ts`): coberto pelo zoom, continua cobrindo a tela e escurece também o que está por cima (textos flutuantes). */
 export const KEEP_ON_WORLD_CAMERA = 'keepOnWorldCamera';
 
+/** Nome da câmera de interface criada por `installUiCamera` (quem cria um objeto de mundo com `scrollFactor` 0 depois da varredura a usa pra já ignorá-lo). */
+export const UI_CAMERA_NAME = 'world-ui';
+
 /**
  * Câmera de INTERFACE para cenas de mapa com zoom no mundo (`systems/cameraSetup.ts`). Vários menus e avisos são desenhados na
  * própria cena do mapa, com `scrollFactor` 0 (Loja, Pausa, Caixa de Remessas, aviso "DIA n", contador da horda, título das
@@ -17,7 +20,7 @@ export const KEEP_ON_WORLD_CAMERA = 'keepOnWorldCamera';
  */
 export function installUiCamera(scene: Phaser.Scene): void {
   const main = scene.cameras.main;
-  const ui = scene.cameras.add(0, 0, main.width, main.height, false, 'world-ui');
+  const ui = scene.cameras.add(0, 0, main.width, main.height, false, UI_CAMERA_NAME);
   /** true = desenhado pela câmera de UI; false = pelo mundo. */
   const assignment = new WeakMap<Phaser.GameObjects.GameObject, boolean>();
 
@@ -35,6 +38,15 @@ export function installUiCamera(scene: Phaser.Scene): void {
       else obj.cameraFilter = (obj.cameraFilter & ~main.id) | ui.id;
     }
   };
+
+  // Objeto NOVO (a poeira dos pés, respingos, moitas que somem...): nasce sem classificação e só o próximo `sweep` o atribui a uma câmera. Nesse quadro ele era desenhado
+  // pelas DUAS câmeras — na de interface (sem zoom/rolagem) aparecia num ponto qualquer da tela por um instante: um "círculo que pisca" enquanto o jogador anda (nasce
+  // uma nuvem a cada passo). Agora nasce escondido das duas e o `sweep` o revela só na câmera certa.
+  const hideUntilAssigned = (obj: Phaser.GameObjects.GameObject): void => {
+    obj.cameraFilter |= main.id | ui.id;
+  };
+  scene.sys.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, hideUntilAssigned);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.sys.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, hideUntilAssigned));
 
   scene.events.on(Phaser.Scenes.Events.UPDATE, sweep);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.UPDATE, sweep));

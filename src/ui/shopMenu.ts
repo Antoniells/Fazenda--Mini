@@ -18,6 +18,8 @@ import {
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_X_ICON_FRAME,
   CLOSE_X_ICON_PRESSED_FRAME,
+  DELETE_ICON_FRAME,
+  MOVE_ICON_FRAME,
   EXTRAS_UI_KEY,
   GLOBAL_CURSOR_CORNER_NAMES,
   GLOBAL_CURSOR_CORNER_RECTS,
@@ -121,6 +123,8 @@ const DETAIL_GAP = 4;
 const DETAIL_DESCRIPTION_FONT_PX = 10;
 const DETAIL_DESCRIPTION_MIN_FONT_PX = 7;
 const DETAIL_DESCRIPTION_MAX_HEIGHT = 63;
+/** Com a linha de materiais (ou o motivo do bloqueio) entre a descrição e o preço, a descrição tem menos altura. */
+const DETAIL_DESCRIPTION_MAX_HEIGHT_WITH_MATERIALS = 34;
 const DETAIL_ICON_TARGET_PX = DETAIL_ICON_PANEL_HEIGHT * 0.55;
 const BUY_BUTTON_WIDTH = 96;
 const BUY_BUTTON_HEIGHT = 28;
@@ -132,7 +136,7 @@ const BUY_ENABLED_TINT = 0xffffff;
 const BUY_DISABLED_TINT = 0x8f8f8f;
 
 /** As 3 categorias da Loja (Fase 8) — preparadas para o upgrade futuro de ferramentas. */
-export type ShopCategory = 'agriculture' | 'tools' | 'construction';
+export type ShopCategory = 'agriculture' | 'tools' | 'construction' | 'animals';
 
 /**
  * Formato mínimo que qualquer coisa vendida na Loja precisa ter — sementes
@@ -153,6 +157,43 @@ export interface ShopItem {
   /** Frame do ícone: número (spritesheet, culturas) ou nome (frame recortado à mão, decorações). */
   iconFrame: number | string;
   price: number;
+  /** Materiais que a compra gasta ALÉM das moedas (ex.: as 5 barras de uma ferramenta) — `ShopRequirements.count` diz o quanto o jogador tem. */
+  materials?: ShopMaterialCost[];
+}
+
+export interface ShopMaterialCost {
+  /** Id do recurso (`data/resources.ts`). */
+  resourceId: string;
+  name: string;
+  amount: number;
+}
+
+/** O que a loja precisa saber do jogador além das moedas: quanto ele tem de cada material e por que um item não pode ser comprado agora (ex.: falta a ferramenta do tier anterior). */
+export interface ShopRequirements {
+  count(resourceId: string): number;
+  blockedReason?(itemId: string): string | null;
+}
+
+/**
+ * Ações sobre o que o jogador já tem do item selecionado (só a loja do Marceneiro usa): três ícones ao lado da descrição — mover, cancelar a
+ * encomenda e destruir a construção pronta. `available` diz quais valem pro item (some o ícone que não vale); `onAction` executa.
+ */
+export type ShopActionId = 'move' | 'cancel' | 'destroy';
+export interface ShopItemActions {
+  available(itemId: string): ShopActionId[];
+  onAction(itemId: string, action: ShopActionId): void;
+}
+
+const ACTION_BUTTON_SIZE = 26;
+const ACTION_BUTTON_GAP = 3;
+const ACTION_ICON_TARGET_PX = 18;
+const ACTION_ORDER: ShopActionId[] = ['move', 'cancel', 'destroy'];
+const ACTION_LABELS: Record<ShopActionId, string> = { move: 'Mover', cancel: 'Cancelar', destroy: 'Destruir' };
+const ACTION_FRAMES: Record<ShopActionId, string> = { move: MOVE_ICON_FRAME.name, cancel: CLOSE_X_ICON_FRAME.name, destroy: DELETE_ICON_FRAME.name };
+
+interface ShopActionButton {
+  background: Phaser.GameObjects.NineSlice;
+  icon: Phaser.GameObjects.Image;
 }
 
 /** Uma aba da Loja — ícone representativo da categoria (não precisa vir de um item à venda nela, ex.: "Ferramentas" ainda não vende nada). */
@@ -220,8 +261,14 @@ export class ShopMenu {
   private readonly detailName: Phaser.GameObjects.Text;
   private readonly detailDescription: Phaser.GameObjects.Text;
   private readonly detailPrice: Phaser.GameObjects.Text;
+  /** Materiais exigidos ("Barra de Cobre: 2/5") ou o motivo do bloqueio, entre a descrição e o preço. */
+  private readonly detailMaterials: Phaser.GameObjects.Text;
   private readonly buyButton: Phaser.GameObjects.NineSlice;
   private readonly buyLabel: Phaser.GameObjects.Text;
+  private readonly actionButtons = new Map<ShopActionId, ShopActionButton>();
+  private readonly actionHint: Phaser.GameObjects.Text;
+  /** Centro vertical da coluna de ações (o do painel do ícone) — os botões que valem se empilham em volta dele. */
+  private actionColumnY = 0;
   private readonly itemsByCategory: Map<ShopCategory, ShopItem[]>;
   private activeCategory: ShopCategory;
   private selectedItemId: string | null = null;
@@ -234,6 +281,8 @@ export class ShopMenu {
     items: ShopItem[],
     private readonly onBuy: (itemId: string) => void,
     private readonly isOwned: (itemId: string) => boolean = () => false,
+    private readonly actions?: ShopItemActions,
+    private readonly requirements?: ShopRequirements,
   ) {
     const panelTexture = scene.textures.get(INVENTORY_PANEL_KEY);
     for (const [name, rect] of [
@@ -491,6 +540,58 @@ export class ShopMenu {
     this.detailIcon.setScrollFactor(0);
     this.detailIcon.setDepth(3002);
 
+    // Ações (mover/cancelar/destruir): uma coluna de 3 ícones colada ao lado direito do painel do ícone.
+    const hudTexture = scene.textures.get(CLOSE_BUTTON_SHEET_KEY);
+    for (const frame of [MOVE_ICON_FRAME, CLOSE_X_ICON_FRAME, DELETE_ICON_FRAME]) {
+      if (!hudTexture.has(frame.name)) hudTexture.add(frame.name, 0, frame.rect.x, frame.rect.y, frame.rect.width, frame.rect.height);
+    }
+    const actionX = rightCenterX + DETAIL_ICON_PANEL_WIDTH / 2 + 6 + ACTION_BUTTON_SIZE / 2;
+    this.actionColumnY = iconPanelY;
+    ACTION_ORDER.forEach((action) => {
+      const y = iconPanelY;
+      const background = scene.add.nineslice(
+        actionX,
+        y,
+        INVENTORY_PANEL_KEY,
+        INVENTORY_PANEL_FRAME_NAME,
+        ACTION_BUTTON_SIZE,
+        ACTION_BUTTON_SIZE,
+        INVENTORY_PANEL_BORDER,
+        INVENTORY_PANEL_BORDER,
+        INVENTORY_PANEL_BORDER,
+        INVENTORY_PANEL_BORDER,
+      );
+      background.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(3001);
+      const icon = scene.add.image(actionX, y, CLOSE_BUTTON_SHEET_KEY, ACTION_FRAMES[action]);
+      icon.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(3002);
+      icon.setScale(computeFitScale(icon, ACTION_ICON_TARGET_PX));
+      background.setInteractive({ useHandCursor: true });
+      background.disableInteractive();
+      background.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        if (!this.isOpen_ || !this.selectedItemId) return;
+        event.stopPropagation();
+        playClick(scene);
+        this.actions?.onAction(this.selectedItemId, action);
+      });
+      background.on('pointerover', () => {
+        if (!this.isOpen_) return;
+        background.setTint(0xffe9b3);
+        this.actionHint.setText(ACTION_LABELS[action]).setVisible(true);
+      });
+      background.on('pointerout', () => {
+        background.clearTint();
+        this.actionHint.setVisible(false);
+      });
+      this.actionButtons.set(action, { background, icon });
+    });
+    this.actionHint = scene.add.text(rightCenterX, iconPanelY + DETAIL_ICON_PANEL_HEIGHT / 2 - 12, '', {
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: TEXT_INK,
+    });
+    this.actionHint.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(3003).setVisible(false);
+
     this.detailTextPanel = makeLargePanel(textPanelY, DETAIL_TEXT_PANEL_WIDTH, DETAIL_TEXT_PANEL_HEIGHT);
     const textTop = textPanelY - DETAIL_TEXT_PANEL_HEIGHT / 2;
     const textWrapWidth = DETAIL_TEXT_PANEL_WIDTH - INVENTORY_LARGE_PANEL_BORDER * 2 + 8;
@@ -517,6 +618,18 @@ export class ShopMenu {
     this.detailDescription.setOrigin(0.5, 0);
     this.detailDescription.setScrollFactor(0);
     this.detailDescription.setDepth(3002);
+
+    this.detailMaterials = scene.add.text(rightCenterX, textTop + DETAIL_TEXT_PANEL_HEIGHT - 30, '', {
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: TEXT_PRICE,
+      align: 'center',
+      wordWrap: { width: textWrapWidth },
+    });
+    this.detailMaterials.setOrigin(0.5, 1); // Ancorado embaixo (logo acima do preço): se quebrar em 2 linhas, cresce pra cima.
+    this.detailMaterials.setScrollFactor(0);
+    this.detailMaterials.setDepth(3002);
 
     this.detailPrice = scene.add.text(rightCenterX, textTop + DETAIL_TEXT_PANEL_HEIGHT - 20, '', {
       fontFamily: FONT,
@@ -608,7 +721,8 @@ export class ShopMenu {
     this.lastCoins = coins;
     for (const slot of this.slots) {
       if (!slot.itemId) continue;
-      slot.icon.setAlpha(coins >= slot.price ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
+      const item = this.currentItems().find((candidate) => candidate.id === slot.itemId);
+      slot.icon.setAlpha(item && this.canAfford(item) ? AFFORDABLE_ALPHA : UNAFFORDABLE_ALPHA);
     }
     this.renderDetail();
   }
@@ -621,10 +735,17 @@ export class ShopMenu {
     return this.currentItems().find((item) => item.id === this.selectedItemId);
   }
 
-  /** Dá pra comprar o item selecionado agora? (tem saldo e ainda não possui, no caso de itens únicos). */
+  /** Tem moedas E materiais pra este item, e nada o bloqueia (ex.: falta o tier anterior da ferramenta)? */
+  private canAfford(item: ShopItem): boolean {
+    if (this.lastCoins < item.price) return false;
+    if (this.requirements?.blockedReason?.(item.id)) return false;
+    return (item.materials ?? []).every((material) => (this.requirements?.count(material.resourceId) ?? 0) >= material.amount);
+  }
+
+  /** Dá pra comprar o item selecionado agora? (tem saldo/materiais e ainda não possui, no caso de itens únicos). */
   private canBuySelected(): boolean {
     const item = this.selectedItem();
-    return !!item && this.lastCoins >= item.price && !this.isOwned(item.id);
+    return !!item && this.canAfford(item) && !this.isOwned(item.id);
   }
 
   /** Troca a aba ativa, seleciona o 1º item dela e redesenha. */
@@ -692,11 +813,11 @@ export class ShopMenu {
    * Mostra a descrição sem vazar da caixinha: parte da fonte normal e vai reduzindo 1px até o texto caber na altura livre (entre o nome e
    * o preço) ou chegar ao mínimo legível (`DETAIL_DESCRIPTION_MIN_FONT_PX`). Descrições curtas continuam no tamanho de sempre.
    */
-  private fitDescription(text: string): void {
+  private fitDescription(text: string, maxHeight: number): void {
     this.detailDescription.setText(text);
     let size = DETAIL_DESCRIPTION_FONT_PX;
     this.detailDescription.setFontSize(size);
-    while (this.detailDescription.height > DETAIL_DESCRIPTION_MAX_HEIGHT && size > DETAIL_DESCRIPTION_MIN_FONT_PX) {
+    while (this.detailDescription.height > maxHeight && size > DETAIL_DESCRIPTION_MIN_FONT_PX) {
       size -= 1;
       this.detailDescription.setFontSize(size);
     }
@@ -714,17 +835,48 @@ export class ShopMenu {
     this.detailName.setVisible(showDetail);
     this.detailDescription.setVisible(showDetail);
     this.detailPrice.setVisible(showDetail);
+    this.detailMaterials.setVisible(false);
+
+    // Ações do item (só a loja do Marceneiro): mostra só os ícones que valem agora.
+    const available = showDetail && this.actions && item ? this.actions.available(item.id) : [];
+    const shown = ACTION_ORDER.filter((action) => available.includes(action));
+    for (const [action, button] of this.actionButtons) {
+      const on = shown.includes(action);
+      if (on) {
+        const y = this.actionColumnY + (shown.indexOf(action) - (shown.length - 1) / 2) * (ACTION_BUTTON_SIZE + ACTION_BUTTON_GAP);
+        button.background.setY(y);
+        button.icon.setY(y);
+      }
+      button.background.setVisible(on);
+      button.icon.setVisible(on);
+      if (on) button.background.setInteractive();
+      else button.background.disableInteractive();
+    }
+    // A dica do ícone sob o mouse some quando esse ícone deixa de valer (ex.: acabou de destruir a última construção).
+    if (this.actionHint.visible && !available.some((action) => ACTION_LABELS[action] === this.actionHint.text)) this.actionHint.setVisible(false);
     if (!item) return;
 
     this.detailIcon.setTexture(item.textureKey, item.iconFrame);
     this.detailIcon.setScale(computeFitScale(this.detailIcon, DETAIL_ICON_TARGET_PX));
     this.detailName.setText(item.name);
-    this.fitDescription(item.description);
-
     const owned = this.isOwned(item.id);
-    const affordable = this.lastCoins >= item.price;
+    // Entre a descrição e o preço: o motivo de não poder comprar (ex.: "Precisa: Machado de Madeira") ou os materiais exigidos com o que o jogador tem ("5 Barra de Cobre (2/5)"), vermelho se falta.
+    const blocked = owned ? null : this.requirements?.blockedReason?.(item.id) ?? null;
+    const materials = owned ? [] : item.materials ?? [];
+    const hasMaterialsLine = !!blocked || materials.length > 0;
+    this.fitDescription(item.description, hasMaterialsLine ? DETAIL_DESCRIPTION_MAX_HEIGHT_WITH_MATERIALS : DETAIL_DESCRIPTION_MAX_HEIGHT);
+    if (blocked) {
+      this.detailMaterials.setText(blocked).setColor('#a8322d');
+    } else if (materials.length > 0) {
+      const lines = materials.map((material) => `${material.name}: ${Math.min(this.requirements?.count(material.resourceId) ?? 0, 999)}/${material.amount}`);
+      const missing = materials.some((material) => (this.requirements?.count(material.resourceId) ?? 0) < material.amount);
+      this.detailMaterials.setText(lines.join('\n')).setColor(missing ? '#a8322d' : '#2f6b2f');
+    }
+    this.detailMaterials.setVisible(showDetail && hasMaterialsLine);
+
+    const affordable = this.canAfford(item);
     this.detailPrice.setText(owned ? 'Já possui' : `Preço: ${item.price} moedas`);
-    this.detailPrice.setColor(owned || affordable ? TEXT_PRICE : '#a8322d');
+    this.detailPrice.setColor(owned || this.lastCoins >= item.price ? TEXT_PRICE : '#a8322d');
 
     const enabled = !owned && affordable;
     this.buyLabel.setText(owned ? 'Já possui' : 'Comprar');

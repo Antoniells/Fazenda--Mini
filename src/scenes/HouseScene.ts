@@ -30,8 +30,8 @@ import {
   isInventoryOpen,
   toggleInventoryScreen,
   closeInventoryScreen,
-  isCraftingMenuOpen,
-  closeCraftingMenu,
+  isFurnaceMenuOpen,
+  closeFurnaceMenu,
   isChestMenuOpen,
   closeChestMenu,
   HOTBAR_CHANGED_EVENT,
@@ -187,9 +187,9 @@ export class HouseScene extends Phaser.Scene {
     this.furniture.restorePlacements();
     this.controller.addInputInterceptor(this.furniture);
 
-    // Trava de clique enquanto dorme / Inventário, Bancada ou Baú aberto (mesma ideia da Fazenda).
+    // Trava de clique enquanto dorme / Inventário, Fornalha ou Baú aberto (mesma ideia da Fazenda).
     this.controller.addInputInterceptor({
-      isActive: () => this.isSleeping || this.isLeaving || isInventoryOpen() || isCraftingMenuOpen() || isChestMenuOpen(),
+      isActive: () => this.isSleeping || this.isLeaving || isInventoryOpen() || isFurnaceMenuOpen() || isChestMenuOpen(),
       handleClick: () => {},
     });
 
@@ -235,7 +235,7 @@ export class HouseScene extends Phaser.Scene {
     ensureUIScene(this);
     this.input.keyboard!.on('keydown-E', () => {
       if (isChestMenuOpen()) return; // O baú já mostra a bolsa; E não abre outra tela por cima.
-      if (isCraftingMenuOpen()) closeCraftingMenu();
+      if (isFurnaceMenuOpen()) closeFurnaceMenu();
       this.furniture.cancel();
       toggleInventoryScreen();
     });
@@ -243,7 +243,7 @@ export class HouseScene extends Phaser.Scene {
       if (this.furniture.isActive()) this.furniture.cancel();
       else if (isChestMenuOpen()) closeChestMenu();
       else if (isInventoryOpen()) closeInventoryScreen();
-      else if (isCraftingMenuOpen()) closeCraftingMenu();
+      else if (isFurnaceMenuOpen()) closeFurnaceMenu();
     });
 
     // Dica (some sozinha): a cama é o jeito de dormir.
@@ -299,7 +299,7 @@ export class HouseScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    const menuOpen = isInventoryOpen() || isCraftingMenuOpen() || isChestMenuOpen();
+    const menuOpen = isInventoryOpen() || isFurnaceMenuOpen() || isChestMenuOpen();
     if (!this.isSleeping && !this.isLeaving && !menuOpen) this.controller.update(time, delta);
     if (!this.isLeaving && !menuOpen) this.petCompanion?.update(time, delta);
 
@@ -312,7 +312,7 @@ export class HouseScene extends Phaser.Scene {
     // O dia corre aqui também (a horda que amanhece com o jogador em casa termina sem bônus — ver `advanceWorldTime`).
     // Dormindo, `startNextDay` conduz o relógio: não soma tempo por cima.
     if (!this.isSleeping) advanceWorldTime(delta, false);
-    this.dayNightOverlay.setNightAlpha(gameState.gameClock.getNightAlpha());
+    this.dayNightOverlay.setHours(gameState.gameClock.getHours());
     this.worldBlur.setActive(menuOpen);
   }
 

@@ -68,7 +68,7 @@ export const forestMap: ForestMapData = {
   lakeArea: { col0: 0, row0: 0, cols: 0, rows: 0 },
   // Flores, cogumelos e troncos caídos além da folhagem sorteada (`buildWildFoliage`) — fora do lago (colunas 14-20, linhas 7-11).
   props: [
-    [7, 2, 'prop-flower-white-cluster'], [11, 3, 'prop-flower-white-cluster'], [2, 9, 'prop-flower-blue-1'], [12, 8, 'prop-fallen-log'],
+    [7, 2, 'prop-flower-white-cluster'], [11, 3, 'prop-flower-white-cluster'], [2, 9, 'prop-flower-blue-1'],
     [8, 12, 'prop-mushroom-tan'], [5, 15, 'prop-flower-pink'], [13, 17, 'prop-flower-white-small'], [23, 8, 'prop-flower-blue-2'],
     [22, 14, 'prop-mushroom-orange'], [24, 17, 'prop-fallen-log'], [18, 16, 'prop-flower-pink'], [1, 5, 'prop-flower-white-small'],
     [28, 6, 'prop-flower-white-cluster'], [34, 4, 'prop-flower-blue-2'], [30, 11, 'prop-fallen-log'], [36, 15, 'prop-mushroom-tan'],

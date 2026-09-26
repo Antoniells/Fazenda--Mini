@@ -6,7 +6,7 @@ import { createGroundShadow } from './shadow';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { PET_BOX_CELL, getPetLetter } from './petEvent';
 
-/** Evento GLOBAL (`game.events`) disparado ao abrir a caixa — ouvido pela `UIScene`, que mostra a carta (`ui/letterPanel.ts`). Mesmo padrão de `OPEN_CRAFTING_MENU_EVENT`. */
+/** Evento GLOBAL (`game.events`) disparado ao abrir a caixa — ouvido pela `UIScene`, que mostra a carta (`ui/letterPanel.ts`). Mesmo padrão de `OPEN_FURNACE_MENU_EVENT`. */
 export const OPEN_LETTER_EVENT = 'open-letter';
 export interface OpenLetterPayload {
   title: string;

@@ -83,6 +83,8 @@ export const ORE_HIT_SOUNDS: SoundEffectDef[] = [sfx('ore-hit-1', 'Picareta mine
 export const OBJECT_BREAK_SOUND = sfx('object-break', 'Objeto quebrando');
 export const HAMMER_SOUND = sfx('hammer', 'Martelo');
 export const SWORD_SWING_SOUND = sfx('sword-swing', 'Espada golpe');
+/** Som da Foice (cortar o mato, limpar plantação morta): por enquanto o mesmo da espada — quando a foice ganhar um som próprio, é só trocar aqui. */
+export const SICKLE_SOUND = SWORD_SWING_SOUND;
 export const PLANT_SOUND = sfx('plant', 'Plantar');
 export const HARVEST_SOUND = sfx('harvest', 'Colher');
 /** Posicionar uma decoração, um móvel ou uma muda. */

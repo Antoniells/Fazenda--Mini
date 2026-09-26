@@ -206,7 +206,8 @@ export class DialoguePanel {
       const frameName = `${key}-face`;
       const texture = this.scene.textures.get(key);
       if (!texture.has(frameName)) texture.add(frameName, 0, frame.x, frame.y, frame.width, frame.height);
-      this.portrait.setTexture(key, frameName).setVisible(true);
+      // O retrato-padrão é 64x64; um quadro menor (o de repouso 32x32 dos NPCs `Pre-made`) é ampliado pra ocupar o mesmo espaço.
+      this.portrait.setTexture(key, frameName).setScale((PORTRAIT_SCALE * 64) / frame.width).setVisible(true);
     } else {
       this.portrait.setVisible(false);
     }

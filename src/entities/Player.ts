@@ -12,6 +12,7 @@ import { GridPoint } from '../systems/pathfinding';
 import { createGroundShadow } from '../systems/shadow';
 import { playEffect } from '../systems/soundEffects';
 import { HURT_SOUND } from '../data/audio';
+import { getMoveSpeedMultiplier } from '../systems/skills';
 
 type Facing = 'down' | 'up' | 'side';
 
@@ -353,7 +354,8 @@ update(_time: number, delta: number): void {
     }
 
     this.moveElapsed += delta;
-    const t = Math.min(1, this.moveElapsed / PLAYER_MOVE_DURATION_MS);
+    // Habilidade Pés Ligeiros: passos mais curtos no tempo (multiplicador lido a cada quadro — vale na hora da compra).
+    const t = Math.min(1, this.moveElapsed / (PLAYER_MOVE_DURATION_MS / getMoveSpeedMultiplier()));
 
     this.sprite.x = Phaser.Math.Linear(this.fromX, this.toX, t);
     this.sprite.y = Phaser.Math.Linear(this.fromY, this.toY, t);

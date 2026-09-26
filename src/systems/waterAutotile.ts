@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import {
   WATER_STYLES,
   WaterStyleId,
+  WaterDiagonal,
   WATER_AUTOTILE_PHASES,
   WATER_AUTOTILE_PHASE_STRIDE,
   WATER_AUTOTILE_PHASE_MS,
@@ -26,6 +27,15 @@ export function computeWaterMask(isWater: (col: number, row: number) => boolean,
   if (isWater(col, row + 1)) mask |= WATER_NEIGHBOR.S;
   if (isWater(col - 1, row)) mask |= WATER_NEIGHBOR.W;
   return mask;
+}
+
+/** A diagonal onde há areia numa célula de água de miolo (os 4 vizinhos ortogonais são água); `null` se as 4 diagonais são água. Com duas ou mais, vale a primeira. */
+function innerCornerOf(isWater: (col: number, row: number) => boolean, col: number, row: number): WaterDiagonal | null {
+  if (!isWater(col - 1, row - 1)) return 'NW';
+  if (!isWater(col + 1, row - 1)) return 'NE';
+  if (!isWater(col - 1, row + 1)) return 'SW';
+  if (!isWater(col + 1, row + 1)) return 'SE';
+  return null;
 }
 
 /**
@@ -67,12 +77,18 @@ export function buildWaterAutotile(
       if (gid === undefined || !isWaterGid(gid)) continue;
 
       const mask = computeWaterMask(isWaterCell, col, row);
-      const baseFrame = style.frames[mask];
+      const alternate = style.alternates[mask];
+      let baseFrame = alternate ? alternate.frames[(alternate.axis === 'col' ? col : row) % 2] : style.frames[mask];
+      // Miolo com areia numa diagonal: o tile do canto interno (senão sobra um quadrado azul avançando sobre a areia).
+      if (mask === WATER_AUTOTILE_INTERIOR_MASK) {
+        const corner = innerCornerOf(isWaterCell, col, row);
+        if (corner) baseFrame = style.innerCorners[corner];
+      }
       const image = scene.add.image((originCol + col) * tile, (originRow + row) * tile, style.textureKey, baseFrame);
       image.setOrigin(0, 0);
       image.setScale(scale);
       image.setDepth(WATER_DEPTH);
-      if (mask !== WATER_AUTOTILE_INTERIOR_MASK) animated.push({ image, baseFrame });
+      if (baseFrame !== style.frames[WATER_AUTOTILE_INTERIOR_MASK]) animated.push({ image, baseFrame });
     }
   }
 

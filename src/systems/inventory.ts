@@ -1,4 +1,6 @@
 import { DEFAULT_CROP_ID } from '../data/crops';
+import { LEGACY_QUALITY_IDS } from '../data/quality';
+import { LEGACY_TOOL_IDS } from '../data/toolProgression';
 import { HOE, SICKLE, WATERING_CAN_TOOL, AXE, PICKAXE } from '../data/tools';
 import { WOODEN_SWORD } from '../data/weapons';
 import { SlotCategory, SlotRef } from '../data/items';
@@ -15,7 +17,8 @@ export interface InventorySaveData {
   wateringCanCharges: number;
   everHarvested: string[];
   totalHarvested: Record<string, number>;
-  unlockedRecipes: string[];
+  /** Só em saves antigos (as receitas da Bancada, hoje removida) — lido e descartado. */
+  unlockedRecipes?: string[];
   slots: Array<SlotRef | null>;
   selectedHotbarIndex: number;
   /** Ausente em saves anteriores à armadura equipável. */
@@ -25,7 +28,7 @@ export interface InventorySaveData {
 /** Moedas com que o jogador começa uma nova partida (sem save ainda, então sempre reinicia aqui). */
 const STARTING_COINS = 70;
 /** O jogador começa com algumas sementes da cultura padrão, para poder plantar sem precisar visitar a loja primeiro. */
-const STARTING_SEEDS = 3;
+const STARTING_SEEDS = 10;
 /**
  * Quantas regadas o regador aguenta antes de precisar ser reabastecido no
  * Poço (Fase 6). Cerca de uma rodada completa da lavoura atual (12
@@ -269,7 +272,7 @@ export class Inventory {
 
   // --- Pilhas genéricas (baú) ----------------------------------------------------------------------------------
   // Mover itens entre a Bolsa e um baú precisa tratar TODAS as categorias do mesmo jeito (`SlotRef` + quantidade),
-  // sem o baú conhecer os Maps privados. Ferramentas e armaduras são "pilhas de 1" (existem ou não); receitas não se movem.
+  // sem o baú conhecer os Maps privados. Ferramentas e armaduras são "pilhas de 1" (existem ou não).
 
   /** Quantas unidades desse item a Bolsa tem (ferramenta/armadura: 1 se ocupa algum slot). */
   getStackCount(ref: SlotRef): number {
@@ -485,7 +488,7 @@ export class Inventory {
     return this.slots.some((slot) => slot === null);
   }
 
-  /** Igual a `unlockTool`, mas para a categoria `'armor'` (Fase 8 — Crafting: fabricar uma armadura na Bancada de Trabalho, ver `ui/craftingMenu.ts`). */
+  /** Igual a `unlockTool`, mas para a categoria `'armor'` (comprar uma armadura no Ferreiro). */
   unlockArmor(armorId: string): void {
     this.ensureSlotted('armor', armorId);
   }
@@ -510,27 +513,6 @@ export class Inventory {
     }
     const owned = this.slots.some((slot) => slot?.category === 'armor' && slot.id === armorId);
     if (owned && ARMORS[armorId]) this.equippedArmorId = armorId;
-  }
-
-  /**
-   * Receitas já compradas na Loja (Fase 8 — Crafting/Bancada de Trabalho):
-   * diferente de `slots` (Hotbar/Inventário), uma receita comprada não
-   * ocupa slot nenhum — é só uma permissão permanente pra fabricar aquele
-   * item na Bancada, consultada por quantidade ilimitada de vezes (cada
-   * fabricação gasta `RecipeDefinition.ingredients`, não a receita em si).
-   * Mesma ideia de `gameState.unlockedBridges` (`systems/bridgeSystem.ts`),
-   * só que por partida (`Inventory`), não global.
-   */
-  private readonly unlockedRecipes = new Set<string>();
-
-  /** Desbloqueia uma receita (compra na Loja) — chamado por `MainScene.buyRecipe`. */
-  unlockRecipe(recipeId: string): void {
-    this.unlockedRecipes.add(recipeId);
-  }
-
-  /** Se o jogador já comprou essa receita — usado pra não vender a mesma receita duas vezes. */
-  hasRecipe(recipeId: string): boolean {
-    return this.unlockedRecipes.has(recipeId);
   }
 
   /** Índice do slot da Hotbar atualmente selecionado (0-7). */
@@ -616,7 +598,6 @@ export class Inventory {
       wateringCanCharges: this.wateringCanCharges,
       everHarvested: Array.from(this.everHarvested),
       totalHarvested: Object.fromEntries(this.totalHarvested),
-      unlockedRecipes: Array.from(this.unlockedRecipes),
       slots: this.slots.slice(),
       selectedHotbarIndex: this.selectedHotbarIndex,
       equippedArmor: this.equippedArmorId,
@@ -634,15 +615,22 @@ export class Inventory {
     inventory.decorations.clear();
     for (const [id, amount] of Object.entries(data.decorations)) inventory.decorations.set(id, amount);
     inventory.resources.clear();
-    for (const [id, amount] of Object.entries(data.resources)) inventory.resources.set(id, amount);
+    // Ovos de antes das estrelas (Bom/Ótimo/Perfeito) viram Prata/Ouro/Irídio (`LEGACY_QUALITY_IDS`).
+    for (const [id, amount] of Object.entries(data.resources)) {
+      const migrated = LEGACY_QUALITY_IDS[id] ?? id;
+      inventory.resources.set(migrated, (inventory.resources.get(migrated) ?? 0) + amount);
+    }
     inventory.wateringCanCharges = data.wateringCanCharges;
     inventory.everHarvested.clear();
     for (const id of data.everHarvested) inventory.everHarvested.add(id);
     inventory.totalHarvested.clear();
     for (const [id, amount] of Object.entries(data.totalHarvested)) inventory.totalHarvested.set(id, amount);
-    inventory.unlockedRecipes.clear();
-    for (const id of data.unlockedRecipes) inventory.unlockedRecipes.add(id);
-    for (let index = 0; index < inventory.slots.length; index++) inventory.slots[index] = data.slots[index] ?? null;
+    for (let index = 0; index < inventory.slots.length; index++) {
+      const saved = data.slots[index] ?? null;
+      inventory.slots[index] = saved?.category === 'resource' && LEGACY_QUALITY_IDS[saved.id] ? { ...saved, id: LEGACY_QUALITY_IDS[saved.id] } : saved;
+      // As ferramentas de Pedra (antes da Fornalha) viraram as de Cobre.
+      if (saved?.category === 'tool' && LEGACY_TOOL_IDS[saved.id]) inventory.slots[index] = { category: 'tool', id: LEGACY_TOOL_IDS[saved.id] };
+    }
     inventory.selectedHotbarIndex = data.selectedHotbarIndex;
     inventory.normalizeToolTiers();
     if (!Number.isInteger(inventory.selectedHotbarIndex) || inventory.selectedHotbarIndex < 0 || inventory.selectedHotbarIndex >= HOTBAR_SIZE) inventory.selectedHotbarIndex = 0;

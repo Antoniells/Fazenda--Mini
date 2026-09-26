@@ -5,14 +5,15 @@
  * Rotina: uma lista de "a partir da hora H, o morador está em LUGAR". O dia dá a volta (a última entrada vale até a primeira do dia
  * seguinte). Lugares:
  * - `inside`: dentro de casa, invisível (dormindo/descansando) — a porta é a célula em frente à casa (`VillageStructure`).
- * - `post`: dentro do trabalho, VISÍVEL atrás do balcão (só o Ferreiro: `postPx` vem da fachada da loja, `data/villageShop.ts`).
+ * - `post`: dentro do trabalho, VISÍVEL atrás do balcão (não usado mais: as lojas viraram interiores, `data/maps/shopInteriors.ts`).
  * - `spot`: parado numa célula da rua/praça, virado pra `facing`.
  * Na chuva, quem estaria numa rua/praça (`spot`) fica em casa; o `post` continua (o balcão é coberto).
  */
-import { VILLAGE_SHOP_HOUSE, VILLAGE_BANKER_HOUSE, VILLAGE_PIRATE_HOUSE, VillageStructure } from './maps/villageMap';
+import { VILLAGE_SHOP_HOUSE, VILLAGE_BANKER_HOUSE, VILLAGE_PIRATE_HOUSE, VILLAGE_SUPPLIER_HOUSE, VILLAGE_CARPENTER_HOUSE, VillageStructure } from './maps/villageMap';
 import { BEACH_MERMAID_CELL } from './maps/beachDecor';
 
-export type NpcId = 'blacksmith' | 'banker' | 'pirate' | 'mermaid';
+/** `banker` é o Alberto, agora PADEIRO: o id interno não mudou (campanha, pedidos, saves e o `role` da casa no layout dependem dele) — só o título e as falas. */
+export type NpcId = 'blacksmith' | 'banker' | 'pirate' | 'mermaid' | 'supplier' | 'carpenter';
 
 export type NpcFacing = 'down' | 'up' | 'left' | 'right';
 
@@ -25,6 +26,8 @@ export interface NpcScheduleEntry {
   /** Hora (0-24) a partir da qual vale este lugar. */
   fromHour: number;
   place: NpcPlace;
+  /** Expediente: neste trecho o vendedor ATENDE (a loja abre ao conversar) — só faz sentido em quem `sells`. */
+  working?: boolean;
 }
 
 /** Folha de sprites de um morador: `idle`/`walk` seguem a mesma ordem de direções (baixo, cima, esquerda, direita), com `idleFrames`/`walkFrames` quadros cada. */
@@ -38,7 +41,18 @@ export interface NpcSpriteSheet {
   /** Quadros por direção nas folhas de repouso e de caminhada. */
   idleFrames: number;
   walkFrames?: number;
+  /**
+   * Linha (bloco de quadros) de cada direção, quando a folha não é a padrão dos NPCs (baixo, cima, direita, esquerda). As folhas dos personagens
+   * `Pre-made` têm só 3 blocos — baixo, cima e um de LADO (virado pra direita) —, então usam `SIDE_SHEET_ROWS` e `flipLeft`.
+   */
+  rows?: Record<NpcFacing, number>;
+  /** Espelha o sprite ao olhar pra esquerda (folha com um só bloco de lado, virado pra direita). */
+  flipLeft?: boolean;
 }
+
+/** Blocos das folhas de 3 direções (`Character/Character/Pre-made/<nome>/Idle.png` 128x96, `Walk.png` 192x96): baixo, cima e lado (esquerda = lado espelhado). */
+const SIDE_SHEET_ROWS: Record<NpcFacing, number> = { down: 0, up: 1, right: 2, left: 2 };
+const PREMADE_DIR = 'Character/Character/Pre-made';
 
 export interface NpcDefinition {
   id: NpcId;
@@ -47,6 +61,8 @@ export interface NpcDefinition {
   sprite: NpcSpriteSheet;
   /** Retrato (quadro 64x64 no canto superior-esquerdo da folha). */
   portrait: { key: string; path: string; frame: { x: number; y: number; width: number; height: number } };
+  /** É vendedor: conversar oferece "Ver a loja" durante o expediente (`working` na rotina) — as lojas em si estão em `systems/vendorShops.ts`. */
+  sells?: boolean;
   /** Casa (com porta) de quem anda pelo Vilarejo. Ausente = morador PARADO (`stationary`). */
   home?: VillageStructure;
   /** Morador que não anda: fica sempre nesta célula (a sereia, no mar da Praia); a rotina só diz quando está visível. */
@@ -76,11 +92,12 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
     },
     portrait: { key: 'npc-blacksmith-portrait', path: `${NPC_DIR}/Blacksmith/Portrait.png`, frame: { x: 0, y: 0, width: 64, height: 64 } },
     home: VILLAGE_SHOP_HOUSE,
+    sells: true,
     schedule: [
       { fromHour: 0, place: { kind: 'inside' } },
-      { fromHour: 7, place: { kind: 'post' } },
+      { fromHour: 7, place: { kind: 'inside' }, working: true },
       { fromHour: 12, place: { kind: 'spot', col: 12, row: 16, facing: 'down' } },
-      { fromHour: 13, place: { kind: 'post' } },
+      { fromHour: 13, place: { kind: 'inside' }, working: true },
       { fromHour: 18, place: { kind: 'spot', col: 9, row: 17, facing: 'right' } },
       { fromHour: 21, place: { kind: 'inside' } },
     ],
@@ -94,7 +111,7 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
   banker: {
     id: 'banker',
     name: 'Alberto',
-    title: 'Banqueiro',
+    title: 'Padeiro',
     sprite: {
       idleKey: 'npc-banker-idle',
       idlePath: `${NPC_DIR}/Banker/Idle.png`,
@@ -108,17 +125,17 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
     home: VILLAGE_BANKER_HOUSE,
     schedule: [
       { fromHour: 0, place: { kind: 'inside' } },
-      { fromHour: 8, place: { kind: 'spot', col: 23, row: 15, facing: 'down' } },
+      { fromHour: 6, place: { kind: 'inside' }, working: true },
       { fromHour: 12, place: { kind: 'spot', col: 16, row: 16, facing: 'left' } },
-      { fromHour: 13, place: { kind: 'spot', col: 23, row: 15, facing: 'down' } },
+      { fromHour: 13, place: { kind: 'inside' }, working: true },
       { fromHour: 18, place: { kind: 'spot', col: 19, row: 15, facing: 'left' } },
       { fromHour: 20, place: { kind: 'inside' } },
     ],
     chatter: [
-      'Uma fazenda é como uma conta bancária: rende juros a quem tem constância.',
-      'Nunca gaste mais do que colhe, esse é o segredo.',
-      'Com tantas hordas, até eu aprendi a dormir com um olho aberto.',
-      'Passe sempre por aqui: eu adoro ouvir sobre a sua colheita.',
+      'Pão bom pede paciência: massa que descansa e fermento que cresce. Igual à lavoura.',
+      'Nunca gaste mais do que colhe, esse é o segredo — na padaria e na fazenda.',
+      'Com tantas hordas, até eu aprendi a dormir com um olho aberto (e o forno aceso).',
+      'Passe sempre por aqui: eu adoro ouvir sobre a sua colheita. Trigo, então, nem se fala!',
     ],
   },
   pirate: {
@@ -151,6 +168,73 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       'Vá explorar, marujo. Quem só olha pro próprio quintal nunca vê a tempestade chegando.',
     ],
   },
+  supplier: {
+    id: 'supplier',
+    name: 'Lia',
+    title: 'Insumos da Fazenda',
+    sprite: {
+      idleKey: 'npc-supplier-idle',
+      idlePath: `${PREMADE_DIR}/Tori/Idle.png`,
+      walkKey: 'npc-supplier-walk',
+      walkPath: `${PREMADE_DIR}/Tori/Walk.png`,
+      frameSize: 32,
+      idleFrames: 4,
+      walkFrames: 6,
+      rows: SIDE_SHEET_ROWS,
+      flipLeft: true,
+    },
+    // Sem retrato próprio na pasta: o quadro de repouso de frente (32x32) faz as vezes.
+    portrait: { key: 'npc-supplier-idle-portrait', path: `${PREMADE_DIR}/Tori/Idle.png`, frame: { x: 0, y: 0, width: 32, height: 32 } },
+    home: VILLAGE_SUPPLIER_HOUSE,
+    sells: true,
+    schedule: [
+      { fromHour: 0, place: { kind: 'inside' } },
+      { fromHour: 8, place: { kind: 'inside' }, working: true },
+      { fromHour: 12, place: { kind: 'spot', col: 13, row: 17, facing: 'right' } },
+      { fromHour: 13, place: { kind: 'inside' }, working: true },
+      { fromHour: 18, place: { kind: 'spot', col: 12, row: 18, facing: 'up' } },
+      { fromHour: 20, place: { kind: 'inside' } },
+    ],
+    chatter: [
+      'Semente boa, terra bem regada e um pouquinho de paciência: é só isso que a lavoura pede.',
+      'Já viu um pintinho crescer? Num piscar de olhos vira uma galinha. Cuide bem deles!',
+      'Uma casa bonita começa pelos móveis. Passe na loja quando quiser decorar a sua.',
+      'Dizem que cenoura de manhã cedo rende mais. Não é verdade, mas eu adoro acordar cedo mesmo assim.',
+    ],
+  },
+  carpenter: {
+    id: 'carpenter',
+    name: 'Tomás',
+    title: 'Marceneiro',
+    sprite: {
+      idleKey: 'npc-carpenter-idle',
+      idlePath: `${PREMADE_DIR}/Josh/Idle.png`,
+      walkKey: 'npc-carpenter-walk',
+      walkPath: `${PREMADE_DIR}/Josh/Walk.png`,
+      frameSize: 32,
+      idleFrames: 4,
+      walkFrames: 6,
+      rows: SIDE_SHEET_ROWS,
+      flipLeft: true,
+    },
+    portrait: { key: 'npc-carpenter-idle-portrait', path: `${PREMADE_DIR}/Josh/Idle.png`, frame: { x: 0, y: 0, width: 32, height: 32 } },
+    home: VILLAGE_CARPENTER_HOUSE,
+    sells: true,
+    schedule: [
+      { fromHour: 0, place: { kind: 'inside' } },
+      { fromHour: 7, place: { kind: 'inside' }, working: true },
+      { fromHour: 12, place: { kind: 'spot', col: 15, row: 17, facing: 'left' } },
+      { fromHour: 13, place: { kind: 'inside' }, working: true },
+      { fromHour: 18, place: { kind: 'spot', col: 20, row: 16, facing: 'left' } },
+      { fromHour: 20, place: { kind: 'inside' } },
+    ],
+    chatter: [
+      'Madeira boa a gente reconhece pelo cheiro. E pelo preço, infelizmente!',
+      'Um galinheiro bem feito dura a vida toda. Vem cá que eu te mostro o projeto.',
+      'Pedra e madeira: com as duas na mão dá pra construir quase qualquer coisa.',
+      'Tenho planos de aumentar o Vilarejo... mas primeiro, a sua casa!',
+    ],
+  },
   mermaid: {
     id: 'mermaid',
     name: 'Marina',
@@ -180,5 +264,5 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
 };
 
 /** Moradores de cada cena (cada cena só cria os seus). */
-export const VILLAGE_NPC_IDS: NpcId[] = ['blacksmith', 'banker', 'pirate'];
+export const VILLAGE_NPC_IDS: NpcId[] = ['blacksmith', 'banker', 'pirate', 'supplier', 'carpenter'];
 export const BEACH_NPC_IDS: NpcId[] = ['mermaid'];

@@ -50,30 +50,19 @@ const RECOVER_MS = 1000;
 const STAGGER_MS = 600;
 const WINDUP_TINT = 0xff8a8a;
 
-let animsRegistered = false;
+/** Chaves das 3 animações de uma folha de slime: a verde (Floresta/horda) mantém as de sempre; as outras cores (Caverna) derivam da chave da textura. */
+function slimeAnimKeys(textureKey: string): { idle: string; death: string; attack: string } {
+  if (textureKey === SLIME_KEY) return { idle: SLIME_IDLE_ANIM_KEY, death: SLIME_DEATH_ANIM_KEY, attack: SLIME_ATTACK_ANIM_KEY };
+  return { idle: `${textureKey}:idle`, death: `${textureKey}:death`, attack: `${textureKey}:attack` };
+}
 
-/** Cria as animações de idle/derrota uma única vez por `Game` (spritesheet global, não por cena) — mesma técnica idempotente de `FarmlandRenderer.ensureSplashAnim`. */
-export function ensureSlimeAnims(scene: Phaser.Scene): void {
-  if (animsRegistered && scene.anims.exists(SLIME_IDLE_ANIM_KEY)) return;
-  scene.anims.create({
-    key: SLIME_IDLE_ANIM_KEY,
-    frames: scene.anims.generateFrameNumbers(SLIME_KEY, SLIME_IDLE_FRAMES),
-    frameRate: 6,
-    repeat: -1,
-  });
-  scene.anims.create({
-    key: SLIME_DEATH_ANIM_KEY,
-    frames: scene.anims.generateFrameNumbers(SLIME_KEY, SLIME_DEATH_FRAMES),
-    frameRate: 6,
-    repeat: 0,
-  });
-  scene.anims.create({
-    key: SLIME_ATTACK_ANIM_KEY,
-    frames: scene.anims.generateFrameNumbers(SLIME_KEY, SLIME_ATTACK_FRAMES),
-    frameRate: 12,
-    repeat: 0,
-  });
-  animsRegistered = true;
+/** Cria as animações de idle/derrota/ataque da folha `textureKey` (a verde por padrão) uma única vez por `Game` (spritesheet global, não por cena) — mesma técnica idempotente de `FarmlandRenderer.ensureSplashAnim`. */
+export function ensureSlimeAnims(scene: Phaser.Scene, textureKey: string = SLIME_KEY): void {
+  const keys = slimeAnimKeys(textureKey);
+  if (scene.anims.exists(keys.idle)) return;
+  scene.anims.create({ key: keys.idle, frames: scene.anims.generateFrameNumbers(textureKey, SLIME_IDLE_FRAMES), frameRate: 6, repeat: -1 });
+  scene.anims.create({ key: keys.death, frames: scene.anims.generateFrameNumbers(textureKey, SLIME_DEATH_FRAMES), frameRate: 6, repeat: 0 });
+  scene.anims.create({ key: keys.attack, frames: scene.anims.generateFrameNumbers(textureKey, SLIME_ATTACK_FRAMES), frameRate: 12, repeat: 0 });
 }
 
 /**
@@ -95,6 +84,7 @@ export class Slime extends Enemy {
   /** Quando o estado temporizado atual (`windup`/`strike`/`recover`) termina. */
   private stateEndsAt = 0;
   private telegraphTween: Phaser.Tweens.Tween | null = null;
+  private readonly animKeys: { idle: string; death: string; attack: string };
 
 constructor(
     scene: Phaser.Scene,
@@ -105,11 +95,20 @@ constructor(
     private readonly tilePx: number,
     /** Chamado no IMPACTO do golpe, só se o jogador ainda estiver ao alcance — quem chama decide o que fazer com o dano (aplicar na vida, feedback, etc.); `attacker` é este Slime (o pet companheiro revida contra ele). */
     private readonly onAttackHit: (damage: number, time: number, attacker: Enemy) => void,
-    stats: EnemyStats = SLIME_STATS
+    stats: EnemyStats = SLIME_STATS,
+    /** Qual folha (cor) usar — a Caverna tem slimes de várias cores; padrão: o verde de sempre. */
+    textureKey: string = SLIME_KEY,
+    /** Multiplica o tamanho do sprite (o Slime Guardião da Caverna é maior). */
+    sizeMultiplier = 1,
   ) {
-    super(scene, x, y, SLIME_KEY, SLIME_IDLE_FRAMES.start, stats);
-    ensureSlimeAnims(scene);
-    this.sprite.play(SLIME_IDLE_ANIM_KEY);
+    super(scene, x, y, textureKey, SLIME_IDLE_FRAMES.start, stats);
+    ensureSlimeAnims(scene, textureKey);
+    this.animKeys = slimeAnimKeys(textureKey);
+    this.sprite.play(this.animKeys.idle);
+    if (sizeMultiplier !== 1) {
+      this.sprite.setScale(this.sprite.scaleX * sizeMultiplier);
+      this.shadow.setScale(this.shadow.scaleX * sizeMultiplier);
+    }
     this.onDeathCallback = onDeath;
     this.baseScale = this.sprite.scaleX;
   }
@@ -174,7 +173,7 @@ if (this.state === 'chase') {
       this.stopTelegraph();
       this.sprite.clearTint();
       if (Math.abs(dxToPlayer) > 1) this.sprite.setFlipX(dxToPlayer < 0);
-      this.sprite.play(SLIME_ATTACK_ANIM_KEY);
+      this.sprite.play(this.animKeys.attack);
       this.state = 'strike';
       this.stateEndsAt = time + STRIKE_MS;
       return;
@@ -190,7 +189,7 @@ if (this.state === 'chase') {
     }
 
     // `recover` acabou: volta ao normal.
-    this.sprite.play(SLIME_IDLE_ANIM_KEY);
+    this.sprite.play(this.animKeys.idle);
     this.state = distanceToPlayer > DEAGGRO_RADIUS_PX ? 'wander' : 'chase';
     this.wanderTarget = null;
   }
@@ -211,7 +210,7 @@ if (this.state === 'chase') {
   protected override onDamaged(): void {
     if (this.state !== 'windup') return;
     this.stopTelegraph();
-    this.sprite.play(SLIME_IDLE_ANIM_KEY);
+    this.sprite.play(this.animKeys.idle);
     this.state = 'recover';
     this.stateEndsAt = this.scene.time.now + STAGGER_MS;
   }
@@ -282,7 +281,7 @@ protected onDeath(): void {
     this.stopTelegraph(); // Morreu no meio do aviso: sem isso o tween de escala continuaria mexendo no sprite da animação de morte.
     this.shadow.destroy(); // <-- DESTROI A SOMBRA AQUI!
 
-    this.sprite.play(SLIME_DEATH_ANIM_KEY);
+    this.sprite.play(this.animKeys.death);
     this.onDeathCallback(this.x, this.y);
     this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => this.sprite.destroy());
   }

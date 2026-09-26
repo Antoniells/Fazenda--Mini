@@ -8,11 +8,13 @@ import { LEAF_FALL_KEY, LEAF_FALL_ANIM_KEY, LEAF_FALL_FRAMES } from '../data/eff
 import { WalkableGrid } from './grid';
 import { resourceNodeRegistry } from './resourceNodeRegistry';
 import { spawnLoot } from './lootDrops';
+import { awardXp, rollDoubleDrop } from './skills';
+import { popText } from './floatingText';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { AXE_HIT_SOUNDS, TREE_FALL_SOUND, ROCK_HIT_SOUNDS, ROCK_BREAK_SOUND } from '../data/audio';
 
 /** Sprite + sombra (opcional) de um recurso no mundo — ambos destruídos juntos ao colher. */
-interface HarvestableVisual {
+export interface HarvestableVisual {
   sprite: Phaser.GameObjects.Image;
   shadow?: Phaser.GameObjects.Image;
 }
@@ -44,7 +46,7 @@ const HIT_SHAKE_DURATION_MS = 40;
  * por código (ver regra permanente do projeto sobre não criar arte via
  * código).
  */
-function playHitReaction(sprite: Phaser.GameObjects.Image): void {
+export function playHitReaction(sprite: Phaser.GameObjects.Image): void {
   const scene = sprite.scene;
   const baseX = sprite.x;
 
@@ -97,7 +99,7 @@ function spawnLeafEffect(sprite: Phaser.GameObjects.Image): void {
  * mexer com game objects do Phaser, que o registro propositalmente não
  * conhece (ele só guarda dados).
  */
-function clearHarvestedNode(
+export function clearHarvestedNode(
   visual: HarvestableVisual,
   grid: WalkableGrid,
   interactions: InteractionRegistry,
@@ -143,6 +145,7 @@ export class TreeInteractable implements Interactable {
     const power = selectedToolPower('axe');
     if (power === null) {
       console.log('Selecione o Machado para cortar a árvore.');
+      popText(this.visual.sprite.scene, this.visual.sprite.x, this.visual.sprite.y - 60, 'Precisa do Machado', { color: '#ff8a8a', fontSize: 14 });
       return;
     }
 
@@ -160,12 +163,15 @@ export class TreeInteractable implements Interactable {
         return;
       }
 
-      const wood = Phaser.Math.Between(12, 16);
-      const acorns = Phaser.Math.Between(0, 2);
-      // O loot cai no chão, ao pé da árvore (posição lida ANTES de `clearHarvestedNode` destruir o sprite) — o jogador pega ao chegar perto.
       const { x, y } = this.visual.sprite;
       const scene = this.visual.sprite.scene;
+      // Drop duplo (habilidade): um sorteio só por árvore, vale pra madeira e bolota juntas.
+      const doubled = rollDoubleDrop(scene, 1, x, y - 40) === 2 ? 2 : 1;
+      const wood = Phaser.Math.Between(12, 16) * doubled;
+      const acorns = Phaser.Math.Between(0, 2) * doubled;
+      // O loot cai no chão, ao pé da árvore (posição lida ANTES de `clearHarvestedNode` destruir o sprite) — o jogador pega ao chegar perto.
       scene.cameras.main.shake(140, 0.005); // A árvore cai: a tela sente.
+      awardXp(scene, 'chop', x, y - 16);
       spawnLoot(scene, this.player, x, y, { category: 'resource', id: WOOD.id, amount: wood });
       if (acorns > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: ACORN.id, amount: acorns });
 
@@ -207,6 +213,7 @@ export class RockInteractable implements Interactable {
     const power = selectedToolPower('pickaxe');
     if (power === null) {
       console.log('Selecione a Picareta para quebrar a pedra.');
+      popText(this.visual.sprite.scene, this.visual.sprite.x, this.visual.sprite.y - 40, 'Precisa da Picareta', { color: '#ff8a8a', fontSize: 14 });
       return;
     }
 
@@ -223,8 +230,10 @@ export class RockInteractable implements Interactable {
         return;
       }
 
-      const stone = this.big ? Phaser.Math.Between(8, 10) : Phaser.Math.Between(1, 3);
-      this.visual.sprite.scene.cameras.main.shake(110, 0.004); // A pedra racha.
+      const rockScene = this.visual.sprite.scene;
+      const stone = rollDoubleDrop(rockScene, this.big ? Phaser.Math.Between(8, 10) : Phaser.Math.Between(1, 3), this.visual.sprite.x, this.visual.sprite.y - 40);
+      rockScene.cameras.main.shake(110, 0.004); // A pedra racha.
+      awardXp(rockScene, this.big ? 'mineBig' : 'mineSmall', this.visual.sprite.x, this.visual.sprite.y - 16);
       spawnLoot(this.visual.sprite.scene, this.player, this.visual.sprite.x, this.visual.sprite.y, { category: 'resource', id: STONE.id, amount: stone });
       console.log(`${this.big ? 'Rocha' : 'Pedra'} quebrada: +${stone} Pedra.`);
 

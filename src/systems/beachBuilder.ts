@@ -3,6 +3,7 @@ import { BEACH_ASSETS, BEACH_PLACEMENTS, BeachAsset } from '../data/maps/beachDe
 import { TILE_SIZE } from '../data/tiles';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { registerFrame } from './externalMapBuilder';
+import { addBuildingShadows } from './shadow';
 
 /** Profundidade dos objetos planos de chão (toalhas/tapetes): acima da areia (-1), abaixo de sombras e de tudo ordenado por Y. */
 const FLAT_DEPTH = -0.35;
@@ -34,5 +35,6 @@ export function buildBeach(scene: Phaser.Scene): void {
     const image = scene.add.image(placement.col * tile, bottom - asset.frame.height * DISPLAY_SCALE, asset.key, frameName);
     image.setOrigin(0, 0).setScale(DISPLAY_SCALE);
     image.setDepth(asset.flat ? FLAT_DEPTH : bottom);
-  }
+    // A casinha do pescador (a que tem porta) ganha sombra ao pé da parede.
+    if (asset.door) addBuildingShadows(scene, image);  }
 }

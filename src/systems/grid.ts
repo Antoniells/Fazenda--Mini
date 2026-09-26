@@ -78,8 +78,6 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   for (const [col, row] of waterCellsFromGround(map.ground)) blocked.add(key(col, row));
 
   blocked.add(key(map.shippingBinPosition[0], map.shippingBinPosition[1]));
-  blocked.add(key(map.shopPosition[0], map.shopPosition[1]));
-  blocked.add(key(map.shopPosition[0]-1, map.shopPosition[1]));
 
   // Casa do jogador (Fase 9): bloco sólido inteiro — a única célula com
   // interação própria é a porta (`houseDoorPosition`, registrada à parte

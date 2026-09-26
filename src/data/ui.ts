@@ -198,6 +198,14 @@ export const TAB_FRAME_AGRICULTURE = { name: 'shop-tab-ribbon-green', rect: { x:
 /** Fita laranja (aba "Construções") — a folha não tem uma fita vermelha entre as cores já usadas em outras telas do jogo; laranja combina melhor com a paleta terrosa do livro. */
 export const TAB_FRAME_CONSTRUCTION = { name: 'shop-tab-ribbon-orange', rect: { x: 327, y: 195, width: 18, height: 25 } };
 
+/** Fita rosa (aba "Animais" da Loja) e a variante clara (hover) — mesma folha e grade das outras (18x25), na fileira das fitas azul/laranja (y=195), colunas 263/296. */
+export const TAB_FRAME_ANIMALS = { name: 'shop-tab-ribbon-pink', rect: { x: 263, y: 195, width: 18, height: 25 } };
+export const TAB_FRAME_ANIMALS_LIGHT = { name: 'shop-tab-ribbon-pink-light', rect: { x: 296, y: 195, width: 18, height: 25 } };
+
+/** Fita vermelha (aba "Habilidades" do Inventário) e a variante clara (hover) — mesma folha e grade das outras (18x25), na fileira de baixo (y=227, a das fitas verdes), colunas das fitas laranja. */
+export const TAB_FRAME_SKILLS = { name: 'shop-tab-ribbon-red', rect: { x: 327, y: 227, width: 18, height: 25 } };
+export const TAB_FRAME_SKILLS_LIGHT = { name: 'shop-tab-ribbon-red-light', rect: { x: 360, y: 227, width: 18, height: 25 } };
+
 /**
  * Variantes CLARAS das 3 fitas acima (efeito de hover, pedido explícito do
  * usuário) — mesma folha, mesma forma/tamanho (18x25), uma coluna à direita
@@ -246,6 +254,11 @@ export const CLOSE_X_ICON_FRAME = {
  * conectados): fechada x=66,y=1 (12x14); aberta x=82,y=0 (12x15).
  */
 export const DELETE_ICON_FRAME = { name: 'delete-icon', rect: { x: 66, y: 1, width: 12, height: 14 } };
+/**
+ * Ícone de "mover" da loja do Marceneiro (`ui/shopMenu.ts`, ações ao lado da descrição): a luva marrom (mão) da 3ª fileira de `UI/HUD.png`
+ * (célula 16x16 em 0,32) — cancelar usa o X vermelho (`CLOSE_X_ICON_FRAME`) e destruir a lixeira (`DELETE_ICON_FRAME`), da mesma folha.
+ */
+export const MOVE_ICON_FRAME = { name: 'move-icon', rect: { x: 0, y: 32, width: 16, height: 16 } };
 export const DELETE_ICON_OPEN_FRAME = { name: 'delete-icon-open', rect: { x: 82, y: 0, width: 12, height: 15 } };
 
 /**

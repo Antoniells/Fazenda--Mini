@@ -2106,7 +2106,7 @@ export class MapEditorScene extends Phaser.Scene {
       else if (object.type === 'villageWell') well = { col, row };
     }
 
-    for (const role of ['shop', 'banker', 'pirate'] as const) {
+    for (const role of ['shop', 'banker', 'pirate', 'supplier', 'carpenter'] as const) {
       // eslint-disable-next-line no-console
       if (!structures.some((structure) => structure.role === role)) console.warn(`MapEditorScene: a casa do morador "${role}" não está no mapa — o jogo vai usar a posição padrão dela.`);
     }

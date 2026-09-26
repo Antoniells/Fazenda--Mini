@@ -535,7 +535,7 @@ export function exportQuarryMapData(state: QuarryExportState): string {
 
 const VILLAGE_FILE_HEADER = [
   '/** Moradores que precisam saber qual casa é a deles — a casa carrega isto quando é movida no editor (`data/maps/villageMap.ts`). */',
-  "export type VillageStructureRole = 'shop' | 'banker' | 'pirate';",
+  "export type VillageStructureRole = 'shop' | 'banker' | 'pirate' | 'supplier' | 'carpenter';",
   '',
   'export interface VillageStructureLayout {',
   '  /** Id de `VILLAGE_ASSETS` (`data/maps/villageMap.ts`): house2, house3, house7, house8, newsstand, fountain. */',
@@ -563,7 +563,7 @@ export interface VillageExportStructure {
   asset: string;
   col: number;
   row: number;
-  role?: 'shop' | 'banker' | 'pirate';
+  role?: 'shop' | 'banker' | 'pirate' | 'supplier' | 'carpenter';
 }
 
 export interface VillageExportState {

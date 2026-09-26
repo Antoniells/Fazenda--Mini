@@ -19,7 +19,7 @@ import { InteractionRegistry } from '../systems/interaction';
 import { attachFootstepSounds } from '../systems/soundEffects';
 import { attachFootDust, isDirtGround } from '../systems/grassDust';
 import { onPlayerStepped } from '../systems/sceneEvents';
-import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isCraftingMenuOpen, closeCraftingMenu, isDialogueOpen } from './UIScene';
+import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen } from './UIScene';
 import { DebugGridOverlay } from '../systems/debugGridOverlay';
 import { MapType } from './MapEditorScene';
 import type { DirtZone } from '../systems/dirtPaths';
@@ -35,6 +35,8 @@ export interface ExternalMapEntryData {
   areaName: string;
   returnSceneKey: string;
   returnSpawn: { col: number; row: number };
+  /** Onde o jogador aparece (em vez de em frente à ponte de volta): usado ao sair do interior de uma loja do Vilarejo (`ShopInteriorScene`). */
+  spawnPoint?: { col: number; row: number };
 }
 
 /** O que cada cena concreta (Floresta/Pedreira/Caverna/Praia) precisa fornecer ao construtor — ver `ExternalMapScene`. */
@@ -46,6 +48,8 @@ export interface ExternalMapConfig {
   mapType?: MapType;
   /** Tint aplicado ao chão de grama (mesma paleta já usada nos trechos de bioma da Fazenda — ver `mapBuilder.BIOME_TINTS`); `undefined` mantém o verde natural. */
   groundTint?: number;
+  /** Saturação do chão (0 = cinza total, 1 = cores naturais; ausente = natural). Um filtro de cor só no chão (`Filters.ColorMatrix`): o tint multiplicativo sozinho não tira o verde da grama. */
+  groundSaturation?: number;
   /**
    * Bug corrigido — chão autorado no `MapEditorScene` (Modo Ground) nunca
    * era lido aqui (só `MainScene`/Fazenda consumia `farmMap.ground`): sem
@@ -228,7 +232,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     const { cols, rows } = this.config;
     const tilePx = TILE_SIZE * DISPLAY_SCALE;
 
-    buildGroundChunk(this, TILE_SIZE, 0, 0, cols, rows, this.config.dirtZone, this.config.groundTint, this.config.ground, this.config.waterStyle);
+    const groundLayer = buildGroundChunk(this, TILE_SIZE, 0, 0, cols, rows, this.config.dirtZone, this.config.groundTint, this.config.ground, this.config.waterStyle);
+    if (this.config.groundSaturation !== undefined) {
+      groundLayer.enableFilters().filters!.internal.addColorMatrix().colorMatrix.saturate(this.config.groundSaturation - 1);
+    }
     // Mesmo tratamento de `MainScene.create()` pro `farmMap.backgroundColor`
     // — opcional, sem ele mantém a cor padrão do Phaser (preto).
     if (this.config.backgroundColor) this.cameras.main.setBackgroundColor(this.config.backgroundColor);
@@ -273,7 +280,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       }
     });
 
-    const spawn = computeSpawnInFrontOf(returnDirection, bridgeCell);
+    const spawn = this.entryData.spawnPoint ?? computeSpawnInFrontOf(returnDirection, bridgeCell);
     this.player = new Player(this, spawn.col, spawn.row, tilePx);
     // Mesma escala aplicada na MainScene logo após instanciar o Player —
     // faltava aqui, por isso o personagem aparecia minúsculo nas cenas novas.
@@ -290,7 +297,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       handleClick: () => {},
     });
     this.controller.addInputInterceptor({
-      isActive: () => isCraftingMenuOpen(),
+      isActive: () => isFurnaceMenuOpen(),
       handleClick: () => {},
     });
     // Conversa com um morador aberta: o clique é só dela.
@@ -312,7 +319,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
 
     this.input.keyboard!.on('keydown-E', () => {
       if (isDialogueOpen()) return; // Em conversa, o E não abre o Inventário por cima.
-      if (isCraftingMenuOpen()) closeCraftingMenu();
+      if (isFurnaceMenuOpen()) closeFurnaceMenu();
       toggleInventoryScreen();
     });
     this.input.keyboard!.on('keydown-ESC', () => {
@@ -320,7 +327,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
         closeInventoryScreen();
         return;
       }
-      if (isCraftingMenuOpen()) closeCraftingMenu();
+      if (isFurnaceMenuOpen()) closeFurnaceMenu();
     });
     if (this.config.mapType) registerMapEditorShortcut(this, this.config.mapType); // Só os mapas com editor (o Vilarejo não tem).
 
@@ -349,10 +356,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   protected buildMapContent(_ctx: { tilePx: number; grid: WalkableGrid; interactions: InteractionRegistry; player: Player }): void {}
 
   update(time: number, delta: number): void {
-    // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário/Bancada
+    // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário/Fornalha
     // está aberto (ver `MainScene.isInputLocked`) — aqui não há Menu de
     // Pausa/Dormir ainda, então esses dois são as únicas causas possíveis.
-    if (!isInventoryOpen() && !isCraftingMenuOpen() && !isDialogueOpen()) {
+    if (!isInventoryOpen() && !isFurnaceMenuOpen() && !isDialogueOpen()) {
       this.controller.update(time, delta);
       this.petCompanion?.update(time, delta);
     }
@@ -369,8 +376,8 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       this.hordeWarned = true;
       this.lockedMessage.show('A HORDA CHEGOU!', 'Volte para a Fazenda e defenda-a antes da meia-noite!');
     }
-    this.dayNightOverlay.setNightAlpha(gameState.gameClock.getNightAlpha());
-    this.worldBlur.setActive(isInventoryOpen() || isCraftingMenuOpen() || isDialogueOpen());
+    this.dayNightOverlay.setHours(gameState.gameClock.getHours());
+    this.worldBlur.setActive(isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen());
     this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts`.
   }
 

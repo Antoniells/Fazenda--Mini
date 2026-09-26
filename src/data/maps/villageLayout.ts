@@ -1,7 +1,7 @@
 // Gerado pelo MapEditorScene (tecla P) — arquivo COMPLETO e pronto pra uso.
 // Arraste pra dentro de src/data/maps/, substituindo villageLayout.ts.
 /** Moradores que precisam saber qual casa é a deles — a casa carrega isto quando é movida no editor (`data/maps/villageMap.ts`). */
-export type VillageStructureRole = 'shop' | 'banker' | 'pirate';
+export type VillageStructureRole = 'shop' | 'banker' | 'pirate' | 'supplier' | 'carpenter';
 
 export interface VillageStructureLayout {
   /** Id de `VILLAGE_ASSETS` (`data/maps/villageMap.ts`): house2, house3, house7, house8, newsstand, fountain. */
@@ -63,8 +63,8 @@ export const villageLayout: VillageLayoutData = {
   blockedArea: [],
   structures: [
     { asset: 'house2', col: 24, row: 1 },
-    { asset: 'house7', col: 16, row: 1 },
-    { asset: 'house3', col: 6, row: 1 },
+    { asset: 'house7', col: 16, row: 1, role: 'carpenter' },
+    { asset: 'house3', col: 6, row: 1, role: 'supplier' },
     { asset: 'house2', col: 1, row: 1 },
     { asset: 'house3', col: 21, row: 8, role: 'banker' },
     { asset: 'house8', col: 3, row: 7, role: 'shop' },

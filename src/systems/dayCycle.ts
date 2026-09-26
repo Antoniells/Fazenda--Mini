@@ -5,6 +5,7 @@ import { save as saveGame } from './saveManager';
 import { advanceForestDay } from '../scenes/ForestScene';
 import { advanceQuarryDay } from '../scenes/QuarryScene';
 import { advanceFarmResourcesDay } from './farmResources';
+import { layEggs } from './animals';
 import type { Plot } from './farmland';
 
 /** Avança só o estado do mundo (registros de árvores/pedras da Floresta, Pedreira e da Fazenda — na Fazenda, brotos novos nascem e as árvores crescem de estágio) — não depende de nenhuma cena estar aberta. */
@@ -12,6 +13,7 @@ export function advanceWorldResourcesState(): void {
   advanceForestDay();
   advanceQuarryDay();
   advanceFarmResourcesDay();
+  layEggs(); // Cada galinha põe o ovo do dia no galinheiro dela.
 }
 
 /** Plantações regadas pela chuva / pelos aspersores na virada do dia — a cena aberta anima os respingos. */

@@ -13,7 +13,6 @@ import {
   SHIPPING_BIN_KEY,
   SHIPPING_BIN_FRAME_NAME,
   SHIPPING_BIN_FRAME,
-  SHOP_STAND_KEY,
   CONSTRUCTION_SIGN_KEY,
   PLAYER_HOUSE_KEY,
   BRIDGE_KEY,
@@ -21,7 +20,7 @@ import {
   BRIDGE_VERTICAL_WALL_TILE_FRAME,
   BRIDGE_VERTICAL_POST_FRAME,
 } from '../data/tiles';
-import { createGroundShadow } from './shadow';
+import { addBuildingShadows, createGroundShadow } from './shadow';
 import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
 import { GROUND_TILESETS } from './groundTilesets';
@@ -562,30 +561,6 @@ export function buildShippingBin(scene: Phaser.Scene, map: FarmMapData): Phaser.
 }
 
 /**
- * Desenha a banca da Loja (Fase 5) na posição definida em
- * `farmMap.shopPosition`. `Newsstand.png` já é uma única imagem completa
- * (sem frames para recortar, ao contrário da Caixa de Remessas). Mesma
- * técnica de profundidade fixa das árvores e da Caixa de Remessas — objeto
- * estático, não precisa recalcular a cada frame.
- */
-export function buildShopStand(scene: Phaser.Scene, map: FarmMapData): Phaser.GameObjects.Image {
-  const tile = map.tileSize * DISPLAY_SCALE;
-  const [col, row] = map.shopPosition;
-
-  const ajusteX = 0;  // Valores positivos movem para a direita, negativos para a esquerda
-  const ajusteY = -54; // Valores positivos movem para cima (porque estamos subtraindo na fórmula abaixo)
-
-  // Aplicando os ajustes no X e Y da imagem
-  const stand = scene.add.image((col * tile) + ajusteX, (row * tile) - ajusteY, SHOP_STAND_KEY);
-
-    stand.setOrigin(0.5, 1);
-  stand.setScale(DISPLAY_SCALE);
-  stand.setDepth(stand.y-10);
-
-  return stand;
-}
-
-/**
  * Desenha a Casa do jogador (Fase 9) na área definida em
  * `farmMap.housePosition`. `Houses/3.png` já é exatamente 8x7 tiles de
  * 16px (128x112, sem sobra) — ao contrário dos outros objetos estáticos
@@ -608,6 +583,9 @@ export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.
   house.setOrigin(0, 0);
   house.setScale(DISPLAY_SCALE);
   house.setDepth((row0 + rows - 2) * tile);
+
+  // Sombras retas coladas na base da parede (a arte tem a ala do fundo mais recuada: uma faixa por trecho de base).
+  addBuildingShadows(scene, house);
 
   return house;
 }

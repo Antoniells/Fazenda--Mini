@@ -10,6 +10,10 @@ import { TreeInteractable, RockInteractable } from './resourceInteraction';
 import { InteractionRegistry } from './interaction';
 import { buildWalkableGrid, WalkableGrid } from './grid';
 import { gameState } from './gameState';
+import { DISPLAY_SCALE } from './mapBuilder';
+import { buildWeed, clearWeedVisuals } from './wildGrass';
+import { TUTORIAL_CUT_STEP_INDEX } from '../data/tutorial';
+import { hash2D } from './groundVariation';
 
 /** Chave da Fazenda no `resourceNodeRegistry` — árvores (as do mapa, as plantadas e os brotos que nascem sozinhos) e pedras, tudo no mesmo registro. */
 export const FARM_RESOURCES_KEY = 'MainScene:resources';
@@ -19,7 +23,45 @@ export const FARM_RESOURCES_KEY = 'MainScene:resources';
  * conta as árvores do mapa e as plantadas também, então a Fazenda nunca vira floresta; cortar libera vaga. Pedras
  * NÃO renascem aqui (`maxRocks: 0`): são as do mapa, e mais pedra é coisa da Pedreira.
  */
-const FARM_CAPS: ResourceCaps = { maxTrees: 12, maxRocks: 0, newTreesPerDay: [0, 2] };
+const FARM_CAPS: ResourceCaps = { maxTrees: 12, maxRocks: 0, newTreesPerDay: [0, 2], maxWeeds: 30, newWeedsPerDay: [2, 4] };
+
+/**
+ * O mato do começo (`data/tutorial.ts`, passo "Cortar o mato"): a lavoura do jogador novo nasce cheia de mato pra ele limpar antes de arar (a enxada não ara embaixo dele).
+ * É o ÚNICO mato dentro da lavoura — o que nasce sozinho nunca cai nela (`isFarmCellFreeForResource` a exclui). `TUTORIAL_WEED_CELL` é o do passo do tutorial (sempre
+ * presente, perto da porta e longe do portão); o resto é espalhado por sorteio fixo (`STARTER_WEED_CHANCE` das células, sem cobrir a entrada do portão).
+ */
+export const TUTORIAL_WEED_CELL = { col: 21, row: 15 };
+const STARTER_WEED_CHANCE = 0.16;
+/** Quantos matos já nascem espalhados pela grama da Fazenda (fora da lavoura) numa partida nova — depois vêm os da virada de dia (`FARM_CAPS`). */
+const STARTER_WILD_WEEDS = 14;
+
+function starterWeedCells(): Array<{ col: number; row: number }> {
+  const gate = farmMap.houseDoorPosition[0]; // O portão da cerca fica em frente à porta da casa: nunca cobre a entrada.
+  const topRow = Math.min(...farmMap.farmlandArea.map(([, r]) => r));
+  const cells = farmMap.farmlandArea
+    .filter(([col, row]) => !(row <= topRow + 1 && Math.abs(col - gate) <= 1))
+    .filter(([col, row]) => hash2D(col * 31 + 7, row * 17 + 3) < STARTER_WEED_CHANCE)
+    .map(([col, row]) => ({ col, row }));
+  if (!cells.some((cell) => cell.col === TUTORIAL_WEED_CELL.col && cell.row === TUTORIAL_WEED_CELL.row)) cells.push({ ...TUTORIAL_WEED_CELL });
+  return cells;
+}
+
+/**
+ * Garante que o mato do começo exista na lavoura enquanto o jogador ainda não passou do passo de cortá-lo (partida nova, ou o tutorial recomeçando
+ * depois de sair no meio — o andamento não é salvo, mas o mato já cortado também não voltaria sozinho). Sem tutorial ou depois do passo, não faz nada.
+ */
+export function ensureTutorialWeed(): void {
+  if (gameState.tutorialCompleted || gameState.tutorialStep > TUTORIAL_CUT_STEP_INDEX) return;
+  farmlandCellKeys ??= new Set(farmMap.farmlandArea.map(([c, r]) => cellKey(c, r)));
+  // Já há mato na lavoura (o jogador só cortou uns): não repõe o que ele limpou.
+  const alreadyThere = resourceNodeRegistry.getNodes(FARM_RESOURCES_KEY).some((node) => node.kind === 'weed' && farmlandCellKeys!.has(cellKey(node.col, node.row)));
+  if (alreadyThere) return;
+  // A grama em volta também começa com mato espalhado ao acaso (colhível com a Foice, como o da lavoura).
+  resourceNodeRegistry.scatter(FARM_RESOURCES_KEY, { kind: 'weed', stage: 'mature' }, STARTER_WILD_WEEDS, farmMap.cols, farmMap.rows, isFarmCellFreeForResource);
+  for (const { col, row } of starterWeedCells()) {
+    if (!resourceNodeRegistry.hasNodeAt(FARM_RESOURCES_KEY, col, row)) resourceNodeRegistry.addNode(FARM_RESOURCES_KEY, { col, row, kind: 'weed', stage: 'mature' });
+  }
+}
 
 /** Células (Chebyshev) em volta de pontos de passagem/interação onde nunca nasce broto: uma árvore adulta ali poderia fechar o caminho da casa, da loja, da caixa ou de uma ponte. */
 const KEEP_CLEAR_RADIUS = 2;
@@ -62,7 +104,7 @@ function getKeyPoints(): Array<[number, number]> {
 /**
  * Esta célula da Fazenda pode receber um broto novo hoje? (Puro dado — a Fazenda pode estar fechada quando o dia vira.)
  * Só grama lisa DENTRO da propriedade original, fora da lavoura, do caminho de terra, de qualquer construção posicionada
- * (Poço/Bancada/Aspersor) e dos pontos de passagem (\`KEEP_CLEAR_RADIUS\`); e livre no grid estático (casa, cerca, água,
+ * (Poço/Fornalha/Aspersor) e dos pontos de passagem (\`KEEP_CLEAR_RADIUS\`); e livre no grid estático (casa, cerca, água,
  * blocos de colisão). O registro já exclui as células que têm outra árvore/pedra.
  */
 export function isFarmCellFreeForResource(col: number, row: number): boolean {
@@ -79,6 +121,11 @@ export function isFarmCellFreeForResource(col: number, row: number): boolean {
 
   for (const [c, r] of getKeyPoints()) {
     if (Math.max(Math.abs(c - col), Math.abs(r - row)) <= KEEP_CLEAR_RADIUS) return false;
+  }
+
+  for (const order of gameState.construction.orders) {
+    const footprint = DECORATIONS[order.decorationId]?.footprint ?? { width: 1, height: 1 };
+    if (col >= order.col && col < order.col + footprint.width && row >= order.row && row < order.row + footprint.height) return false;
   }
 
   for (const record of gameState.placedDecorations.values()) {
@@ -124,6 +171,7 @@ export class FarmResources {
       visual.shadow?.destroy();
     }
     this.visuals.clear();
+    clearWeedVisuals();
 
     let rockVariant: 0 | 1 | 2 = 0;
     for (const node of resourceNodeRegistry.getNodes(FARM_RESOURCES_KEY)) {
@@ -136,6 +184,13 @@ export class FarmResources {
           this.grid.block(node.col, node.row);
           this.interactions.set(node.col, node.row, new TreeInteractable(this.player, visual, this.grid, this.interactions, FARM_RESOURCES_KEY, node.col, node.row));
         }
+        continue;
+      }
+
+      if (node.kind === 'weed') {
+        farmlandCellKeys ??= new Set(farmMap.farmlandArea.map(([c, r]) => cellKey(c, r)));
+        const visual = buildWeed(this.scene, farmMap.tileSize * DISPLAY_SCALE, this.player, this.interactions, FARM_RESOURCES_KEY, node.col, node.row, farmlandCellKeys.has(key));
+        this.visuals.set(key, { visual, kind: node.kind, stage: node.stage });
         continue;
       }
 

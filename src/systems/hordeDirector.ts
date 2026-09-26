@@ -13,6 +13,7 @@ import { gameState } from './gameState';
 import { handlePlayerDeath } from './playerDeath';
 import { PLAYER_ATTACKED_EVENT } from './combat';
 import { popText } from './floatingText';
+import { awardXp } from './skills';
 import { save as saveGame } from './saveManager';
 import { shouldStartHorde, isDawn, startHorde, registerHordeKill, finishHordeVictory, isFinalNightActive } from './horde';
 import { completeCampaign } from './campaign';
@@ -195,6 +196,7 @@ export class HordeDirector {
     registerHordeKill(SLIME_GOO.id, amount);
     // O drop fica guardado até o fim da horda (não cai no chão) — o texto avisa.
     popText(this.scene, x, y - 24, `+${amount} ${SLIME_GOO.name}`, { color: '#d8ffb0', fontSize: 13 });
+    awardXp(this.scene, 'raider', x, y - 8, 160);
   }
 
   /** Mesma regra do Slime: avisa a cena (o pet revida) e só então desconta a vida (a invencibilidade pós-dano pode absorver). */

@@ -87,9 +87,12 @@ function structureWithRole(role: VillageStructureRole, fallback: VillageStructur
 
 /** A casa que é a LOJA do vilarejo e a moradia do Ferreiro (fachada e balcão em `data/villageShop.ts`, `systems/villageShop.ts`): a de madeira com toldo, na entrada da rua principal. */
 export const VILLAGE_SHOP_HOUSE: VillageStructure = structureWithRole('shop', { asset: 'house8', col: 3, row: 7 });
-/** Casa do Banqueiro (ao longo da rua principal, ao leste da praça) e do Pirata (fileira sul, de frente pra viela). */
+/** Casa do Padeiro (ex-Banqueiro; o id interno segue `banker` — layout, campanha e saves — ao longo da rua principal, ao leste da praça) e do Pirata (fileira sul, de frente pra viela). */
 export const VILLAGE_BANKER_HOUSE: VillageStructure = structureWithRole('banker', { asset: 'house3', col: 21, row: 8 });
 export const VILLAGE_PIRATE_HOUSE: VillageStructure = structureWithRole('pirate', { asset: 'house7', col: 21, row: 18 });
+/** Casa da Lia (insumos: sementes, móveis e animais) e do Tomás (marceneiro: materiais e estruturas) — fileira norte, ao longo da avenida. */
+export const VILLAGE_SUPPLIER_HOUSE: VillageStructure = structureWithRole('supplier', { asset: 'house3', col: 6, row: 1 });
+export const VILLAGE_CARPENTER_HOUSE: VillageStructure = structureWithRole('carpenter', { asset: 'house7', col: 16, row: 1 });
 
 /** O poço da praça (mesma arte do Poço construível, `data/decorations.ts` `WELL`, 2x1 células): célula do canto esquerdo. */
 export const VILLAGE_WELL = villageLayout.well;

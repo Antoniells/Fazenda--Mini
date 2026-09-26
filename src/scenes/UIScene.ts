@@ -5,17 +5,19 @@ import { TimeMoneyHud } from '../ui/timeMoneyHud';
 import { HealthHud } from '../ui/healthHud';
 import { ArmorHud } from '../ui/armorHud';
 import { WeatherOverlay } from '../ui/weatherOverlay';
+import { SKILLS, SKILLS_TAB_ICON } from '../data/skills';
 import { RAIN_KEY, RAIN_PATH, RAIN_FRAME_SIZE, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
 import { PLAYER_ATE_EVENT } from '../systems/eating';
 import { dayMusic } from '../systems/dayMusic';
 import { HEALTH_HEARTS_KEY, HEALTH_HEARTS_PATH, ARMOR_HUD_KEY, ARMOR_HUD_PATH, INVENTORY_PANEL_KEY, INVENTORY_PANEL_PATH, INVENTORY_LARGE_PANEL_KEY, INVENTORY_LARGE_PANEL_PATH } from '../data/ui';
 import { InventoryScreen } from '../ui/inventoryScreen';
-import { CraftingMenu } from '../ui/craftingMenu';
+import { FurnaceMenu } from '../ui/furnaceMenu';
 import { ChestMenu } from '../ui/chestMenu';
 import { LetterPanel } from '../ui/letterPanel';
 import { DialoguePanel, OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialoguePanel';
 import { QuestTracker } from '../ui/questTracker';
 import { describeObjective } from '../systems/campaign';
+import { WATER_OBJECTIVE_TEXT } from '../data/tutorial';
 import { TutorialPanel } from '../ui/tutorialPanel';
 import { tutorial } from '../systems/tutorial';
 import { playEffect } from '../systems/soundEffects';
@@ -23,11 +25,10 @@ import { CHEST_SOUND, CRAFT_SOUND } from '../data/audio';
 import { OPEN_LETTER_EVENT, OpenLetterPayload } from '../systems/petBox';
 import { OPEN_CHEST_MENU_EVENT, OpenChestMenuPayload } from '../systems/furniturePlacement';
 import { Tooltip } from '../ui/tooltip';
-import { OPEN_CRAFTING_MENU_EVENT } from '../systems/decorationPlacement';
-import { RECIPES } from '../data/recipes';
-import { resolveSlotVisual } from '../data/items';
-import { getToolUpgradeBlock } from '../systems/toolUpgrade';
-import { getToolTierInfo } from '../data/toolProgression';
+import { FURNACE_SMELTED_EVENT, OPEN_FURNACE_MENU_EVENT } from '../systems/decorationPlacement';
+import { SMELT_COAL_AMOUNT, SMELT_FUEL_ID, SMELT_ORE_AMOUNT, getSmeltingRecipe } from '../data/smelting';
+import { resourceDisplayName } from '../data/resources';
+import { popText } from '../systems/floatingText';
 
 export const UI_SCENE_KEY = 'UIScene';
 /** Emitido (via `scene.game.events`) sempre que o slot ativo da Hotbar muda — quem mutou o `Inventory` é sempre quem emite, ver `UIScene`/`MainScene`. Outras cenas (ex.: `MainScene`, pra reagir com posicionamento de decoração) escutam este evento em vez de conhecer a `UIScene`. */
@@ -103,22 +104,22 @@ export function closeInventoryScreen(): void {
   sharedInventoryScreen?.close();
 }
 
-/** Mesma ideia de `sharedInventoryScreen`, para a Bancada de Trabalho (Fase 8 — Crafting, ver `ui/craftingMenu.ts`). */
-let sharedCraftingMenu: CraftingMenu | null = null;
+/** Mesma ideia de `sharedInventoryScreen`, para a tela da Fornalha (`ui/furnaceMenu.ts`). */
+let sharedFurnaceMenu: FurnaceMenu | null = null;
 
-/** Se a Bancada de Trabalho está aberta no momento — usado por qualquer cena de mapa para bloquear movimento/clique no mundo enquanto ela está em primeiro plano. */
-export function isCraftingMenuOpen(): boolean {
-  return sharedCraftingMenu?.isOpen() ?? false;
+/** Se a tela da Fornalha está aberta no momento — usado por qualquer cena de mapa para bloquear movimento/clique no mundo enquanto ela está em primeiro plano. */
+export function isFurnaceMenuOpen(): boolean {
+  return sharedFurnaceMenu?.isOpen() ?? false;
 }
 
-/** Alterna a Bancada de Trabalho — chamado ao interagir com uma decoração `workbench` posicionada. */
-export function toggleCraftingMenu(): void {
-  sharedCraftingMenu?.toggle(gameState.inventory);
+/** Alterna a tela da Fornalha — chamado ao interagir com uma decoração `furnace` posicionada. */
+export function toggleFurnaceMenu(): void {
+  sharedFurnaceMenu?.toggle(gameState.inventory);
 }
 
-/** Fecha a Bancada de Trabalho (ex.: tecla ESC) — no-op se já estiver fechada. */
-export function closeCraftingMenu(): void {
-  sharedCraftingMenu?.close();
+/** Fecha a tela da Fornalha (ex.: tecla ESC) — no-op se já estiver fechada. */
+export function closeFurnaceMenu(): void {
+  sharedFurnaceMenu?.close();
 }
 
 /** Mesma ideia, para o painel da carta (evento do pet, `ui/letterPanel.ts`). */
@@ -177,7 +178,7 @@ export class UIScene extends Phaser.Scene {
   private armorHud!: ArmorHud;
   private weatherOverlay!: WeatherOverlay;
   private inventoryScreen!: InventoryScreen;
-  private craftingMenu!: CraftingMenu;
+  private furnaceMenu!: FurnaceMenu;
   private chestMenu!: ChestMenu;
   private letterPanel!: LetterPanel;
   private dialoguePanel!: DialoguePanel;
@@ -195,6 +196,10 @@ export class UIScene extends Phaser.Scene {
     // Molduras de papel dos painéis de conversa/carta/aviso (a Fazenda também as carrega, mas a UIScene não depende disso).
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
     this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
+    // Ícones das habilidades e da aba "Habilidades" do Inventário (recortes de `Icons/RPG icons/...`, ver `data/skills.ts`).
+    for (const icon of [SKILLS_TAB_ICON, ...SKILLS.map((skill) => skill.icon)]) {
+      if (!this.textures.exists(icon.key)) this.load.image(icon.key, encodeURI(`/${icon.path}`));
+    }
     this.load.spritesheet(RAIN_KEY, encodeURI(`/${RAIN_PATH}`), { frameWidth: RAIN_FRAME_SIZE, frameHeight: RAIN_FRAME_SIZE });
     // Respingo das gotas batendo (o mesmo de regar — a Fazenda já carrega, mas a UIScene não pode depender disso).
     if (!this.textures.exists(SPLASH_KEY)) {
@@ -213,7 +218,7 @@ export class UIScene extends Phaser.Scene {
     this.hotbar.refresh(gameState.inventory);
 
     this.timeMoneyHud = new TimeMoneyHud(this);
-    this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString());
+    this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString(), gameState.gameClock.getHours());
     this.timeMoneyHud.refreshCoins(gameState.inventory.getCoins());
 
     this.healthHud = new HealthHud(this);
@@ -231,12 +236,12 @@ export class UIScene extends Phaser.Scene {
     this.inventoryScreen = new InventoryScreen(this, (index) => this.requestHotbarSelect(index), tooltip);
     sharedInventoryScreen = this.inventoryScreen;
 
-    this.craftingMenu = new CraftingMenu(this, (recipeId) => this.craftItem(recipeId));
-    sharedCraftingMenu = this.craftingMenu;
+    this.furnaceMenu = new FurnaceMenu(this, (recipeId) => this.smelt(recipeId));
+    sharedFurnaceMenu = this.furnaceMenu;
 
     this.chestMenu = new ChestMenu(this, () => gameState.inventory);
     sharedChestMenu = this.chestMenu;
-    // Baú da casa: o móvel dispara este evento GLOBAL (`game.events`, mesmo padrão da Bancada) com o id do baú e o "recolher".
+    // Baú da casa: o móvel dispara este evento GLOBAL (`game.events`, mesmo padrão da Fornalha) com o id do baú e o "recolher".
     const onOpenChestMenu = (payload: OpenChestMenuPayload): void => {
       playEffect(this, CHEST_SOUND);
       this.chestMenu.open(payload.chestId, payload.onPickUp);
@@ -262,15 +267,14 @@ export class UIScene extends Phaser.Scene {
     // Tutorial de novos jogadores: o painel se redesenha sozinho a cada mudança do gerenciador (`systems/tutorial.ts`).
     new TutorialPanel(this);
 
-    // Bancada de Trabalho posicionada no mundo (Fase 8 — Crafting, pedido
-    // explícito do usuário): `PlacedDecorationInteractable` dispara este
+    // Fornalha posicionada no mundo: `PlacedDecorationInteractable` dispara este
     // evento GLOBAL (`scene.game.events`, não `scene.events`) ao interagir
     // com ela — evita `systems/decorationPlacement.ts` (mundo) precisar
     // importar `scenes/UIScene.ts` (interface) diretamente, na direção
-    // errada da arquitetura. Reaproveita `toggleCraftingMenu` (mesma função
+    // errada da arquitetura. Reaproveita `toggleFurnaceMenu` (mesma função
     // exportada que qualquer cena já usaria) em vez de duplicar a lógica.
-    const onOpenCraftingMenu = (): void => toggleCraftingMenu();
-    this.game.events.on(OPEN_CRAFTING_MENU_EVENT, onOpenCraftingMenu);
+    const onOpenFurnaceMenu = (): void => toggleFurnaceMenu();
+    this.game.events.on(OPEN_FURNACE_MENU_EVENT, onOpenFurnaceMenu);
 
     this.setupHotbarKeys();
     this.setupHotbarWheelScroll();
@@ -283,9 +287,9 @@ export class UIScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off(PLAYER_ATE_EVENT, onPlayerAte);
       if (sharedInventoryScreen === this.inventoryScreen) sharedInventoryScreen = null;
-      if (sharedCraftingMenu === this.craftingMenu) sharedCraftingMenu = null;
+      if (sharedFurnaceMenu === this.furnaceMenu) sharedFurnaceMenu = null;
       if (sharedChestMenu === this.chestMenu) sharedChestMenu = null;
-      this.game.events.off(OPEN_CRAFTING_MENU_EVENT, onOpenCraftingMenu);
+      this.game.events.off(OPEN_FURNACE_MENU_EVENT, onOpenFurnaceMenu);
       this.game.events.off(OPEN_CHEST_MENU_EVENT, onOpenChestMenu);
       if (sharedLetterPanel === this.letterPanel) sharedLetterPanel = null;
       this.game.events.off(OPEN_LETTER_EVENT, onOpenLetter);
@@ -295,46 +299,29 @@ export class UIScene extends Phaser.Scene {
   }
 
   /**
-   * Fabrica o item de uma receita já desbloqueada (Fase 8 — Crafting):
-   * único ponto que de fato debita `ingredients` e dá o item ao jogador —
-   * o `CraftingMenu` só pede (`onCraft`), nunca muta o `Inventory` sozinho,
-   * mesmo padrão de `requestHotbarSelect`/`MainScene.buyRecipe`. Revalida
-   * tudo de novo aqui (receita desbloqueada, recursos suficientes) em vez
-   * de confiar cegamente no clique — o `CraftingMenu` já filtra/escurece
-   * isso na tela, mas a mutação real não pode depender só da UI concordar.
+   * Funde UMA barra na Fornalha: único ponto que de fato gasta `SMELT_ORE_AMOUNT` minérios brutos + `SMELT_COAL_AMOUNT` Carvões e entrega a barra — o `FurnaceMenu` só pede (`onSmelt`), nunca muta
+   * o `Inventory` sozinho. Revalida os materiais aqui em vez de confiar no clique (a tela já apaga o que falta, mas a mutação real não pode depender só da UI). Ao fundir, avisa as Fornalhas do
+   * mundo (`FURNACE_SMELTED_EVENT`) pra acenderem o fogo.
    */
-  private craftItem(recipeId: string): void {
-    const recipe = RECIPES[recipeId];
+  private smelt(recipeId: string): void {
+    const recipe = getSmeltingRecipe(recipeId);
     if (!recipe) return;
-    if (!gameState.inventory.hasRecipe(recipeId)) return;
-
-    // Progressão linear de ferramentas: só o tier seguinte a quem tem o anterior (a Bancada já mostra o motivo).
-    const upgradeBlock = getToolUpgradeBlock(gameState.inventory, recipe);
-    if (upgradeBlock) {
-      console.log(upgradeBlock === 'owned' ? 'Você já tem essa ferramenta (ou uma melhor).' : 'Falta a ferramenta do tier anterior.');
+    const inventory = gameState.inventory;
+    if (inventory.getResourceCount(recipe.oreId) < SMELT_ORE_AMOUNT || inventory.getResourceCount(SMELT_FUEL_ID) < SMELT_COAL_AMOUNT) {
+      console.log('Materiais insuficientes para fundir.');
       return;
     }
 
-    const hasAllIngredients = recipe.ingredients.every(
-      (ingredient) => gameState.inventory.getResourceCount(ingredient.resourceId) >= ingredient.amount,
-    );
-    if (!hasAllIngredients) {
-      console.log('Recursos insuficientes para fabricar.');
-      return;
-    }
-
-    for (const ingredient of recipe.ingredients) gameState.inventory.useResource(ingredient.resourceId, ingredient.amount);
-    if (recipe.category === 'armor') gameState.inventory.unlockArmor(recipe.itemId);
-    else if (recipe.category === 'tool' && getToolTierInfo(recipe.itemId)?.tier) {
-      // Upgrade de ferramenta: DESTRÓI a do tier anterior e a nova ocupa o MESMO slot (nada de item extra).
-      gameState.inventory.upgradeTool(recipe.itemId);
-    } else gameState.inventory.unlockTool(recipe.itemId);
-
-    const itemVisual = resolveSlotVisual({ category: recipe.category === 'armor' ? 'armor' : 'tool', id: recipe.itemId });
-    console.log(`Fabricado: ${itemVisual?.name ?? recipe.itemId}!`);
+    inventory.useResource(recipe.oreId, SMELT_ORE_AMOUNT);
+    inventory.useResource(SMELT_FUEL_ID, SMELT_COAL_AMOUNT);
+    inventory.addResources(recipe.barId, 1);
+    console.log(`Fundido: 1 ${resourceDisplayName(recipe.barId)}.`);
     playEffect(this, CRAFT_SOUND);
+    popText(this, this.scale.width / 2, this.scale.height / 2 - 150, `+1 ${resourceDisplayName(recipe.barId)}`, { color: '#ffd98a', fontSize: 18, screenFixed: true });
+    this.game.events.emit(FURNACE_SMELTED_EVENT);
 
-    this.craftingMenu.refresh(gameState.inventory);
+    this.furnaceMenu.refresh(inventory);
+    this.hotbar.refresh(inventory);
   }
 
   /** Único ponto que muta o slot selecionado — qualquer gatilho (teclado/scroll aqui, clique na linha de cima do Inventário em `MainScene`) passa por aqui. */
@@ -367,15 +354,18 @@ export class UIScene extends Phaser.Scene {
   refresh(): void {
     this.hotbar.refresh(gameState.inventory);
     this.timeMoneyHud.refreshCoins(gameState.inventory.getCoins());
-    this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString());
+    this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString(), gameState.gameClock.getHours());
     this.healthHud.refresh(gameState.playerHealth.getHp(), gameState.playerHealth.getMaxHp());
     this.armorHud.refresh(gameState.inventory.getDefense());
     this.weatherOverlay.refresh(gameState.weather.raining);
     if (this.inventoryScreen.isOpen()) this.inventoryScreen.refresh(gameState.inventory);
-    if (this.craftingMenu.isOpen()) this.craftingMenu.refresh(gameState.inventory);
+    if (this.furnaceMenu.isOpen()) this.furnaceMenu.refresh(gameState.inventory);
     if (this.chestMenu.isOpen()) this.chestMenu.refresh();
     // Objetivo: só depois do tutorial (o painel dele já ocupa a tela) e enquanto a campanha não acabou.
-    this.questTracker.refresh(gameState.tutorialCompleted ? describeObjective() : null);
+    // O objetivo da água sai sozinho quando o regador é enchido (no poço da Vila ou da Fazenda).
+    if (gameState.waterObjective && gameState.inventory.getWateringCanCharges() > 0) gameState.waterObjective = false;
+    const objectives = [gameState.waterObjective ? WATER_OBJECTIVE_TEXT : null, describeObjective()].filter((line): line is string => line !== null);
+    this.questTracker.refresh(gameState.tutorialCompleted && objectives.length > 0 ? objectives.map((line) => `• ${line}`).join('\n') : null);
   }
 
   update(): void {

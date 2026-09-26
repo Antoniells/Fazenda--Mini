@@ -45,7 +45,7 @@ export interface DecorationDefinition {
    */
   waterReach?: { radius: number; shape: 'cross' | 'square' };
   /**
-   * Onde pode ser posicionada: `'outsideFarmland'` (padrão — Poço, Bancada: nunca no meio do canteiro),
+   * Onde pode ser posicionada: `'outsideFarmland'` (padrão — Poço, Fornalha: nunca no meio do canteiro),
    * `'farmland'` (só em terreno de plantio AINDA NÃO ARADO — o aspersor) ou `'house'` (MÓVEL: só dentro da casa, na
    * `HouseScene`, por `systems/furniturePlacement.ts` — na Fazenda nunca). Ver `DecorationPlacementSystem.canPlaceAt`.
    */
@@ -62,8 +62,16 @@ export interface DecorationDefinition {
   notForSale?: boolean;
   /** O terreno de plantio sob ela fica travado pra enxada (`Farmland.setTillLocked`) enquanto ela estiver posicionada — só faz sentido com `placement: 'farmland'`. */
   locksTilling?: boolean;
+  /** Só o Galinheiro: abriga galinhas (`data/animals.ts`, `systems/animals.ts`) — interagir recolhe os ovos em vez de recolher a construção; a Picareta só o quebra vazio de galinhas. */
+  isCoop?: boolean;
   /** Só o Baú: guarda itens (`systems/chestStorage.ts`, `ui/chestMenu.ts`) — interagir abre a tela do baú em vez de recolher o móvel. */
   isChest?: boolean;
+  /** Estrutura grande construída pelo Marceneiro: a loja dele NÃO entrega pra Bolsa — o jogador escolhe o local na Fazenda e o Tomás constrói no dia seguinte (`data/construction.ts`). */
+  carpenterBuilt?: boolean;
+  /** Quanto tempo (horas do relógio do jogo) o Tomás leva pra construir — só com `carpenterBuilt`; padrão `DEFAULT_BUILD_HOURS`. */
+  buildHours?: number;
+  /** A animação (do 2º quadro em diante, em loop) toca só ENQUANTO a construção está em uso — a Fornalha acesa (`DecorationPlacementSystem.lightUsedStructures`); parada, fica no 1º quadro (o de repouso). */
+  animatesWhenUsed?: boolean;
   /** Multiplica a escala de exibição padrão (`DISPLAY_SCALE`) — pra arte cujo frame é maior que o tile (o aspersor tem 48px num tile de 16). Padrão 1. */
   displayScaleMultiplier?: number;
 }
@@ -95,29 +103,34 @@ export const WELL: DecorationDefinition = {
   price: 40,
   description: 'Encha o regador aqui. Interaja com o poço pra reabastecer a água.',
   footprint: { width: 2, height: 1 },
+  carpenterBuilt: true,
+  buildHours: 2,
 };
 
 /**
- * `Objects/Work Benches/Workbench.png` (32x32, um único sprite de bancada
- * com machado e pano de trabalho): recorte pixel a pixel (mesmo processo do
- * Poço) achou o conteúdo real em `x:8, y:6, w:16, h:18` — cabe numa célula
- * (16px), só a base/pezinhos passam 2px do topo do tile de baixo, igual
- * várias outras decorações verticais já no jogo. Fase 8 — Crafting: onde o
- * jogador fabrica as Receitas (`data/recipes.ts`) compradas na Loja, usando
- * os recursos do `Inventory` — a interação/lógica da Bancada em si é um
- * passo futuro, isto aqui só a deixa comprável/posicionável como qualquer
- * outra decoração (mesmo fluxo do Poço).
+ * Fornalha (Ferreiro/mineração — substitui a antiga Bancada de Trabalho): `Objects/Work Benches/Furnace.png` (160x32) traz 5 quadros de 32x32 da mesma fornalha de tijolos —
+ * o 1º apagada (o de repouso) e os 4 seguintes com o fogo aceso. O conteúdo de cada quadro (varredura pixel a pixel) é 18x28 em (6 + 32*n, 2): cabe numa célula. O jogador a encomenda
+ * ao Marceneiro (`carpenterBuilt`) e, ao interagir, abre a tela de fundição (`ui/furnaceMenu.ts`, `data/smelting.ts`): 5 minérios brutos + 3 Carvões = 1 barra. A cada fundição
+ * o fogo acende por alguns segundos (`animatesWhenUsed`).
  */
-export const WORKBENCH: DecorationDefinition = {
-  id: 'workbench',
-  name: 'Bancada de Trabalho',
-  textureKey: 'decor-workbench',
-  texturePath: 'Objects/Work Benches/Workbench.png',
-  frameName: 'decor-workbench-icon',
-  frameRect: { x: 8, y: 6, width: 16, height: 18 },
-  price: 60,
-  description: 'Fabrique ferramentas, armas e armaduras das receitas que você comprou.',
+const FURNACE_FRAME_COUNT = 5;
+const furnaceFrame = (index: number) => ({ name: `decor-furnace-${index}`, rect: { x: 6 + 32 * index, y: 2, width: 18, height: 28 } });
+
+export const FURNACE: DecorationDefinition = {
+  id: 'furnace',
+  name: 'Fornalha',
+  textureKey: 'decor-furnace',
+  texturePath: 'Objects/Work Benches/Furnace.png',
+  frameName: 'decor-furnace-icon',
+  frameRect: { x: 6, y: 2, width: 18, height: 28 },
+  price: 250,
+  description: 'Funde minério em barras: 5 minérios brutos + 3 Carvões = 1 barra. Interaja com ela pra fundir.',
   footprint: { width: 1, height: 1 },
+  carpenterBuilt: true,
+  buildHours: 3,
+  animationFrames: Array.from({ length: FURNACE_FRAME_COUNT }, (_unused, index) => furnaceFrame(index)),
+  animationFrameMs: 130,
+  animatesWhenUsed: true,
 };
 
 /**
@@ -278,9 +291,31 @@ export const PET_BED: DecorationDefinition = {
   notForSale: true,
 };
 
+/**
+ * Galinheiro (Fase 7 — Animais): a casinha de `Objects/Exterior/Houses/Farm Buildings/Chicken Coop/Chicken Coop.png` (480x224, um kit de peças) —
+ * usada a montada da 1ª linha (telhado escuro, parede vermelha com coração e porta de madeira), recorte pixel a pixel pelo alfa (55x78). A arte é
+ * alta (o telhado), então encolhe pra 80% (`displayScaleMultiplier`); só a base (3x2 células) bloqueia a passagem — o resto do telhado passa por cima de
+ * quem anda atrás. Abriga 4 galinhas (`COOP_CAPACITY`); a porta fica no lado direito da base (por onde as galinhas saem, `systems/chickenFlock.ts`).
+ */
+export const CHICKEN_COOP: DecorationDefinition = {
+  id: 'chicken-coop',
+  name: 'Galinheiro',
+  textureKey: 'decor-chicken-coop',
+  texturePath: 'Objects/Exterior/Houses/Farm Buildings/Chicken Coop/Chicken Coop.png',
+  frameName: 'decor-chicken-coop-icon',
+  frameRect: { x: 13, y: 2, width: 55, height: 78 },
+  price: 300,
+  description: 'Abriga até 4 galinhas (compre-as na aba Animais). Toda manhã há ovos: clique no galinheiro pra recolher.',
+  footprint: { width: 3, height: 2 },
+  displayScaleMultiplier: 0.8,
+  isCoop: true,
+  carpenterBuilt: true,
+  buildHours: 3,
+};
+
 export const DECORATIONS: Record<string, DecorationDefinition> = {
   [WELL.id]: WELL,
-  [WORKBENCH.id]: WORKBENCH,
+  [FURNACE.id]: FURNACE,
   [SPRINKLER_WOOD.id]: SPRINKLER_WOOD,
   [SPRINKLER_IRON.id]: SPRINKLER_IRON,
   [SPRINKLER_GOLD.id]: SPRINKLER_GOLD,
@@ -290,6 +325,12 @@ export const DECORATIONS: Record<string, DecorationDefinition> = {
   [SOFA.id]: SOFA,
   [DRESSER.id]: DRESSER,
   [PET_BED.id]: PET_BED,
+  [CHICKEN_COOP.id]: CHICKEN_COOP,
+};
+
+/** Decorações que saíram do jogo (id → o que custavam): um save antigo que ainda as tenha (no mundo, numa encomenda ou na Bolsa) as perde e recebe o valor de volta em moedas (`SaveManager`). */
+export const REMOVED_DECORATIONS: Record<string, number> = {
+  workbench: 60, // A Bancada de Trabalho (não há mais receitas): substituída pela Fornalha.
 };
 
 /** Só os móveis (`placement: 'house'`) — o que a `HouseScene` sabe posicionar. */

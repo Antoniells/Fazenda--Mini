@@ -4,8 +4,8 @@
  * Mineração, ver `BIOME_LABELS` em `data/maps/farmMap.ts`): pedras/rochas
  * em grande abundância (pequenas e grandes, ver `QuarryScene`/
  * `systems/resourceInteraction.ts` — Fase 7, Coleta de Recursos), mais
- * alguns poucos veios de carvão e ferro (só decorativos por ora, sem
- * mecânica de minério própria ainda).
+ * os veios de minério (carvão e ferro, autorados aqui; cobre e ouro, e mais
+ * deles, em `data/ores.ts`) — minerados com a Picareta.
  */
 export interface QuarryMapData {
   cols: number;

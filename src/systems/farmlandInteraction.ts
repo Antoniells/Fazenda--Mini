@@ -5,14 +5,16 @@ import { Inventory } from './inventory';
 import { Player } from '../entities/Player';
 import { FarmMapData } from '../data/maps/farmMap';
 import { CROPS } from '../data/crops';
-import { HOE_SOUNDS, WATER_SOUND, PLANT_SOUND, HARVEST_SOUND } from '../data/audio';
+import { HOE_SOUNDS, WATER_SOUND, PLANT_SOUND, HARVEST_SOUND, SICKLE_SOUND } from '../data/audio';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { spawnLoot } from './lootDrops';
+import { awardXp, rollDoubleDrop } from './skills';
 import { gameState } from './gameState';
 import { isToolOfFamily } from '../data/toolProgression';
 import { tutorial } from './tutorial';
 import { popText } from './floatingText';
 import { hotbarTopCenter } from '../ui/hotbar';
+import { cutWeedAt } from './wildGrass';
 
 /**
  * Uma célula cultivável, quando interagida, decide a ação a partir do
@@ -49,6 +51,9 @@ class PlotInteractable implements Interactable {
 
   interact(): void {
     if (this.player.isBusy()) return;
+
+    // Mato em cima do canteiro (o do tutorial): a Foice o corta; sem ela avisa — nada de terra acontece por baixo dele.
+    if (cutWeedAt(this.player, this.col, this.row)) return;
 
     const plot = this.farmland.getPlot(this.col, this.row);
     if (!plot) return;
@@ -133,6 +138,15 @@ class PlotInteractable implements Interactable {
       return;
     }
 
+    // Já regado hoje (regador de antes, chuva ou aspersor): não gasta água nem toca a animação. No tutorial isto conta como regar (senão, num dia de chuva, o passo nunca fecharia).
+    const plot = this.farmland.getPlot(this.col, this.row);
+    if (plot && this.farmland.isWatered(plot)) {
+      const { x, y } = this.renderer.getCellCenter(this.col, this.row);
+      popText(this.player.sprite.scene, x, y - 30, 'Já está regado', { color: '#9fd8ff', fontSize: 13 });
+      tutorial.notify({ kind: 'act', action: 'water' });
+      return;
+    }
+
     if (this.inventory.getWateringCanCharges() <= 0) {
       // Aviso flutuante em cima da Hotbar (pedido explícito do usuário) — mesma fonte/estilo do "+1 Madeira" etc. (`popText`), só
       // fixo na tela (`screenFixed`) em vez de nascer em cima do canteiro, já que é sobre o ITEM (o regador), não sobre a célula.
@@ -147,7 +161,7 @@ class PlotInteractable implements Interactable {
       () => {
         // Mesma regra: só gasta a carga se o canteiro ainda aceita água (a plantação pode ter morrido/sido colhida durante o golpe).
         const watered = this.farmland.water(this.col, this.row);
-        if (watered) this.inventory.useWaterCharge();
+        if (watered && this.inventory.useWaterCharge() && this.inventory.getWateringCanCharges() === 0) tutorial.notifyWaterEmpty();
         this.renderer.spawnWaterSplash(this.col, this.row);
         this.refresh();
         if (watered) tutorial.notify({ kind: 'act', action: 'water' });
@@ -163,15 +177,18 @@ class PlotInteractable implements Interactable {
       return;
     }
 
-    this.player.performAction('harvest', () => {
-      this.farmland.clearDead(this.col, this.row);
-      playEffect(this.player.sprite.scene, HARVEST_SOUND);
-      // `clearDead` vai de 'dead' pra 'tilled' — as duas já contam como
-      // "arada" (`Farmland.isTilled`), então a borda dos vizinhos não muda
-      // de verdade aqui. Mesmo assim atualiza os vizinhos por pedido
-      // explícito (e o custo é desprezível: só recalcula o mesmo frame).
-      this.refreshWithNeighbors();
-    });
+    this.player.performAction(
+      'harvest',
+      () => {
+        this.farmland.clearDead(this.col, this.row);
+        // `clearDead` vai de 'dead' pra 'tilled' — as duas já contam como
+        // "arada" (`Farmland.isTilled`), então a borda dos vizinhos não muda
+        // de verdade aqui. Mesmo assim atualiza os vizinhos por pedido
+        // explícito (e o custo é desprezível: só recalcula o mesmo frame).
+        this.refreshWithNeighbors();
+      },
+      () => playEffect(this.player.sprite.scene, SICKLE_SOUND),
+    );
   }
 
   private handleHarvest(): void {
@@ -186,8 +203,11 @@ class PlotInteractable implements Interactable {
       if (result) {
         // A colheita cai no chão (o som de coleta toca quando o jogador pega — ver `systems/lootDrops.ts`).
         const { x, y } = this.renderer.getCellCenter(this.col, this.row);
-        spawnLoot(this.player.sprite.scene, this.player, x, y, { category: 'crop', id: result.cropId, amount: result.amount });
-        console.log(`Colheita: ${result.amount} ${result.cropId} caiu no chão.`);
+        const scene = this.player.sprite.scene;
+        const amount = rollDoubleDrop(scene, result.amount, x, y - 28);
+        spawnLoot(scene, this.player, x, y, { category: 'crop', id: result.cropId, amount });
+        awardXp(scene, 'harvest', x, y - 12);
+        console.log(`Colheita: ${amount} ${result.cropId} caiu no chão.`);
       }
       this.refresh();
     });

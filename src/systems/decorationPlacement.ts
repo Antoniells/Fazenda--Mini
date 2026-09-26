@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { clearPlantsUnder } from './plantClearing';
 import { DecorationDefinition, DECORATIONS } from '../data/decorations';
 import { FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
@@ -14,8 +15,9 @@ import { gameState } from './gameState';
 import { resourceNodeRegistry } from './resourceNodeRegistry';
 import { FARM_RESOURCES_KEY } from './farmResources';
 import { HOE } from '../data/tools';
-import { getToolTierInfo, isToolOfFamily } from '../data/toolProgression';
+import { isToolOfFamily } from '../data/toolProgression';
 import { spawnLoot } from './lootDrops';
+import { canRemoveCoop, collectCoopEggs, coopKey, discardCoop } from './animals';
 import { playBreakEffect } from './breakEffect';
 import { playSprinklerWater } from './sprinklerWater';
 import { farmChestId, discardChest, isChestEmpty } from './chestStorage';
@@ -25,11 +27,12 @@ import { sprinklerReachCells } from './sprinklers';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { OBJECT_BREAK_SOUND, ORE_HIT_SOUNDS, PLACE_SOUND, WATER_SOUND } from '../data/audio';
 
-/** Nome do evento global (Fase 8 — Crafting) disparado ao interagir com a Bancada de Trabalho — ouvido pela `UIScene`, que é quem realmente sabe abrir o `CraftingMenu` (ver `scenes/UIScene.ts`). Um evento em `scene.game.events` (não `scene.events`) evita este módulo (`systems/`) precisar importar de `scenes/`, na direção errada da arquitetura. */
-export const OPEN_CRAFTING_MENU_EVENT = 'open-crafting-menu';
-
-/** Machado/Picareta (qualquer tier — `data/toolProgression.ts`) ainda removem a Bancada em vez de abrir a Bancada — mesma ideia de já servirem pra "desfazer" recursos do mundo (árvore, pedra). */
-const isWorkbenchRemovalTool = (toolId: string): boolean => getToolTierInfo(toolId) !== null;
+/** Nome do evento global disparado ao interagir com a Fornalha — ouvido pela `UIScene`, que é quem realmente sabe abrir o `FurnaceMenu` (ver `scenes/UIScene.ts`). Um evento em `scene.game.events` (não `scene.events`) evita este módulo (`systems/`) precisar importar de `scenes/`, na direção errada da arquitetura. */
+export const OPEN_FURNACE_MENU_EVENT = 'open-furnace-menu';
+/** Disparado pela `UIScene` a cada barra fundida: as Fornalhas posicionadas acendem o fogo por um tempo (`DecorationPlacementSystem.lightUsedStructures`). */
+export const FURNACE_SMELTED_EVENT = 'furnace-smelted';
+/** Por quanto tempo (ms) o fogo da Fornalha fica aceso depois de uma fundição. */
+const USED_BURN_MS = 4000;
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
@@ -77,22 +80,24 @@ class PlacedDecorationInteractable implements Interactable {
       return; // <-- O return impede que o poço seja destruído
     }
 
-    // Bancada de Trabalho (Fase 8 — Crafting, pedido explícito do usuário):
-    // mesma exceção do Poço, mas com uma saída a mais pra não travar o
-    // jogador — sem isso, uma vez posicionada ela nunca mais sairia da
-    // fazenda (igual o Poço hoje). Machado/Picareta (qualquer tier)
-    // continuam removendo-a normalmente; qualquer outra seleção (ou nenhuma)
-    // abre o Crafting.
-    if (this.decorationId === 'workbench') {
+    // Fornalha: interagir abre a tela de fundição (`ui/furnaceMenu.ts`). Como o Poço e o Galinheiro, ela é uma construção do Marceneiro: sai do mundo só por ele (mover/destruir, `systems/buildFlow.ts`).
+    if (this.decorationId === 'furnace') {
+      this.scene.game.events.emit(OPEN_FURNACE_MENU_EVENT);
+      return;
+    }
+
+    // Galinheiro (Fase 7 — Animais): Picareta o quebra (só sem galinhas — não há como devolvê-las); qualquer outra coisa na mão recolhe os ovos.
+    if (DECORATIONS[this.decorationId]?.isCoop) {
       const selected = gameState.inventory.getSelectedSlot();
-      const isRemovalTool = selected?.category === 'tool' && isWorkbenchRemovalTool(selected.id);
-      if (isRemovalTool) {
-        // O golpe da ferramenta na mão (Picareta ou Machado) e a Bancada se despedaça.
-        const action = isToolOfFamily(selected.id, 'pickaxe') ? 'pickaxe' : 'axe';
-        this.player.performAction(action, () => this.system.removeAt(this.col, this.row, false, true));
+      if (selected?.category === 'tool' && isToolOfFamily(selected.id, 'pickaxe')) {
+        if (!canRemoveCoop(coopKey(this.col, this.row))) {
+          this.system.warnCoopHasChickens(this.col, this.row);
+          return;
+        }
+        this.player.performAction('pickaxe', () => this.system.removeAt(this.col, this.row, false, true));
         return;
       }
-      this.scene.game.events.emit(OPEN_CRAFTING_MENU_EVENT);
+      this.system.collectEggs(this.col, this.row);
       return;
     }
 
@@ -124,6 +129,7 @@ class PlacedDecorationInteractable implements Interactable {
       }
       if (selected?.category !== 'tool' || !isToolOfFamily(selected.id, 'pickaxe')) {
         console.log('Selecione a Picareta pra tirar o aspersor do chão.');
+        popText(this.scene, this.col * this.system.tilePx + this.system.tilePx / 2, this.row * this.system.tilePx, 'Precisa da Picareta', { color: '#ff8a8a', fontSize: 14 });
         return;
       }
       this.player.performAction('pickaxe', () => this.system.removeAt(this.col, this.row, true, true));
@@ -148,6 +154,14 @@ interface PlacedDecoration {
   replaced: Map<string, Interactable | undefined>;
   /** A animação da manhã está tocando agora (não deixa duas rodarem juntas). */
   animating: boolean;
+  /** O fogo (`animatesWhenUsed`) está aceso: até quando (relógio da cena, ms) e se o timer dos quadros está rodando. */
+  litUntil: number;
+  burning: boolean;
+}
+
+/** Quem escolhe o LOCAL de uma construção sem gastar estoque (`startPicking` — a encomenda ao Marceneiro, `systems/buildFlow.ts`). */
+export interface SitePickHandler {
+  onPick(col: number, row: number): void;
 }
 
 /**
@@ -173,11 +187,13 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
   private coverageKey = '';
   private readonly farmlandCells: Set<string>;
   private activeDecoration: DecorationDefinition | null = null;
+  /** Escolha de local (encomenda ao Marceneiro): o clique válido chama isto em vez de colocar do estoque. */
+  private pickHandler: SitePickHandler | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
     map: FarmMapData,
-    private readonly tilePx: number,
+    readonly tilePx: number,
     private readonly grid: WalkableGrid,
     private readonly inventory: Inventory,
     private readonly interactions: InteractionRegistry,
@@ -202,6 +218,11 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     // worldX/worldY — com a câmera podendo rolar (Fase 6, Expansão), x/y
     // são coordenadas de tela, não do mundo.
     scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.handlePointerMove(pointer.worldX, pointer.worldY));
+
+    // Cada barra fundida acende o fogo das Fornalhas (o evento vem da UIScene, que não conhece este sistema).
+    const onSmelted = (): void => this.lightUsedStructures();
+    scene.game.events.on(FURNACE_SMELTED_EVENT, onSmelted);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.game.events.off(FURNACE_SMELTED_EVENT, onSmelted));
   }
 
   isActive(): boolean {
@@ -226,8 +247,29 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     this.ghost.setVisible(true);
   }
 
+  /**
+   * Escolher o LOCAL de uma construção (o fantasma segue o mouse, verde/vermelho como no posicionamento normal) sem tocar no estoque: o
+   * clique num local válido chama `handler.onPick` e sai do modo. Enquanto vale, `cancel()` (hotbar, E...) não faz nada — quem sai é
+   * `endPicking` (o `BuildFlow`, no ESC).
+   */
+  startPicking(decoration: DecorationDefinition, handler: SitePickHandler): void {
+    this.activeDecoration = decoration;
+    this.pickHandler = handler;
+    this.ghost.setTexture(decoration.textureKey, decoration.frameName);
+    this.ghost.setScale(DISPLAY_SCALE * (decoration.displayScaleMultiplier ?? 1));
+    this.ghost.setVisible(true);
+    const pointer = this.scene.input.activePointer;
+    this.handlePointerMove(pointer.worldX, pointer.worldY);
+  }
+
+  endPicking(): void {
+    this.pickHandler = null;
+    this.cancel();
+  }
+
   /** Sai do modo de posicionamento sem colocar nada. */
   cancel(): void {
+    if (this.pickHandler) return;
     this.activeDecoration = null;
     this.ghost.setVisible(false);
     this.clearCoverage();
@@ -298,7 +340,9 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
         if (!this.grid.isWalkable(c, r) || this.isBlockedCell(c, r)) return false;
         // Broto e muda são ANDÁVEIS: sem esta checagem uma construção nascia em cima de um deles e, quando ele crescesse (ou fosse cortado),
         // bloqueava/liberava a célula por baixo dela e roubava a interação — ficava uma construção fantasma sem colisão.
-        if (resourceNodeRegistry.hasNodeAt(FARM_RESOURCES_KEY, c, r)) return false;
+        // (o MATO é planta: pode ser removido pra construir, `clearPlantsUnder`; árvores/brotos/pedras continuam impedindo)
+        const node = resourceNodeRegistry.getNode(FARM_RESOURCES_KEY, c, r);
+        if (node && node.kind !== 'weed') return false;
 
         const inFarmland = this.farmlandCells.has(`${c},${r}`);
         if (onFarmland) {
@@ -319,6 +363,12 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
     if (!this.canPlaceAt(col, row, decoration)) return;
+    if (this.pickHandler) {
+      const handler = this.pickHandler;
+      this.endPicking();
+      handler.onPick(col, row);
+      return;
+    }
     if (!this.inventory.useDecoration(decoration.id)) return;
 
     this.placeAt(decoration, col, row);
@@ -329,8 +379,20 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     if (this.inventory.getDecorationCount(decoration.id) <= 0) this.cancel();
   }
 
+  /** Uma construção que o Marceneiro acabou de terminar: aparece no local (com o som de posicionar) e já vale como construída (`gameState.placedDecorations`). */
+  placeBuilt(decoration: DecorationDefinition, col: number, row: number): void {
+    this.placeAt(decoration, col, row);
+    playEffect(this.scene, PLACE_SOUND);
+  }
+
+  /** O local (`col`,`row`) serve pra esta construção? — a mesma regra do posicionamento (usado pra validar a escolha do jogador). */
+  isValidSite(decoration: DecorationDefinition, col: number, row: number): boolean {
+    return this.canPlaceAt(col, row, decoration);
+  }
+
   private placeAt(decoration: DecorationDefinition, col: number, row: number): void {
     const { width, height } = decoration.footprint;
+    clearPlantsUnder(this.scene, col, row, width, height); // As plantinhas que estavam embaixo somem.
     const x = col * this.tilePx + (width * this.tilePx) / 2;
     const y = (row + height) * this.tilePx;
 
@@ -346,7 +408,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     image.setDepth(y);
 
     // Animação em LOOP (a que não é "uma vez por manhã"): troca de frame; o timer se remove sozinho quando a imagem some (removida ou cena fechada).
-    if (frames && frames.length > 1 && !decoration.animatesEachMorning) {
+    if (frames && frames.length > 1 && !decoration.animatesEachMorning && !decoration.animatesWhenUsed) {
       let frameIndex = 0;
       const timer = this.scene.time.addEvent({
         delay: decoration.animationFrameMs ?? 120,
@@ -374,7 +436,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
       }
     }
 
-    this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id, col, row, footprint: { width, height }, replaced, animating: false });
+    this.placed.set(`${col},${row}`, { image, shadow, decorationId: decoration.id, col, row, footprint: { width, height }, replaced, animating: false, litUntil: 0, burning: false });
     // Bug corrigido (Scene Persistence) — grava também no registro
     // persistente (`gameState`, sobrevive a uma troca de cena de verdade),
     // já que `this.placed` some junto com o `Phaser.GameObjects.Image`
@@ -389,7 +451,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
    * unidade ao estoque. Desbloqueia e desregistra TODAS as células do
    * footprint original, não só a âncora.
    */
-  removeAt(col: number, row: number, dropAsLoot = false, breakEffect = false): void {
+  removeAt(col: number, row: number, dropAsLoot = false, breakEffect = false, returnToStock = true): void {
     const key = `${col},${row}`;
     const entry = this.placed.get(key);
     if (!entry) return;
@@ -417,7 +479,10 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
       }
     }
 
+    if (DECORATIONS[entry.decorationId]?.isCoop) discardCoop(coopKey(col, row)); // Só chega aqui sem galinhas (a Picareta confere antes).
     if (DECORATIONS[entry.decorationId]?.isChest) discardChest(farmChestId(col, row)); // Só chega aqui vazio (Picareta/Recolher conferem antes).
+
+    if (!returnToStock) return; // Destruída/movida pelo Marceneiro (`systems/buildFlow.ts`): a construção some, sem voltar pra Bolsa.
 
     if (dropAsLoot) {
       // O item "cai" no chão onde a construção estava e o jogador o recolhe (mesmo loot das árvores/pedras).
@@ -427,6 +492,16 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     }
     this.inventory.addDecorations(entry.decorationId, 1);
     console.log(`Removido: 1 ${entry.decorationId} (estoque: ${this.inventory.getDecorationCount(entry.decorationId)}).`);
+  }
+
+  /** Recolhe os ovos do galinheiro em (`col`,`row`): caem no chão à frente da porta (`systems/animals.ts`). */
+  collectEggs(col: number, row: number): void {
+    collectCoopEggs(this.scene, this.player, col, row, this.tilePx);
+  }
+
+  /** Aviso flutuante em cima do galinheiro: a Picareta não o quebra com galinhas dentro. */
+  warnCoopHasChickens(col: number, row: number): void {
+    popText(this.scene, col * this.tilePx + this.tilePx * 1.5, row * this.tilePx, 'Tem galinhas aí dentro', { color: '#ff8a8a' });
   }
 
   /** Aviso flutuante em cima do baú: a Picareta não quebra um baú com itens (eles sumiriam). */
@@ -461,6 +536,42 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
           entry.image.setFrame(frames[frameIndex].name);
           frameIndex += 1;
           if (frameIndex >= frames.length) entry.animating = false;
+        },
+      });
+    }
+  }
+
+  /**
+   * Acende (`animatesWhenUsed`) as construções em uso — a Fornalha depois de uma fundição: o fogo (quadros 2..N em loop) fica aceso por `USED_BURN_MS` e ela volta ao quadro de repouso.
+   * Uma que já está acesa só ganha mais tempo.
+   */
+  lightUsedStructures(): void {
+    for (const entry of this.placed.values()) {
+      const decoration = DECORATIONS[entry.decorationId];
+      const frames = decoration?.animatesWhenUsed ? decoration.animationFrames : undefined;
+      if (!decoration || !frames || frames.length < 2 || !entry.image.active) continue;
+
+      entry.litUntil = this.scene.time.now + USED_BURN_MS;
+      if (entry.burning) continue;
+      entry.burning = true;
+      let step = 0;
+      entry.image.setFrame(frames[1].name);
+      const timer = this.scene.time.addEvent({
+        delay: decoration.animationFrameMs ?? 120,
+        loop: true,
+        callback: () => {
+          if (!entry.image.active) {
+            timer.remove();
+            return;
+          }
+          if (this.scene.time.now >= entry.litUntil) {
+            entry.image.setFrame(frames[0].name);
+            entry.burning = false;
+            timer.remove();
+            return;
+          }
+          step += 1;
+          entry.image.setFrame(frames[1 + (step % (frames.length - 1))].name);
         },
       });
     }

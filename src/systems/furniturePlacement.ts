@@ -16,7 +16,7 @@ import { playEffect } from './soundEffects';
 import { isToolOfFamily } from '../data/toolProgression';
 import { OBJECT_BREAK_SOUND, PLACE_SOUND } from '../data/audio';
 
-/** Evento GLOBAL (`game.events`) disparado ao interagir com um Baú — ouvido pela `UIScene`, que abre o `ChestMenu` (mesmo padrão de `OPEN_CRAFTING_MENU_EVENT`). */
+/** Evento GLOBAL (`game.events`) disparado ao interagir com um Baú — ouvido pela `UIScene`, que abre o `ChestMenu` (mesmo padrão de `OPEN_FURNACE_MENU_EVENT`). */
 export const OPEN_CHEST_MENU_EVENT = 'open-chest-menu';
 export interface OpenChestMenuPayload {
   chestId: string;

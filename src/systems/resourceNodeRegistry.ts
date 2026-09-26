@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
+import type { OreKind } from '../data/ores';
 
-export type ResourceNodeKind = 'tree' | 'smallRock' | 'bigRock';
+/** `weed` = o mato colhível com a Foice (só na Fazenda, `systems/wildGrass.ts`); `ore` = veio de minério da Pedreira (`data/ores.ts`, `systems/oreInteraction.ts`). */
+export type ResourceNodeKind = 'tree' | 'smallRock' | 'bigRock' | 'weed' | 'ore';
 /** Só relevante para `kind: 'tree'` — pedras não crescem, nascem sempre prontas pra quebrar. */
 export type TreeStage = 'sprout' | 'young' | 'mature';
 /** Espécie da árvore (só `kind: 'tree'`): ausente = pinheiro. A bétula só existe adulta (sem broto/muda) e nunca é sorteada pelo respawn selvagem. */
@@ -12,6 +14,8 @@ export interface ResourceNode {
   kind: ResourceNodeKind;
   stage: TreeStage;
   species?: TreeSpecies;
+  /** Qual minério (só `kind: 'ore'`). */
+  ore?: OreKind;
   /** Dano já acumulado (em "golpes de madeira") numa árvore/pedra ainda de pé — sobrevive a trocar de cena, à virada do dia e ao save (antes voltava a zero). */
   hits?: number;
 }
@@ -23,6 +27,9 @@ export interface ResourceCaps {
   newTreesPerDay?: [number, number];
   /** Quantas pedras novas nascem por virada de dia ([mín, máx], sorteado). Padrão [1, 2]. */
   newRocksPerDay?: [number, number];
+  /** Mato: teto simultâneo e quantos nascem por virada de dia ([mín, máx]). Ausente = a cena não tem mato (só a Fazenda tem). */
+  maxWeeds?: number;
+  newWeedsPerDay?: [number, number];
 }
 
 function nodeKey(col: number, row: number): string {
@@ -78,7 +85,12 @@ class ResourceNodeRegistry {
   restore(data: Record<string, ResourceNode[]>): void {
     for (const [sceneKey, nodes] of Object.entries(data)) {
       if (!this.scenes.has(sceneKey) || !Array.isArray(nodes)) continue;
-      this.scenes.set(sceneKey, new Map(nodes.map((node) => [nodeKey(node.col, node.row), { ...node }])));
+      const restored = new Map(nodes.map((node) => [nodeKey(node.col, node.row), { ...node }] as const));
+      // Save anterior à mineração (os veios eram só decoração): a cena não guardou nenhum veio, então nasce com os originais.
+      if (![...restored.values()].some((node) => node.kind === 'ore')) {
+        for (const node of this.initial.get(sceneKey) ?? []) if (node.kind === 'ore') restored.set(nodeKey(node.col, node.row), { ...node });
+      }
+      this.scenes.set(sceneKey, restored);
     }
   }
 
@@ -110,6 +122,34 @@ class ResourceNodeRegistry {
     this.scenes.get(sceneKey)?.set(nodeKey(node.col, node.row), node);
   }
 
+  /** Devolve, com `chance` por veio, os nós ORIGINAIS de `kind` que já foram quebrados e cujo lugar continua livre — os veios de minério voltam ao lugar de origem (o `advanceDay` só semeia em lugares sorteados). */
+  respawnInitial(sceneKey: string, kind: ResourceNodeKind, chance: number): void {
+    const nodes = this.scenes.get(sceneKey);
+    if (!nodes) return;
+    for (const node of this.initial.get(sceneKey) ?? []) {
+      if (node.kind !== kind || nodes.has(nodeKey(node.col, node.row))) continue;
+      if (Phaser.Math.FloatBetween(0, 1) < chance) nodes.set(nodeKey(node.col, node.row), { ...node, hits: undefined });
+    }
+  }
+
+  /** Espalha `count` nós novos (de `template`) em células livres sorteadas — usado pra semear o mato do começo da Fazenda (sem esperar a virada de dia). Devolve quantos nasceram. */
+  scatter(sceneKey: string, template: Omit<ResourceNode, 'col' | 'row'>, count: number, cols: number, rows: number, isCellFree: (col: number, row: number) => boolean): number {
+    const nodes = this.scenes.get(sceneKey);
+    if (!nodes) return 0;
+    let placed = 0;
+    for (let i = 0; i < count; i++) {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const col = Phaser.Math.Between(1, cols - 2);
+        const row = Phaser.Math.Between(1, rows - 2);
+        if (nodes.has(nodeKey(col, row)) || !isCellFree(col, row)) continue;
+        nodes.set(nodeKey(col, row), { ...template, col, row });
+        placed += 1;
+        break;
+      }
+    }
+    return placed;
+  }
+
   /**
    * "Gancho de virada de dia" (pedido explícito): avança o estágio de cada
    * árvore existente (broto → muda → adulta) e, se ainda houver espaço sob
@@ -134,7 +174,7 @@ class ResourceNodeRegistry {
 
     // O teto de árvores conta só os pinheiros (as bétulas fixas do mapa não entram na conta do respawn).
     const countOf = (kind: ResourceNodeKind | 'rock'): number =>
-      Array.from(nodes.values()).filter((n) => (kind === 'rock' ? n.kind !== 'tree' : n.kind === kind && n.species !== 'birch')).length;
+      Array.from(nodes.values()).filter((n) => (kind === 'rock' ? n.kind === 'smallRock' || n.kind === 'bigRock' : n.kind === kind && n.species !== 'birch')).length;
 
     const findFreeCell = (): { col: number; row: number } | null => {
       for (let attempt = 0; attempt < 40; attempt++) {
@@ -159,6 +199,15 @@ class ResourceNodeRegistry {
       const cell = findFreeCell();
       if (!cell) break;
       nodes.set(nodeKey(cell.col, cell.row), { col: cell.col, row: cell.row, kind: 'smallRock', stage: 'mature' });
+    }
+
+    const maxWeeds = caps.maxWeeds ?? 0;
+    const [minWeeds, maxNewWeeds] = caps.newWeedsPerDay ?? [0, 0];
+    const newWeeds = Phaser.Math.Between(minWeeds, maxNewWeeds);
+    for (let i = 0; i < newWeeds && countOf('weed') < maxWeeds; i++) {
+      const cell = findFreeCell();
+      if (!cell) break;
+      nodes.set(nodeKey(cell.col, cell.row), { col: cell.col, row: cell.row, kind: 'weed', stage: 'mature' });
     }
   }
 }

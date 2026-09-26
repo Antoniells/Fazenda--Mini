@@ -29,8 +29,8 @@ export function hordeEnemyHp(number: number): number {
 }
 
 /** Recompensa BÔNUS de sobreviver à noite da horda `number` (além dos drops dos inimigos). */
-export function hordeReward(number: number): { coins: number; wood: number; stone: number; iron: number } {
-  return { coins: 150 * number, wood: 40 + 15 * number, stone: 25 + 10 * number, iron: 4 + 2 * number };
+export function hordeReward(number: number): { coins: number; wood: number; stone: number; ironOre: number } {
+  return { coins: 150 * number, wood: 40 + 15 * number, stone: 25 + 10 * number, ironOre: 4 + 2 * number };
 }
 
 /** Ritmo da chegada: uma rajada inicial e depois de tantos em tantos ms, até completar o total da horda. */

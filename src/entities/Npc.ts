@@ -76,7 +76,8 @@ export class Npc {
   /** Cria (uma vez por cena) as animações de repouso e de caminhada nas 4 direções. */
   private static ensureAnimations(scene: Phaser.Scene, def: NpcDefinition): void {
     const { idleKey, walkKey, idleFrames, walkFrames } = def.sprite;
-    for (const [facing, index] of Object.entries(DIRECTION_INDEX) as Array<[NpcFacing, number]>) {
+    const rows = def.sprite.rows ?? DIRECTION_INDEX; // Folhas de 3 direções (`Pre-made`) têm o próprio mapa, com o lado compartilhado.
+    for (const [facing, index] of Object.entries(rows) as Array<[NpcFacing, number]>) {
       const idleAnim = `${idleKey}-${facing}`;
       if (!scene.anims.exists(idleAnim)) {
         const start = index * idleFrames;
@@ -133,6 +134,7 @@ export class Npc {
     this.facing = facing;
     const key = kind === 'idle' ? this.def.sprite.idleKey : this.def.sprite.walkKey ?? this.def.sprite.idleKey;
     this.sprite.anims.play(`${key}-${facing}`, true);
+    if (this.def.sprite.flipLeft) this.sprite.setFlipX(facing === 'left'); // O bloco de lado dessas folhas olha pra direita.
   }
 
   private cellCenter(cell: GridPoint): { x: number; y: number } {

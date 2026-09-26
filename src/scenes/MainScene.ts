@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { farmMap } from '../data/maps/farmMap';
 import { attachFootstepSounds, playEffect } from '../systems/soundEffects';
 import { DOOR_SOUND } from '../data/audio';
-import { SPEND_MONEY_SOUND } from '../data/audio';
 import { ROOSTER_SOUND, ROOSTER_HOURS } from '../data/audio';
 import {
   GRASS_TILESET_KEY,
@@ -25,14 +24,16 @@ import {
   WOOD_PATH,
   WOOD_FRAME,
   IRON_KEY,
+  METAL_ICON_FRAMES,
+  COAL_KEY,
+  COAL_PATH,
+  COAL_FRAME,
   IRON_PATH,
   IRON_FRAME,
   SOIL_TILESET_KEY,
   SOIL_TILESET_PATH,
   SHIPPING_BIN_KEY,
   SHIPPING_BIN_PATH,
-  SHOP_STAND_KEY,
-  SHOP_STAND_PATH,
   CONSTRUCTION_SIGN_KEY,
   CONSTRUCTION_SIGN_PATH,
   PLAYER_HOUSE_KEY,
@@ -49,11 +50,9 @@ import { preloadPlayerSprites } from '../systems/playerSprites';
 import { preloadPet } from '../systems/petSprites';
 import { PetCompanion } from '../systems/petCompanion';
 import { PET_ROAM } from '../data/pets';
-import { CROPS, CARROT, HARVEST_MAX_YIELD, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
+import { CROPS, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
 import { DECORATIONS, WELL, DecorationDefinition, MORNING_ANIMATION_HOURS } from '../data/decorations';
-import { HOE, SICKLE, AXE, PICKAXE, HAMMER, HAMMER_PRICE, STONE_AXE, STONE_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
-import { getToolTierInfo } from '../data/toolProgression';
-import { previousToolName } from '../systems/toolUpgrade';
+import { HOE, SICKLE, AXE, PICKAXE, HAMMER, COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
 import {
   INVENTORY_UI_KEY,
   INVENTORY_UI_PATH,
@@ -92,7 +91,7 @@ import {
 } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE, SPRINKLER_WATER_KEY, SPRINKLER_WATER_PATH, SPRINKLER_WATER_FRAME_SIZE, LEAF_FALL_KEY, LEAF_FALL_PATH, LEAF_FALL_FRAME_SIZE } from '../data/effects';
 import { GRASS_DETAILS_KEY, GRASS_DETAILS_PATH } from '../data/grassDetails';
-import { buildFarmGround, buildFenceCorners, buildFenceSide, buildShippingBin, buildShopStand, buildPlayerHouse, buildFarmlandFence, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { buildFarmGround, buildFenceCorners, buildFenceSide, buildShippingBin, buildPlayerHouse, buildFarmlandFence, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildMapProps } from '../systems/mapProps';
 import { GROUND_TILESETS } from '../systems/groundTilesets';
 import { buildDirtZone } from '../systems/dirtPaths';
@@ -101,13 +100,12 @@ import { buildWalkableGrid } from '../systems/grid';
 import { PropertyExpansionSystem } from '../systems/propertyExpansion';
 import { BridgeSystem } from '../systems/bridgeSystem';
 import { TreePlantingSystem } from '../systems/treePlanting';
-import { ACORN, RESOURCES } from '../data/resources';
+import { ACORN } from '../data/resources';
 import { WEAPONS } from '../data/weapons';
 import { ARMORS } from '../data/armors';
-import { RECIPES } from '../data/recipes';
-import { SlotRef, resolveSlotVisual } from '../data/items';
+import { SlotRef } from '../data/items';
 import { updateTreeOverlap } from '../systems/treeOverlap';
-import { FarmResources, initFarmResourceRegistry } from '../systems/farmResources';
+import { FarmResources, initFarmResourceRegistry, ensureTutorialWeed } from '../systems/farmResources';
 import { GameClock, DAY_LENGTH_MS } from '../systems/gameClock';
 import { DayNightOverlay } from '../systems/dayNightOverlay';
 import { WorldBlur } from '../systems/worldBlur';
@@ -119,7 +117,6 @@ import { Inventory } from '../systems/inventory';
 import { InteractionRegistry } from '../systems/interaction';
 import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
 import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
-import { registerShopInteractable } from '../systems/shopInteraction';
 import { registerEnterHouseInteractable } from '../systems/enterHouseInteraction';
 import { exitToMainMenu } from '../systems/sessionExit';
 import { startNextDay, DayTurn } from '../systems/dayCycle';
@@ -141,6 +138,12 @@ import { save as saveGame } from '../systems/saveManager';
 import { HOUSE_SCENE_KEY } from './HouseScene';
 import { TileCursor } from '../systems/tileCursor';
 import { DecorationPlacementSystem } from '../systems/decorationPlacement';
+import { ConstructionSiteSystem } from '../systems/constructionSites';
+import { BuilderCrew } from '../systems/builderCrew';
+import { BuildFlow } from '../systems/buildFlow';
+import { materializeDone, occupiedFootprintCells } from '../systems/construction';
+import { preloadNpcs } from '../systems/npcSystem';
+import { CARPENTER_PICKAXE_SHEET, type BuildRequest } from '../data/construction';
 import { DebugGridOverlay } from '../systems/debugGridOverlay';
 import { PauseMenu } from '../ui/pauseMenu';
 import { LockedMessage } from '../ui/lockedMessage';
@@ -151,8 +154,8 @@ import {
   isInventoryOpen,
   toggleInventoryScreen,
   closeInventoryScreen,
-  isCraftingMenuOpen,
-  closeCraftingMenu,
+  isFurnaceMenuOpen,
+  closeFurnaceMenu,
   isChestMenuOpen,
   closeChestMenu,
   isLetterOpen,
@@ -160,7 +163,12 @@ import {
 } from './UIScene';
 import type { WakeUpAfterDeath } from '../systems/playerDeath';
 import { setupWorldCamera, applyWorldCameraBounds } from '../systems/cameraSetup';
-import { ShopMenu, ShopItem, ShopTabDefinition } from '../ui/shopMenu';
+import { ANIMAL_ICONS, EGG_ICON } from '../data/animals';
+import { registerQualityIcons } from '../systems/qualityIcons';
+import { SEASON_CLOCK_KEY, SEASON_CLOCK_PATH, SEASON_CLOCK_FRAME_SIZE } from '../data/seasons';
+import { TAB_FRAME_ANIMALS, TAB_FRAME_ANIMALS_LIGHT } from '../data/ui';
+import { preloadChickens } from '../entities/Chicken';
+import { ChickenFlock } from '../systems/chickenFlock';
 import { ShippingBinMenu } from '../ui/shippingBinMenu';
 import { registerMapEditorShortcut } from '../systems/mapEditorLauncher';
 
@@ -202,7 +210,6 @@ export class MainScene extends Phaser.Scene {
   private farmland!: Farmland;
   private farmlandRenderer!: FarmlandRenderer;
   private inventory!: Inventory;
-  private shopMenu!: ShopMenu;
   private shippingBinMenu!: ShippingBinMenu;
   private mailbox!: Mailbox;
   private eventManager!: EventManager;
@@ -215,6 +222,12 @@ export class MainScene extends Phaser.Scene {
   private worldBlur!: WorldBlur;
   private pauseMenu!: PauseMenu;
   private lockedMessage!: LockedMessage;
+  private chickenFlock!: ChickenFlock;
+  private constructionSites!: ConstructionSiteSystem;
+  private builderCrew!: BuilderCrew;
+  /** A Fazenda aberta a partir da loja do Marceneiro pra escolher onde construir/mover/cancelar/destruir (`systems/buildFlow.ts`); `null` no jogo normal. */
+  private buildRequest: BuildRequest | null = null;
+  private buildFlow: BuildFlow | null = null;
   /** Trava enquanto o fade de entrada na casa roda (evita `scene.start` duas vezes). */
   private isEnteringHouse = false;
   private spawnOverride: { col: number; row: number } | null = null;
@@ -227,8 +240,10 @@ export class MainScene extends Phaser.Scene {
     initFarmResourceRegistry();
   }
 
-  init(data?: { spawnPoint?: { col: number; row: number }; wokeUpAfterDeath?: WakeUpAfterDeath }): void {
+  init(data?: { spawnPoint?: { col: number; row: number }; wokeUpAfterDeath?: WakeUpAfterDeath; buildRequest?: BuildRequest }): void {
     this.spawnOverride = data?.spawnPoint ?? null;
+    this.buildRequest = data?.buildRequest ?? null;
+    this.buildFlow = null;
     this.isEnteringHouse = false;
     this.wakeUpNotice = data?.wokeUpAfterDeath ?? null;
     // Desmaiou NA HORDA (`systems/playerDeath.ts` já encerrou o evento sem bônus): o dia avança (relógio 06:00, lavoura, clima, mundo).
@@ -271,6 +286,8 @@ export class MainScene extends Phaser.Scene {
     preloadPetBox(this);
     preloadMailbox(this);
     preloadEvents(this, WORLD_EVENTS);
+    preloadNpcs(this, ['carpenter']); // O Tomás construindo na Fazenda (`systems/builderCrew.ts`).
+    this.load.spritesheet(CARPENTER_PICKAXE_SHEET.key, encodeURI(`/${CARPENTER_PICKAXE_SHEET.path}`), { frameWidth: CARPENTER_PICKAXE_SHEET.frameSize, frameHeight: CARPENTER_PICKAXE_SHEET.frameSize });
     // Sprite do Slime: os inimigos da horda (`entities/Raider.ts`) usam a mesma arte — a Floresta carrega por conta própria, a Fazenda também precisa.
     this.load.spritesheet(SLIME_KEY, encodeURI(`/${SLIME_PATH}`), { frameWidth: SLIME_FRAME_SIZE, frameHeight: SLIME_FRAME_SIZE });
     preloadButterflies(this);
@@ -285,6 +302,7 @@ export class MainScene extends Phaser.Scene {
     this.load.image(ALL_CROPS_ICONS_KEY, encodeURI(`/${ALL_CROPS_ICONS_PATH}`));
     this.load.image(INVENTORY_UI_KEY, encodeURI(`/${INVENTORY_UI_PATH}`));
     this.load.image(CLOCK_MONEY_HUD_KEY, encodeURI(`/${CLOCK_MONEY_HUD_PATH}`));
+    this.load.spritesheet(SEASON_CLOCK_KEY, encodeURI(`/${SEASON_CLOCK_PATH}`), { frameWidth: SEASON_CLOCK_FRAME_SIZE, frameHeight: SEASON_CLOCK_FRAME_SIZE }); // O medalhão do relógio de estação (`ui/timeMoneyHud.ts`).
     this.load.spritesheet(WATERING_CAN_ICON_KEY, encodeURI(`/${WATERING_CAN_ICON_PATH}`), {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
@@ -317,11 +335,9 @@ export class MainScene extends Phaser.Scene {
       });
     }
 
-    // Ferramentas de progressão e armaduras (Fase 8 — Crafting): só se obtêm
-    // fabricando na Bancada depois de comprar a Receita na Loja, mas o
-    // ícone precisa estar carregado desde já pra aparecer na aba de
-    // Receitas (ver `shopItems` abaixo).
-    for (const tool of [STONE_AXE, STONE_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE]) {
+    // Ferramentas de progressão e armaduras: só se obtêm comprando no Ferreiro (`data/toolShop.ts`),
+    // mas o ícone precisa estar carregado desde já pra aparecer na loja dele.
+    for (const tool of [COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE]) {
       this.load.spritesheet(tool.textureKey, encodeURI(`/${tool.texturePath}`), {
         frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
         frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
@@ -336,6 +352,7 @@ export class MainScene extends Phaser.Scene {
 
     this.load.image(WOOD_KEY, encodeURI(`/${WOOD_PATH}`));
     this.load.image(IRON_KEY, encodeURI(`/${IRON_PATH}`));
+    this.load.image(COAL_KEY, encodeURI(`/${COAL_PATH}`)); // Ícone do Carvão (`data/resources.ts`).
     this.load.image(ROCK_KEY, encodeURI(`/${ROCK_PATH}`));
     this.load.image(SHOP_BOOK_KEY, encodeURI(`/${SHOP_BOOK_PATH}`));
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
@@ -344,9 +361,12 @@ export class MainScene extends Phaser.Scene {
     this.load.image(SHOP_TAB_RIBBONS_KEY, encodeURI(`/${SHOP_TAB_RIBBONS_PATH}`));
     this.load.image(CLOSE_BUTTON_SHEET_KEY, encodeURI(`/${CLOSE_BUTTON_SHEET_PATH}`));
     this.load.image(BACKPACK_ICON_KEY, encodeURI(`/${BACKPACK_ICON_PATH}`));
+    // Animais (galinhas): folhas das cores, ícone do ovo (loot/Bolsa/venda) e o ícone da Galinha na Loja.
+    preloadChickens(this);
+    this.load.spritesheet(EGG_ICON.key, encodeURI(`/${EGG_ICON.path}`), { frameWidth: EGG_ICON.frameSize, frameHeight: EGG_ICON.frameSize });
+    this.load.image(ANIMAL_ICONS.key, encodeURI(`/${ANIMAL_ICONS.path}`));
     this.load.image(FISHING_ROD_ICON_KEY, encodeURI(`/${FISHING_ROD_ICON_PATH}`));
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
-    this.load.image(SHOP_STAND_KEY, encodeURI(`/${SHOP_STAND_PATH}`));
     this.load.image(GRASS_DETAILS_KEY, encodeURI(`/${GRASS_DETAILS_PATH}`));
     this.load.image(CONSTRUCTION_SIGN_KEY, encodeURI(`/${CONSTRUCTION_SIGN_PATH}`));
     this.load.image(PLAYER_HOUSE_KEY, encodeURI(`/${PLAYER_HOUSE_PATH}`));
@@ -372,6 +392,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   create(): void {
+    registerQualityIcons(this); // Ícones dos itens com estrela (Prata/Ouro/Irídio), usados por toda a interface.
     const pineTexture = this.textures.get(PINE_TREE_KEY);
     pineTexture.add(PINE_TREE_FRAME_NAME, 0, PINE_TREE_FRAME.x, PINE_TREE_FRAME.y, PINE_TREE_FRAME.width, PINE_TREE_FRAME.height);
     
@@ -397,6 +418,12 @@ export class MainScene extends Phaser.Scene {
     if (!ironTexture.has(IRON_FRAME.name)) {
       ironTexture.add(IRON_FRAME.name, 0, IRON_FRAME.rect.x, IRON_FRAME.rect.y, IRON_FRAME.rect.width, IRON_FRAME.rect.height);
     }
+    // Minérios brutos e as outras barras (mesma folha da barra de ferro) e o Carvão: ícones de `data/resources.ts`.
+    for (const { name, rect } of Object.values(METAL_ICON_FRAMES)) {
+      if (!ironTexture.has(name)) ironTexture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+    }
+    const coalTexture = this.textures.get(COAL_KEY);
+    if (!coalTexture.has(COAL_FRAME.name)) coalTexture.add(COAL_FRAME.name, 0, COAL_FRAME.rect.x, COAL_FRAME.rect.y, COAL_FRAME.rect.width, COAL_FRAME.rect.height);
 
     for (const decoration of Object.values(DECORATIONS)) {
       const texture = this.textures.get(decoration.textureKey);
@@ -416,6 +443,12 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
+    const animalIconsTexture = this.textures.get(ANIMAL_ICONS.key);
+    if (!animalIconsTexture.has(ANIMAL_ICONS.chicken.name)) {
+      const { x, y, width, height } = ANIMAL_ICONS.chicken.rect;
+      animalIconsTexture.add(ANIMAL_ICONS.chicken.name, 0, x, y, width, height);
+    }
+
     const tabRibbonsTexture = this.textures.get(SHOP_TAB_RIBBONS_KEY);
     for (const ribbon of [
       TAB_FRAME_AGRICULTURE,
@@ -424,6 +457,8 @@ export class MainScene extends Phaser.Scene {
       TAB_FRAME_AGRICULTURE_LIGHT,
       TAB_FRAME_TOOLS_LIGHT,
       TAB_FRAME_CONSTRUCTION_LIGHT,
+      TAB_FRAME_ANIMALS,
+      TAB_FRAME_ANIMALS_LIGHT,
     ]) {
       if (!tabRibbonsTexture.has(ribbon.name)) {
         tabRibbonsTexture.add(ribbon.name, 0, ribbon.rect.x, ribbon.rect.y, ribbon.rect.width, ribbon.rect.height);
@@ -509,10 +544,9 @@ export class MainScene extends Phaser.Scene {
     if (farmMap.backgroundColor) this.cameras.main.setBackgroundColor(farmMap.backgroundColor);
     buildFenceCorners(this, farmMap);
 
-    this.grassTufts = buildGrassDetails(this, farmMap, buildDirtZone(farmMap));
+    this.grassTufts = buildGrassDetails(this, farmMap, buildDirtZone(farmMap), occupiedFootprintCells());
 
     const shippingBin = buildShippingBin(this, farmMap);
-    buildShopStand(this, farmMap);
     buildPlayerHouse(this, farmMap);
     const fenceImages = buildFarmlandFence(this, farmMap);
     // Props de decoração ambiente autorados no MapEditorScene (aba
@@ -549,6 +583,7 @@ export class MainScene extends Phaser.Scene {
     // As cercas da lavoura viram alvo da horda (têm vida e, ao cair, ficam destruídas até o Martelo) — mesmas imagens/células que já bloqueiam no grid.
     this.farmFences = new FarmFences(this, grid, fenceImages, interactions, this.player);
     // Árvores e pedras da Fazenda: desenhadas do registro (o que já foi cortado/quebrado/nasceu), bloqueiam o grid e ganham a coleta.
+    ensureTutorialWeed(); // O mato do tutorial na lavoura (só enquanto o passo de cortá-lo não passou).
     this.farmResources = new FarmResources(this, grid, interactions, this.player);
     registerFarmlandInteractables(farmMap, this.farmland, this.farmlandRenderer, this.inventory, this.player, interactions);
     this.shippingBinMenu = registerShippingBinInteractable(
@@ -560,97 +595,6 @@ export class MainScene extends Phaser.Scene {
       this.player,
       interactions,
     );
-
-    const shopTabs: ShopTabDefinition[] = [
-      {
-        category: 'agriculture',
-        textureKey: ALL_CROPS_ICONS_KEY,
-        iconFrame: CARROT.seedFrameName,
-        tabFrame: TAB_FRAME_AGRICULTURE.name,
-        tabFrameHover: TAB_FRAME_AGRICULTURE_LIGHT.name,
-      },
-      // Categoria interna continua 'tools' (id usado por `ShopCategory`,
-      // sem texto visível na aba — só ícone/cor), mas o conteúdo agora é a
-      // aba de Receitas (Fase 8 — Crafting, ver `shopItems` abaixo).
-      {
-        category: 'tools',
-        textureKey: HOE.textureKey,
-        iconFrame: HOE.iconFrame,
-        tabFrame: TAB_FRAME_TOOLS.name,
-        tabFrameHover: TAB_FRAME_TOOLS_LIGHT.name,
-      },
-      {
-        category: 'construction',
-        textureKey: WELL.textureKey,
-        iconFrame: WELL.frameName,
-        tabFrame: TAB_FRAME_CONSTRUCTION.name,
-        tabFrameHover: TAB_FRAME_CONSTRUCTION_LIGHT.name,
-      },
-    ];
-
-    const shopItems: ShopItem[] = [
-      ...Object.values(CROPS).map((crop) => ({
-        id: crop.id,
-        category: 'agriculture' as const,
-        name: `Semente de ${crop.name}`,
-        description: `Cresce em ${crop.growthFrames.length - 1} dias (regue todo dia). Rende de 1 a ${HARVEST_MAX_YIELD} por colheita (com sorte!), vendida a ${crop.sellPrice} moedas cada.`,
-        textureKey: ALL_CROPS_ICONS_KEY,
-        // Saquinho de semente (pedido explícito, item 4) — a Loja vende sementes, não o fruto colhido.
-        iconFrame: crop.seedFrameName,
-        price: crop.seedPrice,
-      })),
-      ...Object.values(DECORATIONS).filter((decoration) => !decoration.notForSale).map((decoration) => ({
-        id: decoration.id,
-        category: 'construction' as const,
-        name: decoration.name,
-        description: decoration.description,
-        textureKey: decoration.textureKey,
-        iconFrame: decoration.frameName,
-        price: decoration.price,
-      })),
-      // Martelo: compra DIRETA em moedas (conserta as cercas destruídas pela horda) — única ferramenta pronta que a aba vende.
-      {
-        id: HAMMER.id,
-        category: 'tools' as const,
-        name: HAMMER.name,
-        description: 'Conserta cercas destruídas pelos ataques. Com o Martelo na mão, clique na cerca quebrada.',
-        textureKey: HAMMER.textureKey,
-        iconFrame: HAMMER.iconFrame,
-        price: HAMMER_PRICE,
-      },
-      // Aba "Ferramentas" agora vende Receitas (Fase 8 — Crafting), não mais
-      // ferramentas/armas prontas: pedido explícito do usuário pra substituir
-      // a compra direta pelo fluxo Receita (moedas, na Loja) + fabricação
-      // (recursos, na Bancada de Trabalho — ver `data/recipes.ts`). Preço é
-      // só em moedas (`recipe.price`) — nunca `resourceCost`, os recursos são
-      // gastos na hora de fabricar, não na hora de comprar a receita.
-      ...Object.values(RECIPES).map((recipe) => {
-        const itemVisual = resolveSlotVisual({ category: recipe.category === 'armor' ? 'armor' : 'tool', id: recipe.itemId });
-        const ingredients = recipe.ingredients.map((ingredient) => `${ingredient.amount} ${RESOURCES[ingredient.resourceId]?.name ?? ingredient.resourceId}`).join(', ');
-        return {
-          id: recipe.id,
-          category: 'tools' as const,
-          name: `Receita: ${itemVisual?.name ?? recipe.itemId}`,
-          description: getToolTierInfo(recipe.itemId)?.tier
-            ? `Upgrade: na Bancada de Trabalho, substitui ${previousToolName(recipe.itemId)} no mesmo slot. Ingredientes: ${ingredients}.`
-            : `Aprenda a fabricar na Bancada de Trabalho. Ingredientes: ${ingredients || 'nenhum'}.`,
-          textureKey: itemVisual?.textureKey ?? '',
-          iconFrame: itemVisual?.iconFrame ?? 0,
-          price: recipe.price,
-        };
-      }),
-    ];
-
-    this.shopMenu = new ShopMenu(
-      this,
-      shopTabs,
-      shopItems,
-      (itemId) => this.buyShopItem(itemId),
-      // Receitas e o Martelo são compras únicas: depois de aprendida/comprado, o botão vira "Já possui".
-      (itemId) => (!!RECIPES[itemId] && this.inventory.hasRecipe(itemId)) || (itemId === HAMMER.id && this.inventory.hasTool(HAMMER.id)),
-    );
-    registerShopInteractable(this.shopMenu, farmMap.shopPosition[0], farmMap.shopPosition[1], this.player, interactions);
-    registerShopInteractable(this.shopMenu, farmMap.shopPosition[0]-1, farmMap.shopPosition[1], this.player, interactions);
 
     // A porta agora ENTRA na casa (`HouseScene`); dormir é na cama lá dentro.
     registerEnterHouseInteractable(
@@ -712,12 +656,17 @@ export class MainScene extends Phaser.Scene {
       (col, row) => this.farmFences.hasFenceAt(col, row),
     );
     // Bug corrigido (Scene Persistence) — recria as construções (Poço,
-    // Bancada, etc.) que o jogador já tinha colocado em uma sessão anterior
+    // Fornalha, etc.) que o jogador já tinha colocado em uma sessão anterior
     // desta MESMA aba (`gameState.placedDecorations`), já que os
     // `Phaser.GameObjects.Image` da vez passada morreram junto com a cena
     // antiga e o `DecorationPlacementSystem` acima sempre nasce vazio.
+    // Obras que terminaram com a Fazenda fechada viram construção AGORA (antes de recriá-las); as que estão em curso ganham a placa e o Tomás.
+    materializeDone();
     this.decorationPlacement.restorePlacements();
-
+    this.constructionSites = new ConstructionSiteSystem(this, grid, interactions, tilePx);
+    this.constructionSites.restore();
+    this.builderCrew = new BuilderCrew(this, grid, tilePx, this.player, this.constructionSites, this.decorationPlacement);
+    this.builderCrew.init();
     this.treePlanting = new TreePlantingSystem(this, farmMap, tilePx, grid, this.inventory, this.farmResources, (col, row) => this.farmFences.hasFenceAt(col, row));
 
     new TileCursor(this, tilePx, grid, farmMap.farmlandArea);
@@ -725,6 +674,8 @@ export class MainScene extends Phaser.Scene {
     this.pauseMenu = new PauseMenu(this, { onExitToMenu: () => this.exitToMainMenu() });
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
+    // As galinhas dos galinheiros (comprados/salvos) — ver `systems/chickenFlock.ts`; clicar numa dá carinho.
+    this.chickenFlock = new ChickenFlock(this, grid, tilePx, new Set(farmMap.farmlandArea.map(([col, row]) => `${col},${row}`)), () => this.gameClock.getHours(), this.player, this.controller);
     // O Phaser REAPROVEITA esta instância de cena a cada `scene.start` (ex.: voltar da casa) e os campos da classe sobrevivem — sem zerar, o pet da vez anterior
     // (já destruído junto com a cena) ficava aqui e a guarda de `spawnPetCompanion` impedia de criar outro: o pet "entrava em casa e não saía mais".
     this.petCompanion = undefined;
@@ -742,6 +693,11 @@ export class MainScene extends Phaser.Scene {
     this.controller.setEnemyProvider(() => this.hordeDirector.getAliveEnemies());
     this.debugGridOverlay = new DebugGridOverlay(this, grid, tilePx, this.player); // DEBUG TEMPORÁRIO
     this.controller.addInputInterceptor(this.decorationPlacement);
+    if (this.buildRequest) {
+      const request = this.buildRequest;
+      this.buildFlow = new BuildFlow(this, request, this.decorationPlacement, this.constructionSites, tilePx, () => this.showWholeFarm(), () => this.leaveBuildFlow(request));
+      this.controller.addInputInterceptor(this.buildFlow);
+    }
     this.controller.addInputInterceptor(this.treePlanting);
 
     this.controller.addInputInterceptor({
@@ -750,7 +706,7 @@ export class MainScene extends Phaser.Scene {
     });
 
     this.controller.addInputInterceptor({
-      isActive: () => isCraftingMenuOpen(),
+      isActive: () => isFurnaceMenuOpen(),
       handleClick: () => {},
     });
 
@@ -771,16 +727,9 @@ export class MainScene extends Phaser.Scene {
       handleClick: () => {},
     });
 
-    // Menu da Caixa de Remessas aberto: o clique é só dele (mesma ideia do Inventário/Bancada).
+    // Menu da Caixa de Remessas aberto: o clique é só dele (mesma ideia do Inventário/Fornalha).
     this.controller.addInputInterceptor({
       isActive: () => this.shippingBinMenu.isOpen(),
-      handleClick: () => {},
-    });
-
-    // Loja aberta: o clique é só dela — antes disso faltava (dava pra andar/interagir com o cenário por trás dela), pedido
-    // explícito do usuário junto com o desfoque de fundo (ver `this.worldBlur` mais abaixo).
-    this.controller.addInputInterceptor({
-      isActive: () => this.shopMenu.isOpen(),
       handleClick: () => {},
     });
 
@@ -793,11 +742,14 @@ export class MainScene extends Phaser.Scene {
       if (!tutorial.allows({ kind: 'menu' })) return;
       const decoration = this.resolveSelectedDecoration();
       if (!decoration) return;
-      this.closeShopMenus();
       this.decorationPlacement.toggle(decoration);
     });
     registerMapEditorShortcut(this, 'farm');
     this.input.keyboard!.on('keydown-ESC', () => {
+      if (this.buildFlow?.isActive()) {
+        this.buildFlow.cancel(); // Voltar à loja do Marceneiro sem mudar nada.
+        return;
+      }
       if (isLetterOpen()) return; // A carta só fecha pelo botão (o pet só é liberado depois da leitura).
       // O ESC que fecha a conversa (a `UIScene` trata dele) não pode abrir a Pausa junto: a conversa já pode ter fechado neste mesmo frame.
       if (isDialogueOpen() || this.time.now - this.dialogueSeenOpenAt < DIALOGUE_ESC_GRACE_MS) return;
@@ -813,12 +765,8 @@ export class MainScene extends Phaser.Scene {
         closeInventoryScreen();
         return;
       }
-      if (isCraftingMenuOpen()) {
-        closeCraftingMenu();
-        return;
-      }
-      if (this.shopMenu.isOpen()) {
-        this.closeShopMenus();
+      if (isFurnaceMenuOpen()) {
+        closeFurnaceMenu();
         return;
       }
       if (this.shippingBinMenu.isOpen()) {
@@ -832,9 +780,8 @@ export class MainScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-E', () => {
       if (!tutorial.allows({ kind: 'menu' })) return; // Tutorial: nada de Inventário até terminar.
       if (isChestMenuOpen()) return; // O baú já mostra a bolsa; E não abre outra tela por cima.
-      this.closeShopMenus();
       if (this.shippingBinMenu.isOpen()) this.shippingBinMenu.close();
-      if (isCraftingMenuOpen()) closeCraftingMenu();
+      if (isFurnaceMenuOpen()) closeFurnaceMenu();
       this.decorationPlacement.cancel();
       toggleInventoryScreen();
     });
@@ -864,8 +811,6 @@ export class MainScene extends Phaser.Scene {
       this.farmlandRenderer.rustleCrop(col, row);
       rustleGrassTuft(this, this.grassTufts, col, row);
       this.farmResources.rustle(col, row); // <-- Faz os brotos e mudas balançarem
-      
-      this.closeShopMenus();
     });
 
     this.gameClock = gameState.gameClock;
@@ -922,95 +867,27 @@ export class MainScene extends Phaser.Scene {
     return { x: minCol * tilePx, y: minRow * tilePx, width: (maxCol - minCol + 1) * tilePx, height: (maxRow - minRow + 1) * tilePx };
   }
 
+  /** Enquadra a propriedade inteira (o que já está liberado) — a escolha de local da encomenda ao Marceneiro mostra a Fazenda toda. */
+  private showWholeFarm(): void {
+    const bounds = this.computeFarmCameraBounds();
+    const camera = this.cameras.main;
+    camera.stopFollow();
+    camera.setZoom(Math.min(camera.zoom, Math.max(0.4, Math.min(camera.width / bounds.width, camera.height / bounds.height))));
+    applyWorldCameraBounds(this, bounds.width, bounds.height, bounds.x, bounds.y);
+    camera.centerOn(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  }
+
+  /** Terminou (ou cancelou) a escolha: volta pra loja de onde veio, com um fade. */
+  private leaveBuildFlow(request: BuildRequest): void {
+    this.buildFlow = null;
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(request.returnTo.sceneKey, request.returnTo.data));
+  }
+
   /** Um trecho foi comprado: amplia os limites da câmera pra incluí-lo. */
   private applyFarmCameraBounds(): void {
     const bounds = this.computeFarmCameraBounds();
     applyWorldCameraBounds(this, bounds.width, bounds.height, bounds.x, bounds.y);
-  }
-
-  /** Fecha a loja da Fazenda — andar/menus/Esc a fecham. */
-  private closeShopMenus(): void {
-    if (this.shopMenu.isOpen()) this.shopMenu.close();
-  }
-
-  private buyShopItem(itemId: string): void {
-    const coinsBefore = this.inventory.getCoins();
-
-    if (CROPS[itemId]) this.buySeed(itemId);
-    else if (DECORATIONS[itemId]) this.buyDecoration(itemId);
-    else if (RECIPES[itemId]) this.buyRecipe(itemId);
-    else if (itemId === HAMMER.id) this.buyHammer();
-
-    // Só toca se a compra realmente aconteceu (saldo caiu) — sem moedas ou receita já desbloqueada ficam em silêncio.
-    if (this.inventory.getCoins() < coinsBefore) playEffect(this, SPEND_MONEY_SOUND);
-
-    this.shopMenu.refresh(this.inventory.getCoins());
-  }
-
-  private buySeed(cropId: string): void {
-    const crop = CROPS[cropId];
-    if (!crop) return;
-
-    if (this.inventory.spendCoins(crop.seedPrice)) {
-      this.inventory.addSeeds(cropId, 1);
-      console.log(`Comprado: 1 semente de ${crop.name} por ${crop.seedPrice} moedas (saldo: ${this.inventory.getCoins()}).`);
-    } else {
-      console.log(`Moedas insuficientes para comprar semente de ${crop.name} (precisa de ${crop.seedPrice}).`);
-    }
-  }
-
-  private buyDecoration(decorationId: string): void {
-    const decoration = DECORATIONS[decorationId];
-    if (!decoration) return;
-
-    if (this.inventory.spendCoins(decoration.price)) {
-      this.inventory.addDecorations(decorationId, 1);
-      console.log(
-        `Comprado: 1 ${decoration.name} por ${decoration.price} moedas (saldo: ${this.inventory.getCoins()}). Tecla B para posicionar.`,
-      );
-    } else {
-      console.log(`Moedas insuficientes para comprar ${decoration.name} (precisa de ${decoration.price}).`);
-    }
-  }
-
-  /** Compra o Martelo: desconta `HAMMER_PRICE` moedas e o entrega já num slot da Bolsa (compra única). */
-  private buyHammer(): void {
-    if (this.inventory.hasTool(HAMMER.id)) {
-      console.log('Você já tem o Martelo.');
-      return;
-    }
-    if (this.inventory.spendCoins(HAMMER_PRICE)) {
-      this.inventory.unlockTool(HAMMER.id);
-      console.log(`Comprado: Martelo por ${HAMMER_PRICE} moedas (saldo: ${this.inventory.getCoins()}).`);
-    } else {
-      console.log(`Moedas insuficientes para comprar o Martelo (precisa de ${HAMMER_PRICE}).`);
-    }
-  }
-
-  /**
-   * Compra a Receita (Fase 8 — Crafting), não o item em si: só debita
-   * moedas (`recipe.price`) e marca em `Inventory.unlockRecipe` — os
-   * `ingredients` (recursos) só são gastos depois, ao fabricar de verdade
-   * na Bancada de Trabalho. Substitui `buySword`/compra direta de arma.
-   */
-  private buyRecipe(recipeId: string): void {
-    const recipe = RECIPES[recipeId];
-    if (!recipe) return;
-
-    if (this.inventory.hasRecipe(recipeId)) {
-      console.log('Receita já desbloqueada.');
-      return;
-    }
-
-    const itemVisual = resolveSlotVisual({ category: recipe.category === 'armor' ? 'armor' : 'tool', id: recipe.itemId });
-    const itemName = itemVisual?.name ?? recipe.itemId;
-
-    if (this.inventory.spendCoins(recipe.price)) {
-      this.inventory.unlockRecipe(recipeId);
-      console.log(`Receita desbloqueada: ${itemName} (saldo: ${this.inventory.getCoins()}). Fabrique na Bancada de Trabalho.`);
-    } else {
-      console.log(`Moedas insuficientes para a receita de ${itemName} (precisa de ${recipe.price}).`);
-    }
   }
 
   /** Decoração do slot informado, se for da categoria `'decoration'` — usado tanto pelo atalho de teclado (B) quanto pela troca automática ao selecionar o slot (`handleHotbarChanged`), nenhum dos dois preso a uma decoração específica (Fase 9, antes só funcionava pro Poço). */
@@ -1079,14 +956,13 @@ export class MainScene extends Phaser.Scene {
   private isInputLocked(): boolean {
     return (
       isInventoryOpen() ||
-      isCraftingMenuOpen() ||
+      isFurnaceMenuOpen() ||
       isLetterOpen() ||
       isDialogueOpen() ||
       isChestMenuOpen() ||
       this.isEnteringHouse ||
       this.pauseMenu.isOpen() ||
-      this.shippingBinMenu.isOpen() ||
-      this.shopMenu.isOpen()
+      this.shippingBinMenu.isOpen()
     );
   }
 
@@ -1123,6 +999,8 @@ export class MainScene extends Phaser.Scene {
     // checagem — combina as duas fontes.
     updateTreeOverlap(this.player, this.farmResources.getTreeSprites());
     this.decorationPlacement.updateOcclusion();
+    if (!this.pauseMenu.isOpen()) this.chickenFlock.update(time, delta);
+    if (!this.pauseMenu.isOpen()) this.builderCrew.update(time, delta);
     this.mailbox.update();
     this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts` quando não precisar mais.
     this.farmlandRenderer.renderAll(this.farmland);
@@ -1143,9 +1021,8 @@ export class MainScene extends Phaser.Scene {
       this.playRoosterMorning();
     }
     
-    this.dayNightOverlay.setNightAlpha(this.gameClock.getNightAlpha());
+    this.dayNightOverlay.setHours(this.gameClock.getHours());
     this.worldBlur.setActive(this.isInputLocked());
 
-    if (this.shopMenu.isOpen()) this.shopMenu.refresh(this.inventory.getCoins());
   }
 }

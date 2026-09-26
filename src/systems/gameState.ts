@@ -11,8 +11,11 @@ import { CampaignState, createCampaignState } from '../data/campaign';
 import { RequestsState, createRequestsState } from '../data/requests';
 import { MailState, createMailState } from '../data/mail';
 import { EventsState, createEventsState } from '../data/events';
+import { SkillsState, createSkillsState } from '../data/skills';
+import { AnimalsState, createAnimalsState } from '../data/animals';
+import { ConstructionState, createConstructionState } from '../data/construction';
 
-/** Uma construção posicionada pelo jogador na Fazenda (Poço, Bancada, etc.) — só o necessário pra reconstruir depois: a definição completa (`data/decorations.ts`) é buscada de novo pelo id na hora de restaurar, nunca duplicada aqui. */
+/** Uma construção posicionada pelo jogador na Fazenda (Poço, Fornalha, etc.) — só o necessário pra reconstruir depois: a definição completa (`data/decorations.ts`) é buscada de novo pelo id na hora de restaurar, nunca duplicada aqui. */
 export interface PlacedDecorationRecord {
   decorationId: string;
   col: number;
@@ -117,6 +120,14 @@ export const gameState = {
   mail: createMailState() as MailState,
   /** Eventos do mundo por dia (`systems/eventManager.ts`): quais eventos de uma vez só já aconteceram. Vai pro save. */
   events: createEventsState() as EventsState,
+  /** Progressão: XP ganho/disponível e o nível comprado de cada habilidade — `systems/skills.ts`. Vai pro save. */
+  skills: createSkillsState() as SkillsState,
+  /** Animais: galinhas e ovos de cada galinheiro (`systems/animals.ts`). Vai pro save. */
+  animals: createAnimalsState() as AnimalsState,
+  /** Encomendas ao Marceneiro ainda não construídas (`systems/construction.ts`). Vai pro save. */
+  construction: createConstructionState() as ConstructionState,
+  /** Caverna: o andar mais fundo já alcançado (0 = nunca entrou) — libera um atalho a cada 5 andares (`data/caveFloors.ts`). Vai pro save. */
+  cave: { deepest: 0 },
   /** Cercas da lavoura destruídas pela horda ("col,row"), à espera do Martelo (`systems/farmFences.ts`) — vai pro save. */
   destroyedFences: new Set<string>(),
   /**
@@ -125,6 +136,10 @@ export const gameState = {
    * `tutorialStep`/`tutorialProgress` (passo atual e contagem dentro dele) só vivem na sessão — não vão pro save.
    */
   tutorialCompleted: true,
+  /** A dica "o regador secou, vá à Vila" (`data/tutorial.ts` `WATER_EMPTY_HINT`) já foi mostrada? Vai pro save: partida nova começa `false`, save antigo carrega `true` (quem já jogava conhece o poço); o padrão `true` cobre o fluxo de desenvolvimento. */
+  waterHintSeen: true,
+  /** Depois da dica, enquanto o regador está vazio o objetivo "encher o regador no poço da Vila" aparece na lista (`data/tutorial.ts` `WATER_OBJECTIVE_TEXT`) — só na sessão, some ao encher. */
+  waterObjective: false,
   tutorialStep: 0,
   tutorialProgress: 0,
   /** Último dia em que os aspersores tocaram a animação da manhã (só uma vez por dia) — não vai pro save. */

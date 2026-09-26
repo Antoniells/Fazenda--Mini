@@ -1,5 +1,8 @@
-import { WOOD_KEY, WOOD_FRAME, ROCK_KEY, ROCK_FRAME_2, PINE_TREE_KEY, PINE_SPROUT_FRAME_NAME, IRON_KEY, IRON_FRAME } from './tiles';
+import { WOOD_KEY, WOOD_FRAME, ROCK_KEY, ROCK_FRAME_2, PINE_TREE_KEY, PINE_SPROUT_FRAME_NAME, IRON_KEY, IRON_FRAME, METAL_ICON_FRAMES, COAL_KEY, COAL_FRAME } from './tiles';
 import { SLIME_KEY, SLIME_IDLE_FRAMES } from './enemies';
+import { EGG_ICON } from './animals';
+import { nameWithQuality, parseQualityId } from './quality';
+import { GRASS_DETAILS_KEY, WILD_GRASS_DETAIL } from './grassDetails';
 
 /**
  * Materiais coletáveis (Fase 7 — Coleta de Recursos): loot de árvores/
@@ -25,6 +28,8 @@ export interface ResourceDefinition {
   frameName: string | number;
   /** Preço (moedas) de venda de UMA unidade na Caixa de Remessas (`data/sellables.ts`). Ausente = não vende (ex.: bolota, que é semente de árvore). Baixo de propósito: um tronco rende 12-16 madeiras, então 1 moeda cada já vale ~14 por árvore. */
   sellPrice?: number;
+  /** Pode ter qualidade (estrelas Prata/Ouro/Irídio, `data/quality.ts`) — só o ovo por enquanto. */
+  hasQuality?: boolean;
 }
 
 /** Ícone reaproveita o mesmo frame já recortado por `systems/externalMapBuilder.ts` (pilha de madeira). */
@@ -68,14 +73,51 @@ export const SLIME_GOO: ResourceDefinition = {
   sellPrice: 4,
 };
 
-/** Ferro (barra): recompensa de sobreviver à horda (`data/horde.ts`) — não há outra fonte por ora (o minério da Pedreira é só decoração). Vende na Caixa de Remessas. */
+/** Barra de Ferro: sai da Fornalha (`data/smelting.ts`), e também é recompensa de sobreviver à horda (`data/horde.ts`) e drop da Caverna. Mantém o id `'iron'` (saves e missões antigas). Vende na Caixa de Remessas. */
 export const IRON: ResourceDefinition = {
   id: 'iron',
-  name: 'Ferro',
+  name: 'Barra de Ferro',
   textureKey: IRON_KEY,
   frameName: IRON_FRAME.name,
   sellPrice: 10,
 };
+
+/**
+ * Metais e carvão (Pedreira → Fornalha → Ferreiro): os MINÉRIOS BRUTOS saem dos veios da Pedreira (`data/ores.ts`, picareta) e o Carvão também; a Fornalha (`data/smelting.ts`)
+ * funde 5 brutos + 3 Carvões numa BARRA; o Ferreiro (`data/toolShop.ts`) cobra 5 barras (e moedas) por ferramenta. Ícones da folha `Bars and ores.png` (`METAL_ICON_FRAMES`) e de `Coal.png`.
+ * Os preços de venda são baixos de propósito (a barra vale mais que os 5 brutos, mas muito menos que a ferramenta que ela compra).
+ */
+export const COPPER_ORE: ResourceDefinition = { id: 'copper-ore', name: 'Cobre Bruto', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.copperOre.name, sellPrice: 2 };
+export const IRON_ORE: ResourceDefinition = { id: 'iron-ore', name: 'Ferro Bruto', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.ironOre.name, sellPrice: 3 };
+export const GOLD_ORE: ResourceDefinition = { id: 'gold-ore', name: 'Ouro Bruto', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.goldOre.name, sellPrice: 5 };
+export const COAL: ResourceDefinition = { id: 'coal', name: 'Carvão', textureKey: COAL_KEY, frameName: COAL_FRAME.name, sellPrice: 2 };
+export const COPPER_BAR: ResourceDefinition = { id: 'copper-bar', name: 'Barra de Cobre', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.copperBar.name, sellPrice: 8 };
+export const GOLD_BAR: ResourceDefinition = { id: 'gold-bar', name: 'Barra de Ouro', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.goldBar.name, sellPrice: 20 };
+
+/** Ovo de galinha (`data/animals.ts`): produção diária do galinheiro. Ícone: o 1º quadro (16x16) de `Icons/Food Icons/Chicken Egg.png`, carregado como spritesheet. Vende na Caixa de Remessas. */
+export const EGG: ResourceDefinition = {
+  id: 'egg',
+  name: 'Ovo',
+  textureKey: EGG_ICON.key,
+  frameName: 0,
+  sellPrice: 12,
+  hasQuality: true,
+};
+
+/** Capim: o que a Foice colhe do mato da Fazenda (`systems/wildGrass.ts`). Ícone: a própria moita (`WILD_GRASS_DETAIL`, registrada pela `MainScene`). */
+export const WILD_GRASS: ResourceDefinition = {
+  id: 'grass',
+  name: 'Capim',
+  textureKey: GRASS_DETAILS_KEY,
+  frameName: WILD_GRASS_DETAIL.frameName,
+  sellPrice: 1,
+};
+
+/** O nome mostrado de um id de estoque, com a qualidade se tiver ("Ovo (Prata)"). */
+export function resourceDisplayName(id: string): string {
+  const { baseId, quality } = parseQualityId(id);
+  return nameWithQuality(RESOURCES[baseId]?.name ?? id, quality);
+}
 
 export const RESOURCES: Record<string, ResourceDefinition> = {
   [WOOD.id]: WOOD,
@@ -83,4 +125,12 @@ export const RESOURCES: Record<string, ResourceDefinition> = {
   [ACORN.id]: ACORN,
   [SLIME_GOO.id]: SLIME_GOO,
   [IRON.id]: IRON,
+  [COPPER_ORE.id]: COPPER_ORE,
+  [IRON_ORE.id]: IRON_ORE,
+  [GOLD_ORE.id]: GOLD_ORE,
+  [COAL.id]: COAL,
+  [COPPER_BAR.id]: COPPER_BAR,
+  [GOLD_BAR.id]: GOLD_BAR,
+  [WILD_GRASS.id]: WILD_GRASS,
+  [EGG.id]: EGG,
 };

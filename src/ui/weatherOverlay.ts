@@ -10,17 +10,17 @@ const VEIL_DEPTH = 3;
 const RAIN_DEPTH = 4;
 
 /**
- * Gotas batendo (`Objects/Props/Sprash.png`, o mesmo respingo azul de regar):
- * a cada `SPLASH_INTERVAL_MS` nascem `SPLASHES_PER_TICK` respingos em pontos
- * aleatórios da tela — como o véu é em coordenadas de tela, caem em cima de
- * qualquer coisa visível (chão, plantas, copas de árvore, telhados). Só a
- * faixa de baixo do céu em diante (`SPLASH_TOP_FRACTION`), pra não respingar
- * no ar acima do horizonte da cena.
+ * Gotas batendo (`Objects/Props/Sprash.png`, o mesmo respingo azul de regar): a cada `SPLASH_INTERVAL_MS` nascem `SPLASHES_PER_TICK`
+ * respingos em pontos aleatórios da área VISÍVEL do MUNDO — criados dentro da cena do mapa (não na tela da `UIScene`), então ficam
+ * ancorados no chão: a câmera anda e eles ficam pra trás, e a profundidade é a própria posição Y (árvores, casas e o jogador passam na
+ * frente, como qualquer objeto do mundo). As riscas de chuva caindo continuam sendo efeito de tela.
  */
 const SPLASH_INTERVAL_MS = 55;
 const SPLASHES_PER_TICK = 2;
-const SPLASH_TOP_FRACTION = 0.1;
 const SPLASH_FRAME_RATE = 12;
+
+/** Cenas de mapa a céu aberto — onde os respingos são criados (a que estiver ativa). */
+const WORLD_SCENE_KEYS = ['MainScene', 'ForestScene', 'QuarryScene', 'BeachScene', 'VillageScene'];
 
 /** Cenas fechadas (sem céu) onde não chove: a Caverna e o interior da casa. */
 const INDOOR_SCENE_KEYS = ['CaveScene', 'HouseScene'];
@@ -95,20 +95,22 @@ export class WeatherOverlay {
     this.splashTimer.paused = !shouldRain;
   }
 
-  /** Um punhado de respingos em pontos aleatórios da tela — cada um toca a animação uma vez e se destrói. */
+  /** A cena de mapa a céu aberto que está rodando agora (a chuva cai nela), se houver. */
+  private activeWorldScene(): Phaser.Scene | undefined {
+    const key = WORLD_SCENE_KEYS.find((candidate) => this.scene.scene.isActive(candidate));
+    return key ? this.scene.scene.get(key) : undefined;
+  }
+
+  /** Um punhado de respingos em pontos aleatórios da área visível do mundo — cada um toca a animação uma vez e se destrói. */
   private spawnSplashes(): void {
-    if (!this.scene.textures.exists(SPLASH_KEY) || !this.scene.anims.exists(SPLASH_ANIM_KEY)) return;
-    const { width, height } = this.scene.scale;
+    const world = this.activeWorldScene();
+    if (!world || !world.textures.exists(SPLASH_KEY) || !world.anims.exists(SPLASH_ANIM_KEY)) return;
+    const view = world.cameras.main.worldView;
 
     for (let i = 0; i < SPLASHES_PER_TICK; i++) {
-      const splash = this.scene.add.sprite(
-        Phaser.Math.Between(0, width),
-        Phaser.Math.Between(Math.round(height * SPLASH_TOP_FRACTION), height),
-        SPLASH_KEY,
-        0,
-      );
-      splash.setScrollFactor(0);
-      splash.setDepth(RAIN_DEPTH + 1);
+      const y = Phaser.Math.Between(Math.round(view.y), Math.round(view.bottom));
+      const splash = world.add.sprite(Phaser.Math.Between(Math.round(view.x), Math.round(view.right)), y, SPLASH_KEY, 0);
+      splash.setDepth(y);
       splash.setScale(Phaser.Math.FloatBetween(0.9, 1.5));
       splash.setAlpha(0.9);
       splash.play(SPLASH_ANIM_KEY);

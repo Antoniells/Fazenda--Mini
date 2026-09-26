@@ -69,7 +69,7 @@ function deliverDrops(): Array<{ id: string; amount: number }> {
   return delivered;
 }
 
-/** Sobreviveu à noite: drops dos inimigos + BÔNUS (moedas, madeira, pedra e ferro). Encerra o evento. */
+/** Sobreviveu à noite: drops dos inimigos + BÔNUS (moedas, madeira, pedra e minério de ferro). Encerra o evento. */
 export function finishHordeVictory(): HordeSummary {
   const number = gameState.horde.number;
   const wasFinalNight = isFinalNightActive();
@@ -79,7 +79,7 @@ export function finishHordeVictory(): HordeSummary {
   gameState.inventory.addCoins(reward.coins);
   gameState.inventory.addResources('wood', reward.wood);
   gameState.inventory.addResources('stone', reward.stone);
-  gameState.inventory.addResources('iron', reward.iron);
+  gameState.inventory.addResources('iron-ore', reward.ironOre); // Minério BRUTO: a barra sai da Fornalha.
   gameState.horde.active = false;
   gameState.campaign.hordesWon += 1;
 
@@ -90,7 +90,7 @@ export function finishHordeVictory(): HordeSummary {
       `${reward.coins} moedas`,
       describe('wood', reward.wood),
       describe('stone', reward.stone),
-      describe('iron', reward.iron),
+      describe('iron-ore', reward.ironOre),
     ],
   };
 }

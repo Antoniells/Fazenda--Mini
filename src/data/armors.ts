@@ -5,9 +5,8 @@
  * (que ocupam o mesmo slot equipável das ferramentas), uma armadura nunca
  * é "selecionada" na Hotbar, é equipada à parte (paperdoll do Inventário).
  *
- * Só existem via Receita + Bancada de Trabalho (`data/recipes.ts`), nunca
- * compradas direto na Loja — por isso não têm `price` aqui, essa economia
- * mora inteira na `RecipeDefinition`.
+ * Só existem comprando no Ferreiro (`data/villageShop.ts`) — por isso não têm `price` aqui, essa economia
+ * mora inteira no catálogo dele.
  *
  * Ícone reaproveita `Chestplate.png` de cada tier em
  * `Icons/RPG icons/Weapons and Armor/<tier>/` (mesma folha 32x16, 2 frames

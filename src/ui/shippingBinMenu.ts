@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { playClick, playEffect } from '../systems/soundEffects';
-import { SELL_SOUND } from '../data/audio';
+import { SPEND_MONEY_SOUND } from '../data/audio';
 import { Inventory } from '../systems/inventory';
 import { getSellables, Sellable } from '../data/sellables';
+import { applySellBonus, getSellPriceMultiplier } from '../systems/skills';
 import {
   INVENTORY_PANEL_KEY,
   INVENTORY_PANEL_FRAME_NAME,
@@ -173,7 +174,7 @@ export class ShippingBinMenu {
         });
         frame.on('pointerover', () => {
           const item = this.findSellable(slot.itemKey);
-          if (item) this.infoText.setText(`${item.name} — ${item.price} moedas cada`);
+          if (item) this.infoText.setText(`${item.name} — ${item.price} moedas cada${getSellPriceMultiplier() > 1 ? ` (+${Math.round((getSellPriceMultiplier() - 1) * 100)}% ao vender)` : ''}`);
         });
         frame.on('pointerout', () => this.showDefaultInfo());
       }
@@ -258,7 +259,8 @@ export class ShippingBinMenu {
       coins += amount * (this.findSellable(itemKey)?.price ?? 0);
       items += amount;
     }
-    return { coins, items };
+    // Bônus da habilidade Comerciante: arredondado uma vez, no total.
+    return { coins: applySellBonus(coins), items };
   }
 
   private moveToBin(itemKey: string, all: boolean): void {
@@ -291,13 +293,14 @@ export class ShippingBinMenu {
       coins += sold * item.price;
       items += sold;
     }
+    coins = applySellBonus(coins);
     this.pending.clear();
     if (items <= 0) {
       this.render();
       return;
     }
 
-    playEffect(this.scene, SELL_SOUND); // A venda de verdade tem som próprio (o clique do botão já tocou).
+    playEffect(this.scene, SPEND_MONEY_SOUND); // Vender toca o mesmo som de comprar (pedido explícito).
     this.inventory.addCoins(coins);
     console.log(`Vendido: ${items} ite${items === 1 ? 'm' : 'ns'} por ${coins} moedas (saldo: ${this.inventory.getCoins()}).`);
     this.onSold(coins, items);

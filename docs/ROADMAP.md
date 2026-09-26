@@ -59,13 +59,13 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#construções-decoração-e-expansão-
 - [x] Sistema de Tempo (Relógio interno, ciclo dia/noite e transição de dias)
 - [ ] Árvores (corte com machado, drop de madeira, renascimento com o tempo)
 - [ ] Pedras e Minérios (quebrar com picareta, drop de pedra/minério)
-- [ ] Animais (compra e posicionamento no pasto)
-- [ ] Produção Animal (coleta diária de ovos, leite, etc.)
+- [ ] Animais (compra e posicionamento no pasto) — **galinhas prontas** (Galinheiro + aba Animais na Loja, ver [TECHNICAL.md](TECHNICAL.md#animais-galinhas-e-galinheiro-dataanimalsts-systemsanimalsts-entitieschickenets-systemschickenflockts)); demais animais pendentes
+- [ ] Produção Animal (coleta diária de ovos, leite, etc.) — **ovos prontos** (1 por galinha por dia, recolhidos no galinheiro e vendidos na Caixa de Remessas); leite e demais pendentes
 
 Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 
 ## Fase 8 — Progressão e NPCs
-- [ ] Níveis e Experiência (XP ganho por colher/cortar/minerar)
+- [x] Níveis e Experiência (XP ganho por colher/cortar/minerar/derrotar inimigos + árvore de habilidades no Inventário — ver [TECHNICAL.md](TECHNICAL.md#progressão-e-rpg-xp-e-árvore-de-habilidades-datascillsts-systemsskillsts-uiskilltreepanelts); pesca e resistência ainda sem sistema)
 - [ ] Upgrade de Ferramentas (melhorar ferramentas usando minérios coletados)
 - [ ] Desbloqueios e Novos Itens (lojas que vendem sementes/itens melhores à medida que novas áreas são expandidas)
 - [x] Missões/Pedidos (campanha em 4 atos dada pelos moradores do Vilarejo, com FIM na Noite Final — ver [TECHNICAL.md](TECHNICAL.md#vilarejo-moradores-tempo-global-e-campanha))

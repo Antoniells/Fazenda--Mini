@@ -8,6 +8,7 @@ import { gameState } from './gameState';
 import { handlePlayerDeath } from './playerDeath';
 import { SLIME_GOO } from '../data/resources';
 import { spawnLoot } from './lootDrops';
+import { awardXp } from './skills';
 import { PLAYER_ATTACKED_EVENT } from './combat';
 
 /** Quantos Slimes existem na Floresta por dia (pedido explícito do usuário: só lá, nenhuma outra cena). */
@@ -67,6 +68,7 @@ export class SlimeSpawner {
     const amount = Phaser.Math.Between(1, 3);
     // A gosma cai no chão onde o Slime morreu; o jogador pega ao chegar perto (ver `systems/lootDrops.ts`).
     spawnLoot(this.scene, this.player, x, y, { category: 'resource', id: SLIME_GOO.id, amount });
+    awardXp(this.scene, 'slime', x, y - 20);
     console.log(`Slime derrotado: +${amount} ${SLIME_GOO.name}.`);
   }
 

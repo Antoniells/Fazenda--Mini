@@ -6,7 +6,7 @@ const BLUR_QUALITY = 0;
 const BLUR_STRENGTH = 1.6;
 
 /**
- * Desfoque leve do MUNDO enquanto qualquer janela de UI está aberta (Loja, Inventário, Bancada, Caixa de Remessas, Pausa/
+ * Desfoque leve do MUNDO enquanto qualquer janela de UI está aberta (Loja, Inventário, Fornalha, Caixa de Remessas, Pausa/
  * Configurações — pedido explícito do usuário: "sempre que qualquer janela de UI for aberta"). Usa o filtro `Blur` nativo do
  * Phaser 4 (`camera.filters.internal`), aplicado só na câmera do MUNDO — a HUD/UI fica em uma câmera à parte
  * (`systems/uiCamera.ts`) que este filtro nunca toca, então painéis e texto continuam nítidos por cima do fundo borrado.

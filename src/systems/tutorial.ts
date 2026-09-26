@@ -1,6 +1,6 @@
 import { gameState } from './gameState';
 import { save } from './saveManager';
-import { TUTORIAL_STEPS, TUTORIAL_START_SLOT, TutorialAction, TutorialItem, TutorialStep } from '../data/tutorial';
+import { TUTORIAL_STEPS, TUTORIAL_START_SLOT, WATER_EMPTY_HINT, TutorialAction, TutorialItem, TutorialStep } from '../data/tutorial';
 
 /** Comandos do jogador que o tutorial pode travar — quem recebe o comando (controlador, Hotbar, menus) pergunta `tutorial.allows(...)` antes de agir. */
 export type TutorialCommand =
@@ -33,6 +33,8 @@ class TutorialManager {
   private readonly listeners = new Set<Listener>();
   /** Só depois de `begin()` (a Fazenda abriu) o tutorial trava comandos — nenhuma outra tela fica presa por ele. */
   private running = false;
+  /** Uma dica avulsa aberta (`WATER_EMPTY_HINT`): ocupa o painel como um passo "info" e some no botão — fora da fila de passos. */
+  private hint: TutorialStep | null = null;
 
   /** Começa (ou retoma, se a cena reabriu no meio) o tutorial — no-op se já foi concluído. */
   begin(): void {
@@ -49,7 +51,23 @@ class TutorialManager {
   }
 
   getStep(): TutorialStep | null {
+    if (this.hint) return this.hint;
     return this.isRunning() ? TUTORIAL_STEPS[gameState.tutorialStep] ?? null : null;
+  }
+
+  /** O painel está mostrando uma dica avulsa (e não um passo do tutorial)? */
+  isHint(): boolean {
+    return this.hint !== null;
+  }
+
+  /**
+   * O regador acabou de esvaziar: na primeira vez da partida (e fora dos passos do tutorial), mostra a dica que manda o jogador ao Vilarejo e fala do Poço.
+   * O botão dela (`confirm`) põe o objetivo "encher o regador no poço da Vila" na lista do HUD (`gameState.waterObjective`).
+   */
+  notifyWaterEmpty(): void {
+    if (gameState.waterHintSeen || this.isRunning() || this.hint) return;
+    this.hint = WATER_EMPTY_HINT;
+    this.emit();
   }
 
   /** "Passo 3 de 9" — número (1-based) e total, pro painel. */
@@ -105,11 +123,20 @@ class TutorialManager {
 
   /** Botão dos passos "info" (Começar / Concluir). */
   confirm(): void {
+    if (this.hint) {
+      this.hint = null;
+      gameState.waterHintSeen = true;
+      gameState.waterObjective = gameState.inventory.getWateringCanCharges() === 0;
+      save();
+      this.emit();
+      return;
+    }
     if (this.getStep()?.goal.kind === 'info') this.advance();
   }
 
   /** Botão "Pular tutorial": encerra em qualquer passo e conta como concluído (grava no save — não volta a aparecer). */
   skip(): void {
+    if (this.hint) return; // A dica só fecha no botão dela.
     if (this.isRunning()) this.complete();
   }
 
