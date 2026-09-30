@@ -3,27 +3,27 @@
 > Este roadmap define a ordem de desenvolvimento do projeto. Nenhuma fase deve ser adiantada sem solicitação explícita — ver [CLAUDE.md](../CLAUDE.md).
 
 ## Fase 1 — Fundação técnica
-- [ ] Configurar Vite
-- [ ] Configurar TypeScript
-- [ ] Instalar/configurar Phaser
-- [ ] Criar estrutura inicial
-- [ ] Criar cena principal
-- [ ] Verificar execução do projeto
+- [x] Configurar Vite
+- [x] Configurar TypeScript
+- [x] Instalar/configurar Phaser
+- [x] Criar estrutura inicial
+- [x] Criar cena principal
+- [x] Verificar execução do projeto
 
 ## Fase 2 — Mundo e mapa
-- [ ] Sistema de grid
-- [ ] Mapa da fazenda
-- [ ] Terrenos
-- [ ] Obstáculos
-- [ ] Câmera
+- [x] Sistema de grid
+- [x] Mapa da fazenda
+- [x] Terrenos
+- [x] Obstáculos
+- [x] Câmera
 
 ## Fase 3 — Personagem
-- [ ] Personagem
-- [ ] Animações
-- [ ] Movimentação
-- [ ] Clique no mapa
-- [ ] Pathfinding
-- [ ] Interação com o ambiente
+- [x] Personagem
+- [x] Animações
+- [x] Movimentação
+- [x] Clique no mapa
+- [x] Pathfinding
+- [x] Interação com o ambiente
 
 ## Fase 4 — Agricultura
 - [x] Terrenos cultiváveis
@@ -57,41 +57,38 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#construções-decoração-e-expansão-
 
 ## Fase 7 — Tempo, Animais e Recursos
 - [x] Sistema de Tempo (Relógio interno, ciclo dia/noite e transição de dias)
-- [ ] Árvores (corte com machado, drop de madeira, renascimento com o tempo)
-- [ ] Pedras e Minérios (quebrar com picareta, drop de pedra/minério)
+- [x] Árvores (corte com machado, drop de madeira, renascimento com o tempo — Fazenda e Floresta)
+- [x] Pedras e Minérios (quebrar com picareta, drop de pedra/minério — veios na Pedreira e nos andares das Cavernas, Fornalha pra fundir as barras; ver [TECHNICAL.md](TECHNICAL.md#fornalha-minério-e-ferramentas-no-ferreiro))
 - [ ] Animais (compra e posicionamento no pasto) — **galinhas prontas** (Galinheiro + aba Animais na Loja, ver [TECHNICAL.md](TECHNICAL.md#animais-galinhas-e-galinheiro-dataanimalsts-systemsanimalsts-entitieschickenets-systemschickenflockts)); demais animais pendentes
 - [ ] Produção Animal (coleta diária de ovos, leite, etc.) — **ovos prontos** (1 por galinha por dia, recolhidos no galinheiro e vendidos na Caixa de Remessas); leite e demais pendentes
 
 Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 
 ## Fase 8 — Progressão e NPCs
-- [x] Níveis e Experiência (XP ganho por colher/cortar/minerar/derrotar inimigos + árvore de habilidades no Inventário — ver [TECHNICAL.md](TECHNICAL.md#progressão-e-rpg-xp-e-árvore-de-habilidades-datascillsts-systemsskillsts-uiskilltreepanelts); pesca e resistência ainda sem sistema)
-- [ ] Upgrade de Ferramentas (melhorar ferramentas usando minérios coletados)
-- [ ] Desbloqueios e Novos Itens (lojas que vendem sementes/itens melhores à medida que novas áreas são expandidas)
+- [x] Níveis e Experiência (XP ganho por colher/cortar/minerar/derrotar inimigos + árvore de habilidades no Inventário — ver [TECHNICAL.md](TECHNICAL.md#progressão-e-rpg-xp-e-árvore-de-habilidades-datascillsts-systemsskillsts-uiskilltreepanelts); a pesca chegou na Fase 11; resistência ainda sem sistema)
+- [x] Upgrade de Ferramentas (Machado/Picareta de Cobre, Ferro e Ouro no Ferreiro, por moedas + barras da Fornalha; encantamentos na Fase 11)
+- [ ] Desbloqueios e Novos Itens (lojas que vendem sementes/itens melhores à medida que novas áreas são expandidas) — parcial: cada morador tem a sua loja (Ferreiro, Insumos, Marcenaria), mas o catálogo ainda não cresce com as expansões
 - [x] Missões/Pedidos (campanha em 4 atos dada pelos moradores do Vilarejo, culminando na Noite Final — o fim do jogo passou pra Fase 11 — ver [TECHNICAL.md](TECHNICAL.md#vilarejo-moradores-tempo-global-e-campanha))
 - [x] NPCs (moradores do Vilarejo, com casa, rotina por horário e conversa)
 
 ## Fase 9 — Polimento Final
-- [ ] Interface (Refinamento final de menus, relógio/calendário HUD)
+- [ ] Interface (Refinamento final de menus, relógio/calendário HUD) — parcial: Inventário/Loja em livro, relógio de estação, Pausa e Configurações prontos; falta a revisão final
 - [x] Efeitos (poeira, respingo, pulo elástico — "Pit Stop de Polimento")
 - [x] Feedback visual (sombras, cursor, SeedBar/CoinBar animadas — "Pit Stop de Polimento")
-- [ ] Sons e Música (SFX para ferramentas, passos e BGM do mundo)
-- [ ] Animações (vento nas árvores, água animada)
-- [ ] Balanceamento (ajuste de preços da loja e custo das pontes de expansão)
-- [ ] Salvamento (Sistema de Save/Load guardando o progresso do dia, grid e inventário)
+- [x] Sons e Música (SFX de ferramentas, passos, combate e interface; música do dia; narração da cena introdutória) — os sons dos momentos da história ficam na Fase 11, Etapa 6
+- [ ] Animações (vento nas árvores, água animada) — a água já é animada; falta o vento nas árvores
+- [ ] Balanceamento (ajuste de preços da loja e custo das pontes de expansão) — junto com a rodada de jogo da história (Fase 11, Etapa 6)
+- [x] Salvamento (3 slots; no executável, em `Documentos/Mini Fazenda`; campos novos sempre opcionais, pra saves antigos continuarem carregando)
 
-> Nota: os itens marcados acima foram adiantados como um "Pit Stop de
-> Polimento" pedido explicitamente entre a Fase 5 e a Fase 6 — não uma
-> Fase 9 completa. Sons e o restante da interface/animações continuam
-> pendentes para quando a Fase 9 for feita de verdade, na ordem do
-> roadmap. Detalhes: ver [TECHNICAL.md](TECHNICAL.md#polimento-visual-pit-stop-antes-da-fase-9).
+Detalhes: ver [TECHNICAL.md](TECHNICAL.md#polimento-visual-pit-stop-antes-da-fase-9).
 
 ## Fase 10 — Desktop
 - [x] Integração com Electron (janela, save em `Documentos/Mini Fazenda`, tela cheia — ver [TECHNICAL.md](TECHNICAL.md#integração-com-electron-fase-10))
 - [x] Build (`npm run build:electron`)
 - [x] Testes (Vitest pra lógica em `tests/unit`, Playwright de ponta a ponta em `tests/e2e` — ver [TECHNICAL.md](TECHNICAL.md#testes-automáticos))
 - [x] Geração do executável
-- [x] Criação do instalador (NSIS, `release/Mini-Fazenda-Setup-<versão>.exe`)
+- [x] Criação do instalador (NSIS, `release-<versão>/Mini-Fazenda-Setup-<versão>.exe`; atualiza por cima da versão anterior — ver [TECHNICAL.md](TECHNICAL.md#instalador-atualizar-por-cima-da-versão-anterior))
+- [x] Menu de hack (F9) só no modo de desenvolvimento
 
 ## Fase 11 — Os Três Pilares do Equilíbrio (endgame)
 A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à paz quando a Cenoura Dourada, o Peixe Dourado e a Amizade Dourada (o pet escolhido na criação, que se sacrifica) forem oferecidos no altar do Sábio Coelho, no andar 100 das Cavernas. A campanha dos moradores continua, mas a Noite Final não encerra mais o jogo. Detalhes: ver [TECHNICAL.md](TECHNICAL.md#história-principal-os-três-pilares-fase-11).
@@ -100,9 +97,10 @@ A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à pa
 - [x] Etapa 2 — Cavernas até o 50: minérios nos andares (por profundidade e raridade), Azurita a partir do 45 (minério e barra), barreira no 50 bloqueando a escada e o baú com o mapa
 - [x] Etapa 3 — Floresta oculta e o Mago: área oculta (castelo), o Mago e as entregas de peixes, Mesa de Encantamentos (Picareta/Machado +20% força, Espada +35% dano, Armadura +15% defesa) e a barreira quebrada pela Picareta encantada
 - [x] Etapa 4 — Descida 51-100: andares mais hostis e a Horda Final do andar 100 (3 ondas)
-- [x] Etapa 5 — Santuário e fim: o andar 100 vira santuário, semente e lago do Peixe Dourado, plantio no altar, sacrifício do pet, cinemática, créditos e a caixa com o filhote
-- [ ] Etapa 6 — Polimento: falas e cartas da história, balanceamento, sons e documentação
+- [x] Etapa 5 — Santuário e fim: o andar 100 vira santuário, semente e lago do Peixe Dourado, plantio no altar, sacrifício do pet, cinemática, créditos e a caixa com o filhote; depois do fim, o mundo em paz (sem hordas nem monstros)
+- [x] Cena introdutória narrada: 4 slides com texto datilografado, narração por slide (ElevenLabs, `tools/generate_intro_voices.py`), avançar com F/Espaço e pular com ESC — ver [TECHNICAL.md](TECHNICAL.md#cena-introdutória-scenesintroscenets-dataintrots)
+- [ ] Etapa 6 — Polimento: rodada de jogo da história inteira e balanceamento (Azurita, peixes do Mago, custo dos encantamentos, Horda Final, crescimento da Cenoura), falas e cartas dos moradores e do Mago sobre a profecia, sons do altar/sacrifício/onda de luz/pesca, música da cinemática e dos créditos, arte da Cenoura Dourada e a narração em inglês
 
 ---
 
-**Status atual:** Fases 1-5 implementadas e testadas em jogo (fundação, mapa, personagem/movimentação/pathfinding, agricultura e economia), Fases 1-5 100% concluídas. Ciclo completo testado: plantar (com sementes do estoque) → colher → vender na Caixa de Remessas → comprar mais sementes na Loja. Um "Pit Stop de Polimento" visual (sombras, cursor de seleção, efeitos de arar/regar/colher/vender, entrada animada de HUDs) foi adiantado por pedido explícito — sem sons nem ferramentas no inventário, que ficam para quando a Fase 9 for feita por completo. Fase 6 (Construções, Decoração e Expansão) 100% concluída: sistema de posicionamento livre (comprar → posicionar → remover, usando o Poço como primeiro objeto) e expansão de propriedade estilo Forager (4 trechos ao redor do núcleo, cada um com sua própria placa física comprável). Fase 7 com o primeiro item pronto: Sistema de Tempo (relógio interno, ciclo dia/noite, contador de dias) — Árvores, Pedras/Minérios, Animais e Produção Animal ainda pendentes.
+**Status atual (versão 0.1.9):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface, vento nas árvores e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.

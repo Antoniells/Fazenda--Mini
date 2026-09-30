@@ -33,7 +33,7 @@ Alterações não podem quebrar comportamento já funcionando, a menos que a mud
 Mudanças devem ficar restritas ao escopo pedido. Não aproveitar a tarefa para refatorar, "limpar" ou alterar código não relacionado.
 
 ### 9. Testar as alterações realizadas
-Toda alteração relevante deve ser verificada (execução do jogo, testes automatizados quando existirem, ou inspeção funcional direta) antes de considerar a tarefa concluída.
+Toda alteração relevante deve ser verificada (execução do jogo, testes automatizados ou inspeção funcional direta) antes de considerar a tarefa concluída. Os testes automáticos são `npm test` (Vitest, lógica em `tests/unit`) e `npm run test:e2e` (Playwright, o jogo no navegador em `tests/e2e`); regra nova de lógica pura ganha teste de unidade. Detalhes em [docs/TECHNICAL.md](docs/TECHNICAL.md#testes-automáticos).
 
 ### 10. Corrigir problemas encontrados
 Se uma verificação revelar um problema, corrigi-lo faz parte da tarefa — não deixar para depois nem reportar como "funciona, mas com esse detalhe".
@@ -48,6 +48,8 @@ Nunca gerar elementos visuais via HTML, CSS, SVG, emojis ou formas desenhadas pr
 
 - TypeScript + Phaser + Vite para o desenvolvimento do jogo.
 - Electron foi integrado na Fase 10 (empacotamento desktop): processo principal e preload em `electron/`, detalhes em [docs/TECHNICAL.md](docs/TECHNICAL.md#integração-com-electron-fase-10).
+- Testes: Vitest (lógica, com o Phaser substituído) e Playwright (ponta a ponta, dirigindo o menu de hack).
+- Ferramentas fora do jogo ficam em `tools/` (ex.: `tools/generate_intro_voices.py`, narração da intro pelo ElevenLabs — a chave da API vem sempre da variável `ELEVENLABS_API_KEY`, nunca do código).
 - A arquitetura do jogo continua independente da camada de empacotamento: nada em `src/` importa Electron. Tudo que é específico de desktop (arquivos de save, tela cheia) chega ao jogo por adaptadores (`systems/storageAdapter.ts`, `systems/displayMode.ts`) que caem no comportamento de navegador quando a ponte do Electron não existe.
 
 ## Escopo de design
@@ -56,4 +58,10 @@ Este é exclusivamente um jogo de fazenda, inspirado na experiência da Mini Faz
 
 ## Estado atual
 
-O projeto está na fase de fundação e documentação. Nenhuma funcionalidade de jogo foi implementada ainda. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para saber o que está liberado para desenvolvimento no momento.
+Versão **0.1.9**. O jogo está completo do começo ao fim: agricultura, economia, construções e melhorias, tempo e clima, recursos e mineração, Vilarejo com moradores e campanha, hordas, Cavernas de 100 andares, pesca e a história principal ("Os Três Pilares do Equilíbrio"), da cena introdutória narrada ao fim com cinemática e créditos. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para o que está pronto e o que falta — o próximo trabalho é a **Etapa 6 da Fase 11** (rodada de jogo, balanceamento e polimento de falas, sons e arte).
+
+Convenções de trabalho que valem para todas as tarefas:
+- **Menu de hack (F9)**: ferramenta de teste (`src/debug/hackMenu.ts`), só no modo de desenvolvimento (`npm run dev`); leva a qualquer cena e a qualquer marco da história.
+- **Saves**: todo campo novo no `SaveData` é opcional e tem valor padrão ao carregar — saves de versões antigas precisam continuar abrindo.
+- **Versão e instalador**: subir a versão no `package.json`, rodar os testes e gerar com `npm run build && npm run electron:compile && npx electron-builder --win --config.directories.output=release-<versão>` (o `npm run build:electron` puro gera em `release/`), com o `npm run dev` fechado — senão o empacotamento falha com EPERM. O instalador substitui a versão anterior instalada (`build/installer.nsh`). O `appId` não pode mudar.
+- **Documentação**: cada sistema novo ganha uma seção em [docs/TECHNICAL.md](docs/TECHNICAL.md) e o seu item no roadmap.
