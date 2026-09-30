@@ -1,5 +1,6 @@
 import { ExpansionChunk, FarmMapData, getFarmlandFenceLayout } from '../data/maps/farmMap';
 import { waterCellsFromGround } from './waterCells';
+import { houseSolidCells } from './upgradeLevels';
 
 export interface WalkableGrid {
   cols: number;
@@ -82,12 +83,8 @@ export function buildWalkableGrid(map: FarmMapData): WalkableGrid {
   // Casa do jogador (Fase 9): bloco sólido inteiro — a única célula com
   // interação própria é a porta (`houseDoorPosition`, registrada à parte
   // em `systems/sleepInteraction.ts`), as demais só impedem passagem.
-  const { col0: houseCol0, row0: houseRow0, cols: houseCols, rows: houseRows } = map.housePosition;
-for (let row = houseRow0 + 3; row < houseRow0 + houseRows -1; row++) {
-    for (let col = houseCol0; col < houseCol0 + houseCols -1; col++) {
-      blocked.add(key(col, row));
-    }
-  }
+  // (a máscara vem do nível atual da casa, `data/houseLevels.ts`)
+  for (const [col, row] of houseSolidCells()) blocked.add(key(col, row));
 
   // Cerca da lavoura (Fase 9): mesmo perímetro desenhado por
   // `mapBuilder.buildFarmlandFence` (fonte única em `getFarmlandFenceLayout`,

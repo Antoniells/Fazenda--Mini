@@ -4,7 +4,7 @@
 export type VillageStructureRole = 'shop' | 'banker' | 'pirate' | 'supplier' | 'carpenter';
 
 export interface VillageStructureLayout {
-  /** Id de `VILLAGE_ASSETS` (`data/maps/villageMap.ts`): house2, house3, house7, house8, newsstand, fountain. */
+  /** Id de `VILLAGE_ASSETS` (`data/maps/villageMap.ts`): house2, house3, house7, house8, blacksmithHouse, newsstand, fountain. */
   asset: string;
   /** Célula do canto superior-esquerdo da ARTE (não das paredes). */
   col: number;
@@ -39,9 +39,9 @@ export const villageLayout: VillageLayoutData = {
     [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 224, 251, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
     [57, 57, 69, 57, 57, 57, 57, 69, 69, 69, 57, 57, 69, 57, 224, 251, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57, 57, 57, 57],
     [57, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 69, 69, 57, 224, 251, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57],
-    [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 200, 200, 202, 202, 221, 222, 202, 202, 203, 57, 69, 69, 57, 57, 57, 57, 69, 57, 57, 57],
-    [69, 69, 57, 57, 57, 57, 57, 57, 57, 69, 248, 224, 249, 249, 249, 249, 249, 249, 251, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57],
-    [57, 69, 57, 69, 57, 57, 57, 69, 57, 69, 224, 224, 249, 249, 249, 249, 249, 249, 251, 57, 57, 57, 69, 57, 69, 69, 57, 57, 57, 57],
+    [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 59, 200, 202, 202, 221, 222, 202, 202, 203, 57, 69, 69, 57, 57, 57, 57, 69, 57, 57, 57],
+    [69, 69, 57, 57, 57, 57, 57, 57, 57, 69, 59, 224, 249, 249, 249, 249, 249, 249, 251, 57, 57, 57, 57, 57, 57, 57, 57, 57, 69, 57],
+    [57, 69, 57, 69, 57, 57, 57, 69, 57, 69, 59, 224, 249, 249, 249, 249, 249, 249, 251, 57, 57, 57, 69, 57, 69, 69, 57, 57, 57, 57],
     [200, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 221, 249, 249, 249, 249, 249, 249, 222, 202, 202, 202, 202, 202, 202, 202, 202, 203, 57, 69],
     [272, 273, 273, 273, 273, 273, 273, 273, 273, 273, 245, 249, 249, 249, 249, 249, 249, 249, 246, 273, 273, 369, 273, 273, 273, 274, 369, 275, 57, 57],
     [57, 57, 57, 57, 57, 57, 57, 69, 69, 57, 224, 249, 249, 249, 249, 249, 249, 249, 251, 57, 57, 69, 57, 57, 69, 57, 57, 57, 69, 57],
@@ -60,14 +60,16 @@ export const villageLayout: VillageLayoutData = {
     [57, 69, 57, 69, 69, 57, 57, 57, 69, 57, 69, 57, 57, 57, 57, 57, 57, 69, 57, 57, 69, 57, 57, 57, 57, 57, 57, 57, 57, 57],
   ],
   backgroundColor: '#7ec433',
-  blockedArea: [],
+  blockedArea: [
+    [10, 13],
+  ],
   structures: [
     { asset: 'house2', col: 24, row: 1 },
     { asset: 'house7', col: 16, row: 1, role: 'carpenter' },
     { asset: 'house3', col: 6, row: 1, role: 'supplier' },
     { asset: 'house2', col: 1, row: 1 },
     { asset: 'house3', col: 21, row: 8, role: 'banker' },
-    { asset: 'house8', col: 3, row: 7, role: 'shop' },
+    { asset: 'blacksmithHouse', col: 2, row: 8, role: 'shop' },
     { asset: 'house7', col: 21, row: 18, role: 'pirate' },
     { asset: 'house2', col: 16, row: 18 },
     { asset: 'house3', col: 6, row: 18 },
@@ -87,7 +89,7 @@ export const villageLayout: VillageLayoutData = {
     [7, 27],
     [2, 27],
     [12, 10],
-    [2, 9],
+    [1, 9],
   ],
   props: [
     [27, 7, 'prop-flower-white-cluster'],

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { WalkableGrid } from '../../systems/grid';
 import { Enemy, EnemyStats } from '../Enemy';
 import { BLOOM_SHEETS, SheetDef } from '../../data/caveEnemies';
 
@@ -35,6 +36,8 @@ export class BloomEnemy extends Enemy {
     x: number,
     y: number,
     stats: EnemyStats,
+    private readonly grid: WalkableGrid,
+    private readonly tilePx: number,
     private readonly onDeathCallback: (x: number, y: number) => void,
     private readonly onAttackHit: (damage: number, time: number, attacker: Enemy) => void,
   ) {
@@ -48,6 +51,15 @@ export class BloomEnemy extends Enemy {
     create('cave-bloom:strike', BLOOM_SHEETS.attack, 8, 0, 2, 3);
     create('cave-bloom:dead', BLOOM_SHEETS.dead, 7, 0);
     this.sprite.setFrame(0); // O botão fechado (o 1º quadro do despertar).
+  }
+
+  /** O empurrão do golpe para na parede (`Enemy.knockbackTarget`): o mesmo corpo de 28x28 nos pés dos outros bichos da Caverna. */
+  protected override canOccupy(x: number, y: number): boolean {
+    const left = Math.floor((x - 14) / this.tilePx);
+    const right = Math.floor((x + 14) / this.tilePx);
+    const top = Math.floor((y - 30) / this.tilePx);
+    const bottom = Math.floor((y - 2) / this.tilePx);
+    return this.grid.isWalkable(left, top) && this.grid.isWalkable(right, top) && this.grid.isWalkable(left, bottom) && this.grid.isWalkable(right, bottom);
   }
 
   protected updateBehavior(time: number, _delta: number, playerX: number, playerY: number): void {

@@ -274,6 +274,13 @@ export const GAME_CURSOR_HOTSPOT = { x: 1, y: 1 };
 export const GAME_CURSOR_SCALE = 2;
 
 /**
+ * Ponteiro "entrar" (`systems/gameCursor.ts`, `installEnterHoverCursor`): mostrado sobre as casas que se pode entrar — o 3º ícone da 3ª fileira de `UI/HUD.png` (a luva apontando,
+ * célula 16x16 em 32,32; bounding box medido pelo alfa: x=35,y=33; 12x14). `HOTSPOT` = a ponta do dedo dentro do recorte.
+ */
+export const ENTER_CURSOR_RECT = { x: 35, y: 33, width: 12, height: 14 };
+export const ENTER_CURSOR_HOTSPOT = { x: 2, y: 1 };
+
+/**
  * Defesa da armadura equipada (`ui/armorHud.ts`): `UI/Armor.png` (207x80) tem 3
  * peitorais lado a lado — cheio (aço), meio (metade aço/metade branco) e
  * vazio (branco) — o mesmo esquema cheio/meio/vazio dos corações

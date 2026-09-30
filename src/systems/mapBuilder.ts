@@ -14,12 +14,12 @@ import {
   SHIPPING_BIN_FRAME_NAME,
   SHIPPING_BIN_FRAME,
   CONSTRUCTION_SIGN_KEY,
-  PLAYER_HOUSE_KEY,
   BRIDGE_KEY,
   BRIDGE_HORIZONTAL_FRAME,
   BRIDGE_VERTICAL_WALL_TILE_FRAME,
   BRIDGE_VERTICAL_POST_FRAME,
 } from '../data/tiles';
+import { currentHouseLevel, fenceSkin } from './upgradeLevels';
 import { addBuildingShadows, createGroundShadow } from './shadow';
 import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
@@ -48,8 +48,9 @@ function placeFenceTile(
   frame: number,
   flipX = false,
   flipY = false,
+  textureKey: string = FENCE_TILESET_KEY,
 ): Phaser.GameObjects.Image {
-  const image = scene.add.image(col * tile, row * tile, FENCE_TILESET_KEY, frame);
+  const image = scene.add.image(col * tile, row * tile, textureKey, frame);
   image.setOrigin(0, 0);
   image.setScale(DISPLAY_SCALE);
   image.setFlip(flipX, flipY);
@@ -571,18 +572,21 @@ export function buildShippingBin(scene: Phaser.Scene, map: FarmMapData): Phaser.
  */
 export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.GameObjects.Image {
   const tile = map.tileSize * DISPLAY_SCALE;
-  const { col0, row0, rows } = map.housePosition;
+  const { col0, row0 } = map.housePosition;
+  const level = currentHouseLevel();
 
-  // Ajustes visuais em pixels (mude os valores para alinhar perfeitamente)
-  const ajusteX = -18;  // Valores positivos movem para a direita, negativos para a esquerda
-  const ajusteY = 6; // Valores positivos movem para cima (porque estamos subtraindo na fórmula abaixo)
-
-  // Aplicando os ajustes no X e Y da imagem
-  const house = scene.add.image((col0 * tile) + ajusteX, (row0 * tile) - ajusteY, PLAYER_HOUSE_KEY);
-  
+  // A arte do nível atual (`data/houseLevels.ts`); a do meio é um recorte da folha `Upgrade House.png`.
+  if (level.frame) {
+    const texture = scene.textures.get(level.textureKey);
+    const { name, rect } = level.frame;
+    if (!texture.has(name)) texture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+  }
+  const house = scene.add.image(col0 * tile + level.offset.x, row0 * tile + level.offset.y, level.textureKey, level.frame?.name);
   house.setOrigin(0, 0);
   house.setScale(DISPLAY_SCALE);
-  house.setDepth((row0 + rows - 2) * tile);
+  // Profundidade na última fileira sólida da arte (o jogador passa atrás do telhado e na frente da porta).
+  const lastSolidRow = level.solid.reduce((last, line, index) => (line.includes('#') ? index : last), 0);
+  house.setDepth((row0 + lastSolidRow) * tile);
 
   // Sombras retas coladas na base da parede (a arte tem a ala do fundo mais recuada: uma faixa por trecho de base).
   addBuildingShadows(scene, house);
@@ -615,27 +619,28 @@ const skip = new Set<string>([
     `${map.shippingBinPosition[0]},${map.shippingBinPosition[1]}`,
   ]);
 
+  const skin = fenceSkin(); // O material da cerca (`data/fenceSkins.ts`): as melhorias do Marceneiro trocam a arte.
   const place = (col: number, row: number, frame: number, flipX = false, flipY = false): void => {
     if (skip.has(`${col},${row}`)) return;
-    const image = placeFenceTile(scene, tile, col, row, frame, flipX, flipY);
+    const image = placeFenceTile(scene, tile, col, row, frame, flipX, flipY, skin.textureKey);
     // Profundidade pela base da célula — mesma convenção das árvores/Casa,
     // pro jogador poder passar na frente ou atrás da cerca corretamente.
     image.setDepth((row + 1) * tile);
     images.set(`${col},${row}`, image);
   };
 
-  place(col0, row0, FENCE_CORNER_INDEX);
-  place(colEnd, row0, FENCE_CORNER_INDEX, true, false);
-  place(col0, rowEnd, FENCE_CORNER_BOTTOM_LEFT_INDEX);
-  place(colEnd, rowEnd, FENCE_CORNER_BOTTOM_RIGHT_INDEX);
+  place(col0, row0, skin.topLeft);
+  place(colEnd, row0, skin.topRight, !!skin.flipTopRight, false);
+  place(col0, rowEnd, skin.bottomLeft);
+  place(colEnd, rowEnd, skin.bottomRight);
 
   for (let col = col0 + 1; col < colEnd; col++) {
-    place(col, row0, FENCE_EDGE_H_INDEX);
-    place(col, rowEnd, FENCE_EDGE_H_INDEX);
+    place(col, row0, skin.edgeTop);
+    place(col, rowEnd, skin.edgeBottom);
   }
   for (let row = row0 + 1; row < rowEnd; row++) {
-    place(col0, row, FENCE_EDGE_V_INDEX);
-    place(colEnd, row, FENCE_EDGE_V_INDEX);
+    place(col0, row, skin.edgeLeft);
+    place(colEnd, row, skin.edgeRight);
   }
 
   // As imagens por célula: a horda usa (`systems/farmFences.ts`) pra dar vida às cercas e derrubá-las.

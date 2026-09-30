@@ -71,8 +71,13 @@ export const PLAYER_ANIM_FRAMES = {
  * que a porta em si é bloqueada/interativa, não andável).
  */
 export const PLAYER_START = {
-  col: farmMap.houseDoorPosition[0],
-  row: farmMap.houseDoorPosition[1] + 1,
+  // Lidos a cada uso: a porta muda de fileira com as melhorias da casa (`data/houseLevels.ts`).
+  get col(): number {
+    return farmMap.houseDoorPosition[0];
+  },
+  get row(): number {
+    return farmMap.houseDoorPosition[1] + 1;
+  },
 };
 
 /** Tempo (ms) para se mover de uma célula do grid para a adjacente. */
@@ -271,6 +276,58 @@ function buildActions(characterId: CharacterId): Record<PlayerActionKey, ActionA
       side: { start: 2, end: 2 },
     },
   };
+}
+
+/**
+ * PESCA (Fase 11): as folhas de `Pre-made/<Nome>/Fishing/` usam quadros de 64x64 com as 3 linhas de sempre (baixo/cima/lado) —
+ * pés em y=41 (22px de margem embaixo, como o `well`: `yOffset` 32). Os nomes de arquivo mudam de pasta pra pasta (maiúsculas),
+ * conferidos um a um no disco. A folha "Hooked" do Alex é a única fora do padrão: 512x208, com as linhas em y=0, 80 e 144 (uma
+ * faixa vazia de 16px entre a 1ª e a 2ª) — `rowOffsets` recorta cada quadro no lugar certo.
+ */
+export type FishingPhase = 'cast' | 'wait' | 'hooked' | 'reel' | 'catch' | 'miss';
+
+export interface FishingSheetSpec {
+  key: string;
+  path: string;
+  frames: number;
+  frameRate: number;
+  /** -1 = repete até trocar de fase. */
+  repeat: number;
+  /** Onde começa cada linha (baixo/cima/lado); padrão 0/64/128. */
+  rowOffsets?: [number, number, number];
+}
+
+export const FISHING_FRAME_SIZE = 64;
+/** Mesmo ajuste do `well` (quadro de 64px): 16px nativos = 32px na tela. */
+export const FISHING_Y_OFFSET = 32;
+
+const FISHING_FILES: Record<CharacterId, Record<FishingPhase, string>> = {
+  Alex: { cast: 'Casting.png', wait: 'Wait Idle.png', hooked: 'Hooked.png', reel: 'Roll.png', catch: 'Captured Fish.png', miss: 'Captured no Fish.png' },
+  Josh: { cast: 'Casting.png', wait: 'Wait Idle.png', hooked: 'Hooked.png', reel: 'Roll.png', catch: 'Captured Fish.png', miss: 'Captured No Fish.png' },
+  Lyria: { cast: 'Casting.png', wait: 'idle wait.png', hooked: 'hooked.png', reel: 'roll.png', catch: 'Captured fish.png', miss: 'Captured no fish.png' },
+  Manu: { cast: 'Casting.png', wait: 'Wait Idle.png', hooked: 'Hooked.png', reel: 'Roll.png', catch: 'Captured Fish.png', miss: 'Captured no Fish.png' },
+  Tori: { cast: 'Casting.png', wait: 'Wait Idle.png', hooked: 'Hooked.png', reel: 'Roll.png', catch: 'Captured Fish.png', miss: 'Captured no Fish.png' },
+};
+
+const FISHING_TIMING: Record<FishingPhase, { frames: number; frameRate: number; repeat: number }> = {
+  cast: { frames: 15, frameRate: 16, repeat: 0 },
+  wait: { frames: 4, frameRate: 4, repeat: -1 },
+  hooked: { frames: 8, frameRate: 12, repeat: -1 },
+  reel: { frames: 4, frameRate: 8, repeat: -1 },
+  catch: { frames: 4, frameRate: 6, repeat: 0 },
+  miss: { frames: 4, frameRate: 7, repeat: 0 },
+};
+
+export function getFishingSheets(characterId: CharacterId): Record<FishingPhase, FishingSheetSpec> {
+  const dir = `${PRE_MADE_DIR}/${characterId}/Fishing`;
+  const prefix = `player-${characterId.toLowerCase()}-fishing`;
+  const files = FISHING_FILES[characterId];
+  const sheets = {} as Record<FishingPhase, FishingSheetSpec>;
+  for (const phase of Object.keys(FISHING_TIMING) as FishingPhase[]) {
+    sheets[phase] = { key: `${prefix}-${phase}`, path: `${dir}/${files[phase]}`, ...FISHING_TIMING[phase] };
+  }
+  if (characterId === 'Alex') sheets.hooked.rowOffsets = [0, 80, 144];
+  return sheets;
 }
 
 const assetsCache = new Map<CharacterId, PlayerAssets>();

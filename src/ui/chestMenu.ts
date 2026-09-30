@@ -288,6 +288,8 @@ export class ChestMenu {
       const visual = resolveSlotVisual(entry.ref);
       if (visual) {
         slot.icon.setTexture(visual.textureKey, visual.iconFrame);
+        if (visual.tint !== undefined) slot.icon.setTint(visual.tint);
+        else slot.icon.clearTint();
         slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
       }
       // Ferramenta/armadura é uma pilha de 1: não mostra "1".

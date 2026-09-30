@@ -226,6 +226,11 @@ if (this.state === 'chase') {
 
     if (this.wanderTarget) this.moveToward(this.wanderTarget.x, this.wanderTarget.y, delta);
   }
+  /** O empurrão do golpe para na parede (`Enemy.knockbackTarget`): o mesmo corpo de colisão do andar. */
+  protected override canOccupy(x: number, y: number): boolean {
+    return this.canWalkTo(x, y);
+  }
+
   /** Verifica apenas a célula exata que o centro do corpo do Slime vai ocupar (grid 1x1 — Fase 9, pedido explícito do usuário). */
 private canWalkTo(x: number, y: number): boolean {
     // Caixa de colisão de 28x28 (Tamanho do tile de 32px com 2px de folga de cada lado)

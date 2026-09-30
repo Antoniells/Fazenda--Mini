@@ -2,15 +2,18 @@ import { gameState } from './gameState';
 import { HORDE_START_HOUR, HORDE_DAWN_HOUR, isHordeDay, hordeNumberForDay, hordeSize, hordeReward, HordeState } from '../data/horde';
 import { RESOURCES } from '../data/resources';
 import { FINAL_HORDE_NUMBER } from '../data/campaign';
+import { debugFlags } from '../debug/debugFlags';
+import { isWorldAtPeace } from './story';
 
 /** É noite de horda hoje? As de 10 em 10 dias OU a Noite Final que o jogador marcou (`campaign.finalNightDay`). */
 export function isHordeToday(day: number): boolean {
-  return isHordeDay(day) || gameState.campaign.finalNightDay === day;
+  if (isWorldAtPeace()) return false; // Depois do fim da história, as hordas acabaram.
+  return isHordeDay(day) || gameState.campaign.finalNightDay === day || debugFlags.forcedHordeDay === day;
 }
 
 /** Número da horda do dia: a Noite Final é sempre a `FINAL_HORDE_NUMBER` (a mais forte); as demais seguem o calendário. */
 function hordeNumberOfDay(day: number): number {
-  return gameState.campaign.finalNightDay === day ? FINAL_HORDE_NUMBER : hordeNumberForDay(day);
+  return gameState.campaign.finalNightDay === day ? FINAL_HORDE_NUMBER : Math.max(1, hordeNumberForDay(day)); // (a forçada pelo menu de hack antes do dia 10 é a 1)
 }
 
 /** A horda em andamento é a Noite Final? (marcada pra este dia e a noite já começou) */

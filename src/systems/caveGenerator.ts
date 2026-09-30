@@ -98,6 +98,11 @@ function attempt(config: CaveFloorConfig, seed: number, withInnerWalls: boolean)
   return { cols, rows, walls, stairsUp, playerSpawn, stairsDown, spawnCells };
 }
 
+/** O santuário do andar 100 (Fase 11, `data/sanctuary.ts`): o mesmo andar, mas um salão aberto, sem paredes internas. */
+export function generateSanctuaryFloor(config: CaveFloorConfig): CaveLayout {
+  return attempt(config, config.floor * 7919 + 13, false)!;
+}
+
 /** Gera o andar (sempre o mesmo pra o mesmo `config.floor`). Tenta algumas sementes até o desenho ficar conectado; no pior caso, um salão sem paredes internas. */
 export function generateCaveFloor(config: CaveFloorConfig): CaveLayout {
   for (let n = 0; n < 24; n++) {

@@ -6,6 +6,7 @@ import { farmMap } from '../data/maps/farmMap';
 import { NPCS } from '../data/npcs';
 import { HORDE_START_HOUR } from '../data/horde';
 import { QUESTS, QuestDefinition, QuestRequirement, QuestReward, CampaignState } from '../data/campaign';
+import { isWorldAtPeace } from './story';
 
 /** Uma linha de progresso de missão ("Cenoura: 4/10"), já pronta pra tela. */
 export interface QuestProgressLine {
@@ -62,10 +63,13 @@ export function evaluateRequirement(requirement: QuestRequirement, inventory: In
       return { text: `Pontes abertas: ${have}/${requirement.count}`, done: have >= requirement.count };
     }
     case 'hordesWon': {
+      // Depois do fim da história não há mais hordas: a missão conta como cumprida.
+      if (isWorldAtPeace()) return { text: 'Hordas: o mundo está em paz', done: true };
       const have = Math.min(campaign.hordesWon, requirement.count);
       return { text: `Hordas vencidas: ${have}/${requirement.count}`, done: have >= requirement.count };
     }
     case 'finalNight':
+      if (isWorldAtPeace() && !campaign.completed) return { text: 'Noite Final: não haverá mais — o mundo está em paz', done: true };
       return { text: campaign.completed ? 'Noite Final: vencida' : describeFinalNight(campaign), done: campaign.completed };
   }
 }
@@ -81,7 +85,8 @@ export function getQuestStatus(quest: QuestDefinition, inventory: Inventory = ga
   const lines = quest.requirements.map((requirement) => evaluateRequirement(requirement, inventory, campaign));
   // A Noite Final não é "entregue": a missão termina quando a horda é vencida (`completeCampaign`), então nunca fica pronta pra entrega.
   const isFinalNight = quest.requirements.some((requirement) => requirement.kind === 'finalNight');
-  return { quest, lines, ready: !isFinalNight && lines.every((line) => line.done) };
+  // Em paz, a Noite Final nunca vai acontecer: a missão pode ser entregue direto.
+  return { quest, lines, ready: (!isFinalNight || isWorldAtPeace()) && lines.every((line) => line.done) };
 }
 
 /** Uma linha só pro marcador de objetivo do HUD: título da missão + o que falta na primeira condição pendente. */
@@ -122,6 +127,7 @@ export function turnInCurrentQuest(inventory: Inventory = gameState.inventory): 
   grantReward(quest.reward, inventory);
 
   gameState.campaign.questIndex += 1;
+  if (quest.requirements.some((requirement) => requirement.kind === 'finalNight')) gameState.campaign.completed = true;
   return quest;
 }
 
@@ -143,7 +149,7 @@ export function grantReward(reward: QuestReward, inventory: Inventory): void {
 /** A missão atual é a da Noite Final e ela ainda não foi marcada? */
 export function canScheduleFinalNight(): boolean {
   const quest = getCurrentQuest();
-  return !!quest && quest.requirements.some((requirement) => requirement.kind === 'finalNight') && gameState.campaign.finalNightDay === null && !gameState.horde.active;
+  return !isWorldAtPeace() && !!quest && quest.requirements.some((requirement) => requirement.kind === 'finalNight') && gameState.campaign.finalNightDay === null && !gameState.horde.active;
 }
 
 /**

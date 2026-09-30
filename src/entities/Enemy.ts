@@ -20,6 +20,8 @@ export interface EnemyStats {
 const HIT_FLASH_MS = 80;
 const KNOCKBACK_DISTANCE_PX = 22;
 const KNOCKBACK_DURATION_MS = 140;
+/** De quantos em quantos px o empurrão confere as paredes no caminho. */
+const KNOCKBACK_STEP_PX = 2;
 /** Quantos px acima dos pés (âncora do sprite) fica a sombra do inimigo — a arte do Slime tem margem vazia embaixo, então a sombra sobe pra ficar sob o corpo. */
 const SHADOW_OFFSET_Y = 26;
 
@@ -107,13 +109,40 @@ export abstract class Enemy {
 
     this.onDamaged();
 
+    const target = this.knockbackTarget(knockbackDx, knockbackDy);
     this.scene.tweens.add({
       targets: [this.sprite, this.shadow],
-      x: this.sprite.x + knockbackDx * KNOCKBACK_DISTANCE_PX,
-      y: this.sprite.y + knockbackDy * KNOCKBACK_DISTANCE_PX,
+      x: target.x,
+      y: target.y,
       duration: KNOCKBACK_DURATION_MS,
       ease: 'Cubic.easeOut',
     });
+  }
+
+  /**
+   * O corpo do bicho cabe em (`x`, `y`) (pés)? O empurrão do golpe só vai até onde isso vale — sem isso ele atravessava paredes e caía dentro delas. Cada subclasse que
+   * anda pelo grid sobrescreve com a mesma checagem de colisão que usa pra andar; o padrão (sem grid) não bloqueia nada.
+   */
+  protected canOccupy(_x: number, _y: number): boolean {
+    return true;
+  }
+
+  /** Até onde o empurrão leva: anda `KNOCKBACK_DISTANCE_PX` na direção do golpe em passos curtos, escorregando ao longo da parede (só um eixo) e parando quando os dois estão fechados. */
+  private knockbackTarget(dx: number, dy: number): { x: number; y: number } {
+    let x = this.sprite.x;
+    let y = this.sprite.y;
+    const steps = Math.ceil(KNOCKBACK_DISTANCE_PX / KNOCKBACK_STEP_PX);
+    for (let i = 0; i < steps; i += 1) {
+      const nextX = x + dx * KNOCKBACK_STEP_PX;
+      const nextY = y + dy * KNOCKBACK_STEP_PX;
+      if (this.canOccupy(nextX, nextY)) {
+        x = nextX;
+        y = nextY;
+      } else if (dx !== 0 && this.canOccupy(nextX, y)) x = nextX;
+      else if (dy !== 0 && this.canOccupy(x, nextY)) y = nextY;
+      else break;
+    }
+    return { x, y };
   }
 
   private playHitFlash(): void {

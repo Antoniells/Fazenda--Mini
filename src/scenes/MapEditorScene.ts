@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { resetFarmMapToBase } from '../systems/farmUpgrades';
 import { farmMap, FarmMapData, FarmlandFenceLayout, getFarmlandFenceLayout, RectArea } from '../data/maps/farmMap';
 import { forestMap, ForestMapData } from '../data/maps/forestMap';
 import { caveMap, CaveMapData } from '../data/maps/caveMap';
@@ -159,6 +160,7 @@ type ObjectType =
   | 'villageHouse3'
   | 'villageHouse7'
   | 'villageHouse8'
+  | 'villageBlacksmithHouse'
   | 'villageNewsstand'
   | 'villageFountain'
   | 'villageWell';
@@ -177,6 +179,7 @@ const VILLAGE_OBJECT_TYPES: Record<VillageAssetId, ObjectType> = {
   house3: 'villageHouse3',
   house7: 'villageHouse7',
   house8: 'villageHouse8',
+  blacksmithHouse: 'villageBlacksmithHouse',
   newsstand: 'villageNewsstand',
   fountain: 'villageFountain',
 };
@@ -249,6 +252,7 @@ const STATIC_OBJECT_ASSET: Record<Exclude<ObjectType, 'fence'>, StaticAssetDef> 
   villageHouse3: { textureKey: VILLAGE_ASSETS.house3.key, offsetX: 0, offsetY: 0, originX: 0, originY: 0 },
   villageHouse7: { textureKey: VILLAGE_ASSETS.house7.key, offsetX: 0, offsetY: 0, originX: 0, originY: 0 },
   villageHouse8: { textureKey: VILLAGE_ASSETS.house8.key, offsetX: 0, offsetY: 0, originX: 0, originY: 0 },
+  villageBlacksmithHouse: { textureKey: VILLAGE_ASSETS.blacksmithHouse.key, offsetX: 0, offsetY: 0, originX: 0, originY: 0 },
   villageNewsstand: { textureKey: VILLAGE_ASSETS.newsstand.key, offsetX: 0, offsetY: 0, originX: 0, originY: 0 },
   villageFountain: { textureKey: VILLAGE_ASSETS.fountain.key, frame: VILLAGE_FOUNTAIN_FRAMES[0].name, offsetX: 0, offsetY: 0, originX: 0, originY: 0 },
   // O poço da praça (2x1 células, `villageBuilder`): base-centro da faixa das DUAS células, ou seja, x = col+1 tiles.
@@ -364,7 +368,8 @@ const MAP_TYPE_CONFIGS: Record<MapType, MapTypeConfig> = {
       { objectType: 'villageHouse2', label: 'Casa Abandonada' },
       { objectType: 'villageHouse3', label: 'Casa Azul' },
       { objectType: 'villageHouse7', label: 'Casa de Pedra' },
-      { objectType: 'villageHouse8', label: 'Casa de Madeira (Loja)' },
+      { objectType: 'villageHouse8', label: 'Casa de Madeira' },
+      { objectType: 'villageBlacksmithHouse', label: 'Casa do Ferreiro (Loja)' },
       { objectType: 'villageNewsstand', label: 'Banca de Jornal' },
       { objectType: 'villageFountain', label: 'Chafariz' },
       { objectType: 'villageWell', label: 'Poço da Praça', singleton: true },
@@ -623,6 +628,7 @@ export class MapEditorScene extends Phaser.Scene {
   }
 
   create(): void {
+    resetFarmMapToBase(); // O editor parte dos dados originais, nunca das melhorias (casa/lavoura) de uma partida em andamento.
     this.isolateFromGame();
     // Bug real (F2 universal): a ordem de renderização das cenas segue a
     // ordem de REGISTRO em `gameConfig.scene`, não a ordem de abertura —

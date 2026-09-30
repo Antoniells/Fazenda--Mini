@@ -104,6 +104,11 @@ export class Pet {
   /** Olhando pra esquerda (a arte de lado olha pra esquerda; pra direita, espelha). */
   private faceLeft = true;
   private readonly aggressors = new Set<Enemy>();
+  /**
+   * ROTEIRO (o sacrifício no altar, Fase 11 — `systems/sanctuary.ts`): enquanto ativo, o pet ignora o jogador, o carinho e as brigas;
+   * anda até `goal` (se houver) e avisa `onArrive`, depois fica parado. `null` = comportamento normal.
+   */
+  private script: { goal: GridPoint | null; onArrive: (() => void) | null } | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -155,6 +160,7 @@ export class Pet {
     if (!hit) return false;
 
     const now = this.scene.time.now;
+    if (this.script) return true; // No roteiro (o altar): só absorve o clique.
     if (this.aggressors.size > 0 || this.state === 'chase' || this.state === 'bite') return true;
     if (now < this.petCooldownUntil) return true;
 
@@ -182,6 +188,44 @@ export class Pet {
     this.shadow.destroy();
   }
 
+  /** Nome do pet (a conversa do sacrifício usa). */
+  getName(): string {
+    return getPetDefinition(this.petId).name;
+  }
+
+  /** Roteiro: anda até `cell` (sem o jogador, sem brigar) e chama `onArrive` ao chegar; se não houver caminho, reaparece lá. */
+  walkToScripted(cell: GridPoint, onArrive: () => void): void {
+    this.aggressors.clear();
+    this.state = 'idle';
+    this.path = [];
+    this.goal = null;
+    this.script = { goal: cell, onArrive };
+    if (!this.planNear(cell)) {
+      this.placeAt(cell.col, cell.row);
+      this.fadeIn();
+    }
+  }
+
+  /** Roteiro: brilha, sobe e some (vira a Amizade Dourada). `onDone` quando sumiu de vez. */
+  ascend(tint: number, onDone: () => void): void {
+    this.script = { goal: null, onArrive: null };
+    this.scene.tweens.killTweensOf([this.sprite, this.shadow, this.offset]);
+    this.sprite.setTint(tint);
+    this.scene.tweens.add({ targets: this.sprite, alpha: { from: 1, to: 0.55 }, duration: 260, yoyo: true, repeat: 3 });
+    this.scene.tweens.add({
+      targets: this.offset,
+      y: -70,
+      delay: 1200,
+      duration: 1800,
+      ease: 'Sine.easeIn',
+      onUpdate: () => this.syncSprite(),
+    });
+    this.scene.tweens.add({ targets: [this.sprite, this.shadow], alpha: 0, delay: 2200, duration: 1000, onComplete: () => {
+      this.destroy();
+      onDone();
+    } });
+  }
+
   // --- Loop --------------------------------------------------------------------
 
   /** O gato mia / o cachorro late (volume baixinho, `data/audio.ts`). */
@@ -199,6 +243,10 @@ export class Pet {
 
   update(time: number, delta: number): void {
     if (!this.sprite.active) return;
+    if (this.script) {
+      this.updateScript(delta);
+      return;
+    }
     this.pruneAggressors();
 
     // Acordou (acabou o sono, ou o carinho/uma briga o tirou da caminha): desce pra célula livre ao lado dela.
@@ -215,6 +263,25 @@ export class Pet {
       this.maybeSpeakOnItsOwn(time);
     }
 
+    this.syncSprite();
+  }
+
+  /** Roteiro em andamento: segue a rota até o destino; chegando, fica em pé virado pra cima (pro altar) e avisa uma vez. */
+  private updateScript(delta: number): void {
+    const script = this.script!;
+    if (script.goal) {
+      this.advance(delta, PET_TUNING.walkSpeed, true);
+      if (this.waypoint === null && this.path.length === 0) {
+        const arrived = script.onArrive;
+        script.goal = null;
+        script.onArrive = null;
+        this.facing = 'up';
+        this.stand();
+        arrived?.();
+      } else {
+        this.playAnimation(`walk-${this.facing}`);
+      }
+    }
     this.syncSprite();
   }
 

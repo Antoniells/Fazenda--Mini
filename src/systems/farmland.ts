@@ -69,6 +69,14 @@ export class Farmland {
     }
   }
 
+  /** Acrescenta parcelas vazias às células que ainda não são lavoura (a ampliação do plantio, `systems/farmUpgrades.ts`); as que já existem ficam como estão. */
+  addCells(cells: Array<[number, number]>): void {
+    for (const [col, row] of cells) {
+      if (this.plots.has(plotKey(col, row))) continue;
+      this.plots.set(plotKey(col, row), { col, row, state: 'untilled', cropId: null, stage: 0, wateredToday: false });
+    }
+  }
+
   /** É uma célula cultivável (faz parte da área de agricultura)? */
   isCultivable(col: number, row: number): boolean {
     return this.plots.has(plotKey(col, row));

@@ -20,10 +20,10 @@ import { preloadCharacterPreviews, ensureCharacterPreviewAnimation } from '../sy
 import { PET_IDS, DEFAULT_PET_ID, getPetDefinition, getPetTextureKey } from '../data/pets';
 import { preloadPetPreviews, ensurePetAnimations, petAnimKey } from '../systems/petSprites';
 import { startNewGame, save } from '../systems/saveManager';
+import { INTRO_SCENE_KEY } from './IntroScene';
 
 export const CHARACTER_CREATION_SCENE_KEY = 'CharacterCreationScene';
 const MAIN_MENU_SCENE_KEY = 'MainMenuScene';
-const MAIN_SCENE_KEY = 'MainScene';
 
 export interface CharacterCreationData {
   /** Slot Vazio escolhido no Menu Principal — a partida nova nasce e é salva nele. */
@@ -431,7 +431,8 @@ export class CharacterCreationScene extends Phaser.Scene {
       // Perfil (nomes + personagem + pet) vira o `gameState` da partida nova e é gravado já no slot — a `MainScene` carrega o sprite do personagem e do pet no preload.
       startNewGame(this.slot, { playerName, farmName, characterId, petId });
       save(this.slot);
-      this.scene.start(MAIN_SCENE_KEY);
+      // A cena introdutória (a profecia) abre a partida nova; ela leva à Fazenda no Dia 1.
+      this.scene.start(INTRO_SCENE_KEY);
     });
   }
 

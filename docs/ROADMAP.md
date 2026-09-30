@@ -68,7 +68,7 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 - [x] Níveis e Experiência (XP ganho por colher/cortar/minerar/derrotar inimigos + árvore de habilidades no Inventário — ver [TECHNICAL.md](TECHNICAL.md#progressão-e-rpg-xp-e-árvore-de-habilidades-datascillsts-systemsskillsts-uiskilltreepanelts); pesca e resistência ainda sem sistema)
 - [ ] Upgrade de Ferramentas (melhorar ferramentas usando minérios coletados)
 - [ ] Desbloqueios e Novos Itens (lojas que vendem sementes/itens melhores à medida que novas áreas são expandidas)
-- [x] Missões/Pedidos (campanha em 4 atos dada pelos moradores do Vilarejo, com FIM na Noite Final — ver [TECHNICAL.md](TECHNICAL.md#vilarejo-moradores-tempo-global-e-campanha))
+- [x] Missões/Pedidos (campanha em 4 atos dada pelos moradores do Vilarejo, culminando na Noite Final — o fim do jogo passou pra Fase 11 — ver [TECHNICAL.md](TECHNICAL.md#vilarejo-moradores-tempo-global-e-campanha))
 - [x] NPCs (moradores do Vilarejo, com casa, rotina por horário e conversa)
 
 ## Fase 9 — Polimento Final
@@ -89,9 +89,19 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 ## Fase 10 — Desktop
 - [x] Integração com Electron (janela, save em `Documentos/Mini Fazenda`, tela cheia — ver [TECHNICAL.md](TECHNICAL.md#integração-com-electron-fase-10))
 - [x] Build (`npm run build:electron`)
-- [ ] Testes
+- [x] Testes (Vitest pra lógica em `tests/unit`, Playwright de ponta a ponta em `tests/e2e` — ver [TECHNICAL.md](TECHNICAL.md#testes-automáticos))
 - [x] Geração do executável
 - [x] Criação do instalador (NSIS, `release/Mini-Fazenda-Setup-<versão>.exe`)
+
+## Fase 11 — Os Três Pilares do Equilíbrio (endgame)
+A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à paz quando a Cenoura Dourada, o Peixe Dourado e a Amizade Dourada (o pet escolhido na criação, que se sacrifica) forem oferecidos no altar do Sábio Coelho, no andar 100 das Cavernas. A campanha dos moradores continua, mas a Noite Final não encerra mais o jogo. Detalhes: ver [TECHNICAL.md](TECHNICAL.md#história-principal-os-três-pilares-fase-11).
+- [x] Etapa 0 — Fundação: estado da história (`gameState.story`, marcos no save), carta da profecia (dia 3), objetivo dos Três Pilares no HUD, a Noite Final sem tela final, chamado da horda (o jogador é teletransportado pra Fazenda na hora da horda) e seção História no menu de hack
+- [x] Etapa 1 — Pesca: Vara de Pescar (Ferreiro), minijogo de timing, 21 peixes (`Icons/Fish`) na Praia e no lago da Floresta, Sorte do Pescador e XP de pesca
+- [x] Etapa 2 — Cavernas até o 50: minérios nos andares (por profundidade e raridade), Azurita a partir do 45 (minério e barra), barreira no 50 bloqueando a escada e o baú com o mapa
+- [x] Etapa 3 — Floresta oculta e o Mago: área oculta (castelo), o Mago e as entregas de peixes, Mesa de Encantamentos (Picareta/Machado +20% força, Espada +35% dano, Armadura +15% defesa) e a barreira quebrada pela Picareta encantada
+- [x] Etapa 4 — Descida 51-100: andares mais hostis e a Horda Final do andar 100 (3 ondas)
+- [x] Etapa 5 — Santuário e fim: o andar 100 vira santuário, semente e lago do Peixe Dourado, plantio no altar, sacrifício do pet, cinemática, créditos e a caixa com o filhote
+- [ ] Etapa 6 — Polimento: falas e cartas da história, balanceamento, sons e documentação
 
 ---
 

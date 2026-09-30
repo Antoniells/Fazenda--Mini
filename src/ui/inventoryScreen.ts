@@ -250,6 +250,8 @@ interface InventorySlotContent {
   iconFrame: number | string;
   badge: string;
   tint: number;
+  /** Tom do ÍCONE (não do quadro): o do item, quando ele tem (`SlotVisual.tint`). */
+  iconTint?: number;
   /** Nome mostrado no balão (`Tooltip`) ao passar o mouse; `''` = nada a mostrar. */
   name: string;
   onClick: (() => void) | null;
@@ -923,6 +925,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
           iconFrame: visual.iconFrame,
           badge,
           tint: armorEquipped ? EQUIPPED_ARMOR_TINT : tint,
+          iconTint: visual.tint,
           name: armorEquipped ? `${visual.name} (equipada)` : visual.name,
           onClick: isArmor ? () => inventory.toggleArmor(ref.id) : onClick,
           discovered: true,
@@ -1020,6 +1023,8 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       }
 
       slot.icon.setTexture(entry.textureKey, entry.iconFrame);
+      if (entry.iconTint !== undefined) slot.icon.setTint(entry.iconTint);
+      else slot.icon.clearTint();
       if (!isBeingDragged) slot.icon.setScale(computeFitScale(slot.icon, ICON_TARGET_PX));
       slot.icon.setVisible(true);
       slot.badgeText.setText(entry.badge);

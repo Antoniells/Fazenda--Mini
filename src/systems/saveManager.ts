@@ -10,12 +10,21 @@ import { StorageAdapter, createDefaultStorageAdapter } from './storageAdapter';
 import type { ChestSlot } from './chestStorage';
 import { HordeState, createHordeState, hordeNumberForDay } from '../data/horde';
 import { CampaignState, createCampaignState } from '../data/campaign';
+import { StoryState, createStoryState } from '../data/story';
+import { sanitizeStoryState } from './story';
+import { sanitizeEnchants } from './enchanting';
+import type { EnchantTarget } from '../data/enchanting';
+import { SanctuaryState, createSanctuaryState } from '../data/sanctuary';
 import { RequestsState, createRequestsState } from '../data/requests';
 import { MailState, createMailState } from '../data/mail';
 import { EventsState, createEventsState } from '../data/events';
 import { SkillsState, createSkillsState } from '../data/skills';
 import { AnimalsState, createAnimalsState } from '../data/animals';
 import { ConstructionState, createConstructionState } from '../data/construction';
+import { UpgradesState, createLegacyUpgradesState, createUpgradesState } from '../data/upgrades';
+import { applyUpgrades } from './farmUpgrades';
+import { STARTER_BROKEN_FENCES } from '../data/farmStart';
+import { SmeltState, createSmeltState } from '../data/smelting';
 import { REMOVED_DECORATIONS } from '../data/decorations';
 import { resourceNodeRegistry, ResourceNode } from './resourceNodeRegistry';
 
@@ -73,6 +82,13 @@ export interface SaveData {
   horde?: HordeState;
   /** Campanha (missões, hordas vencidas, Noite Final) — ausente em saves anteriores a ela: começa do zero, contando as hordas que o save antigo já tinha vencido. */
   campaign?: CampaignState;
+  /** História principal (marcos dos Três Pilares) — ausente em saves anteriores a ela: nenhum marco (a carta da profecia chega no dia dela). */
+  story?: StoryState;
+  /** Encantamentos e peixes entregues ao Mago (Fase 11) — ausentes em saves anteriores: nenhum. */
+  enchants?: EnchantTarget[];
+  wizardDelivered?: string[];
+  /** O plantio no altar do santuário — ausente em saves anteriores: não plantado. */
+  sanctuary?: SanctuaryState;
   /** Pedidos diários dos moradores — ausente em saves anteriores a eles (nenhum cumprido). */
   requests?: RequestsState;
   /** Caixa de Correio (cartas lidas + agendadas por código) — ausente em saves anteriores a ela (nenhuma lida; as fixas chegam nos dias delas). */
@@ -87,6 +103,10 @@ export interface SaveData {
   construction?: ConstructionState;
   /** Andar mais fundo alcançado na Caverna — ausente em saves antigos (0). */
   caveDeepest?: number;
+  /** Nível das melhorias do Marceneiro (casa, plantio, cerca) — ausente em saves anteriores a elas: a casa já era a final. */
+  upgrades?: UpgradesState;
+  /** Fundições em andamento na Fornalha — ausente em saves anteriores a elas (nenhuma). */
+  smelting?: SmeltState;
   /** Cercas destruídas aguardando conserto — ausente em saves antigos (nenhuma). */
   destroyedFences?: string[];
   /** O tutorial de novos jogadores já foi concluído? Ausente em saves antigos (que já jogavam) = concluído. */
@@ -204,6 +224,10 @@ export function save(slot?: number): void {
     petBedGiven: gameState.petBedGiven,
     horde: { ...gameState.horde, drops: { ...gameState.horde.drops } },
     campaign: { ...gameState.campaign },
+    story: { reached: { ...gameState.story.reached } },
+    enchants: [...gameState.enchants],
+    wizardDelivered: [...gameState.wizardDelivered],
+    sanctuary: { ...gameState.sanctuary },
     requests: { completed: { ...gameState.requests.completed }, availableFromDay: { ...gameState.requests.availableFromDay } },
     mail: { readIds: [...gameState.mail.readIds], custom: gameState.mail.custom.map((message) => ({ ...message })) },
     events: { completed: [...gameState.events.completed] },
@@ -212,6 +236,8 @@ export function save(slot?: number): void {
     construction: { orders: gameState.construction.orders.map((order) => ({ ...order })), nextId: gameState.construction.nextId },
     caveDeepest: gameState.cave.deepest,
     destroyedFences: [...gameState.destroyedFences],
+    upgrades: { ...gameState.upgrades },
+    smelting: { jobs: gameState.smelting.jobs.map((job) => ({ ...job })) },
     tutorialCompleted: gameState.tutorialCompleted,
     waterHintSeen: gameState.waterHintSeen,
   };
@@ -312,6 +338,10 @@ export function load(slot: number): boolean {
     gameState.petBedGiven = data.petBedGiven === true;
     gameState.horde = horde;
     gameState.campaign = campaign;
+    gameState.story = sanitizeStoryState(data.story);
+    gameState.enchants = sanitizeEnchants(data.enchants);
+    gameState.sanctuary = { plantedAt: typeof data.sanctuary?.plantedAt === 'number' ? data.sanctuary.plantedAt : null };
+    gameState.wizardDelivered = Array.isArray(data.wizardDelivered) ? data.wizardDelivered.filter((id) => typeof id === 'string') : [];
     gameState.requests = requests;
     gameState.mail = mail;
     gameState.events = events;
@@ -320,6 +350,9 @@ export function load(slot: number): boolean {
     gameState.construction = construction;
     gameState.cave = { deepest: data.caveDeepest ?? 0 };
     gameState.destroyedFences = new Set(data.destroyedFences ?? []);
+    gameState.smelting = { jobs: (data.smelting?.jobs ?? []).map((job) => ({ ...job })) };
+    gameState.upgrades = data.upgrades ? { ...createUpgradesState(), ...data.upgrades } : createLegacyUpgradesState();
+    applyUpgrades(); // A casa, a lavoura e a cerca do save (a lavoura ampliada ganha as parcelas que faltarem).
     gameState.tutorialCompleted = data.tutorialCompleted ?? true;
     gameState.waterHintSeen = data.waterHintSeen ?? true;
     gameState.waterObjective = false;
@@ -352,6 +385,8 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.playerHealth = new PlayerHealth();
   gameState.unlockedBridges = new Set();
   gameState.unlockedExpansions = new Set();
+  gameState.upgrades = createUpgradesState();
+  applyUpgrades(); // Volta a casinha, a lavoura e a cerca do começo (a lavoura de uma partida anterior podia estar ampliada).
   gameState.farmland = new Farmland(farmMap.farmlandArea);
   gameState.placedDecorations = new Map();
   gameState.placedFurniture = new Map();
@@ -362,6 +397,10 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.petBedGiven = false;
   gameState.horde = createHordeState();
   gameState.campaign = createCampaignState();
+  gameState.story = createStoryState();
+  gameState.enchants = [];
+  gameState.wizardDelivered = [];
+  gameState.sanctuary = createSanctuaryState();
   gameState.requests = createRequestsState();
   gameState.mail = createMailState();
   gameState.events = createEventsState();
@@ -369,7 +408,8 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.animals = createAnimalsState();
   gameState.construction = createConstructionState();
   gameState.cave = { deepest: 0 };
-  gameState.destroyedFences = new Set();
+  gameState.destroyedFences = new Set(STARTER_BROKEN_FENCES); // Partida nova: algumas cercas já quebradas (`data/farmStart.ts`).
+  gameState.smelting = createSmeltState();
   gameState.sprinklerAnimDay = 0;
   gameState.roosterSoundDay = 0;
   gameState.tutorialCompleted = false; // Partida nova: o tutorial roda uma vez (`systems/tutorial.ts`).

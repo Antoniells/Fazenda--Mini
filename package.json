@@ -1,7 +1,7 @@
 {
   "name": "mini-fazenda",
   "private": true,
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Mini Fazenda — jogo 2D de fazenda",
   "author": "Mini Fazenda",
   "type": "module",
@@ -13,15 +13,19 @@
     "electron:compile": "tsc -p electron/tsconfig.json",
     "dev:electron": "npm run electron:compile && concurrently -k -n vite,electron -c cyan,green \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
     "start:electron": "npm run build && npm run electron:compile && electron .",
-    "build:electron": "npm run build && npm run electron:compile && electron-builder --win"
+    "build:electron": "npm run build && npm run electron:compile && electron-builder --win",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "concurrently": "^10.0.5",
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
     "phaser": "^4.2.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
+    "vitest": "^5.0.2",
     "wait-on": "^9.1.0"
   },
   "build": {

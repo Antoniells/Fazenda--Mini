@@ -72,6 +72,6 @@ export function resolveSlotVisual(ref: SlotRef): SlotVisual | null {
   const { baseId, quality } = parseQualityId(ref.id);
   const resource = RESOURCES[baseId];
   if (!resource) return null;
-  if (quality === 'normal' || !resource.hasQuality) return { name: resource.name, textureKey: resource.textureKey, iconFrame: resource.frameName };
+  if (quality === 'normal' || !resource.hasQuality) return { name: resource.name, textureKey: resource.textureKey, iconFrame: resource.frameName, tint: resource.tint };
   return { name: nameWithQuality(resource.name, quality), textureKey: qualityIconKey(baseId, quality), iconFrame: QUALITY_ICON_FRAME };
 }

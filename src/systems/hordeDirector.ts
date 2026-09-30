@@ -17,15 +17,12 @@ import { awardXp } from './skills';
 import { save as saveGame } from './saveManager';
 import { shouldStartHorde, isDawn, startHorde, registerHordeKill, finishHordeVictory, isFinalNightActive } from './horde';
 import { completeCampaign } from './campaign';
-import { ENDING_SCENE_KEY } from '../scenes/EndingScene';
 import { findWeightedPath } from './hordePathfinding';
 import { GridPoint } from './pathfinding';
 import { farmMap } from '../data/maps/farmMap';
 import { SLIME_GOO } from '../data/resources';
 import { hordeEnemyHp, HORDE_INITIAL_BURST, HORDE_SPAWN_BATCH, HORDE_SPAWN_INTERVAL_MS, HORDE_MIN_SPAWN_DISTANCE_TILES, RAIDER_AI } from '../data/horde';
-
-/** Depois de vencer a Noite Final, espera tanto (ms) pro jogador ler a faixa de vitória antes de a tela final abrir. */
-const ENDING_DELAY_MS = 5500;
+import { getPlayerDefense } from './enchanting';
 
 const STATUS_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: '"Courier New", Courier, monospace',
@@ -50,6 +47,8 @@ export class HordeDirector {
   private readonly raiders: Raider[] = [];
   private readonly statusText: Phaser.GameObjects.Text;
   private nextSpawnAt = 0;
+  /** O jogador chegou teletransportado pelo chamado da horda (`systems/hordeRecall.ts`): o aviso explica. */
+  private recalled = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -66,6 +65,12 @@ export class HordeDirector {
 
     // A cena reabriu no meio da horda: os inimigos que faltam voltam a chegar.
     if (gameState.horde.active) this.spawnBurst(HORDE_INITIAL_BURST);
+  }
+
+  /** A Fazenda abriu por causa do chamado da horda. Se a noite já estava em andamento, avisa agora; senão, o aviso do começo explica. */
+  noteRecalled(): void {
+    this.recalled = true;
+    if (gameState.horde.active) this.message.show('A HORDA NÃO ESPERA!', 'Você foi trazido de volta para defender a Fazenda.');
   }
 
   /** Inimigos vivos — o `PlayerController` usa pra colisão e pro golpe de espada. */
@@ -106,7 +111,7 @@ export class HordeDirector {
     const horde = startHorde();
     playEffect(this.scene, HORDE_ALERT_SOUND);
     if (isFinalNightActive()) this.message.show('A NOITE FINAL!', 'A última horda chegou. Defenda a Fazenda até o amanhecer!');
-    else this.message.show(`HORDA ${horde.number}!`, 'Proteja a fazenda até o amanhecer.');
+    else this.message.show(`HORDA ${horde.number}!`, this.recalled ? 'Você foi levado de volta à Fazenda: proteja-a até o amanhecer.' : 'Proteja a fazenda até o amanhecer.');
     this.nextSpawnAt = time + HORDE_SPAWN_INTERVAL_MS;
     this.spawnBurst(HORDE_INITIAL_BURST);
     saveGame(); // O estado da horda já vai pro save (recarregar não "cancela" o evento).
@@ -120,12 +125,12 @@ export class HordeDirector {
     playEffect(this.scene, VICTORY_SOUND);
     const summary = finishHordeVictory();
     if (summary.finalNightWon) {
-      // A Noite Final foi vencida: a campanha se completa e, depois da faixa de vitória, abre a tela final (epílogo).
+      // A Noite Final foi vencida: a campanha dos moradores se completa, mas o jogo NÃO acaba — o fim é o altar do Sábio Coelho
+      // (`data/story.ts`). As hordas continuam enquanto o mundo estiver em desequilíbrio.
       completeCampaign();
-      this.message.show('A FAZENDA ESTÁ SALVA!', `Recompensa: ${summary.lines.join(', ')}.`);
+      this.message.show('A NOITE FINAL FOI VENCIDA!', `Recompensa: ${summary.lines.join(', ')}. As hordas voltam enquanto o mundo estiver em desequilíbrio.`);
       saveGame();
       this.statusText.setVisible(false);
-      this.scene.time.delayedCall(ENDING_DELAY_MS, () => this.scene.scene.start(ENDING_SCENE_KEY));
       return;
     }
     // Cercas destruídas ficam assim até o Martelo: avisa quantas faltam consertar.
@@ -202,7 +207,7 @@ export class HordeDirector {
   /** Mesma regra do Slime: avisa a cena (o pet revida) e só então desconta a vida (a invencibilidade pós-dano pode absorver). */
   private hurtPlayer(damage: number, time: number, attacker: Enemy): void {
     this.scene.events.emit(PLAYER_ATTACKED_EVENT, attacker);
-    if (!gameState.playerHealth.takeDamage(damage, time, gameState.inventory.getDefense())) return;
+    if (!gameState.playerHealth.takeDamage(damage, time, getPlayerDefense())) return;
     this.player.playHurtFeedback();
     if (gameState.playerHealth.isDead()) handlePlayerDeath(this.scene);
   }

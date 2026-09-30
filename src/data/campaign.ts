@@ -1,8 +1,8 @@
 /**
  * Campanha do jogo (progressão com FIM): uma sequência de missões dos moradores do Vilarejo, agrupadas em 4 atos. A missão atual é
  * sempre uma só (`CampaignState.questIndex`) — cumprida, o morador que a deu entrega a recompensa e a próxima é liberada. O ato 4
- * termina na NOITE FINAL: uma horda especial na Fazenda; sobrevivendo a ela a campanha se completa (epílogo, `scenes/EndingScene.ts`)
- * e o jogador pode continuar no modo livre. Só DADOS: a regra (progresso, entrega, recompensa) está em `systems/campaign.ts`.
+ * termina na NOITE FINAL: uma horda especial na Fazenda; sobrevivendo a ela a campanha se completa. O JOGO não acaba aí: o fim é a
+ * história dos Três Pilares (`data/story.ts`), que corre em paralelo, e as hordas continuam. Só DADOS: a regra (progresso, entrega, recompensa) está em `systems/campaign.ts`.
  */
 import type { NpcId } from './npcs';
 
@@ -14,7 +14,7 @@ export interface CampaignState {
   hordesWon: number;
   /** Dia (do calendário) em que a NOITE FINAL vai acontecer, depois que o jogador diz que está pronto; `null` = ainda não marcada. */
   finalNightDay: number | null;
-  /** A Noite Final foi vencida: a história terminou (o jogo continua livre). */
+  /** A Noite Final foi vencida: a campanha dos moradores terminou (a história dos Três Pilares segue, `data/story.ts`). */
   completed: boolean;
 }
 
@@ -59,11 +59,15 @@ export interface QuestDefinition {
   outro: string;
 }
 
+/** A fala da Noite Final depois do fim da história (o mundo em paz — `isWorldAtPeace`). */
+export const FINAL_NIGHT_PEACE_TEXT =
+  'A luz que subiu das Cavernas levou as hordas embora para sempre. Não haverá Noite Final... e ainda bem! O fundo que juntamos é seu: você mereceu.';
+
 export const ACTS: Record<1 | 2 | 3 | 4, { title: string; subtitle: string }> = {
   1: { title: 'Ato I — Raízes', subtitle: 'Mostre que a terra ainda dá frutos.' },
   2: { title: 'Ato II — Fronteiras', subtitle: 'Descubra o que existe além da Fazenda.' },
   3: { title: 'Ato III — Preparativos', subtitle: 'Arme-se: a noite mais escura vem aí.' },
-  4: { title: 'Ato IV — A Noite Final', subtitle: 'Defenda a Fazenda pela última vez.' },
+  4: { title: 'Ato IV — A Noite Final', subtitle: 'Enfrente a maior horda de todas.' },
 };
 
 export const QUESTS: QuestDefinition[] = [
@@ -198,16 +202,9 @@ export const QUESTS: QuestDefinition[] = [
     act: 4,
     giver: 'banker',
     title: 'A Noite Final',
-    intro: 'Chegou a hora. Quando disser que está pronto, a última horda descerá sobre a Fazenda às 19:00 — a maior de todas. Sobreviva até o amanhecer e a Fazenda será livre. Está pronto?',
+    intro: 'Chegou a hora. Quando disser que está pronto, a maior horda de todas descerá sobre a Fazenda às 19:00. Sobreviva até o amanhecer e o Vilarejo nunca mais vai duvidar de você. Está pronto?',
     requirements: [{ kind: 'finalNight' }],
     reward: { coins: 1000 },
-    outro: 'A Fazenda está salva.',
+    outro: 'A Fazenda resistiu. Mas enquanto o mundo estiver em desequilíbrio, as hordas vão voltar.',
   },
-];
-
-/** Texto de epílogo mostrado na tela final (`scenes/EndingScene.ts`), página a página. */
-export const EPILOGUE_PAGES: string[] = [
-  'O sol nasce sobre a Fazenda.\n\nA última horda se foi, e o silêncio da manhã nunca foi tão doce.',
-  'No Vilarejo, Alberto acende o forno, Bruno acende a forja e o Capitão Salgado iça as velas: todos sabem que aquela terra agora tem dono — e ele não desiste.',
-  'Do que era um terreno abandonado, nasceram hortas, pontes e amizades.\n\nA Fazenda será lembrada por gerações.',
 ];

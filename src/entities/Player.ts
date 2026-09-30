@@ -14,7 +14,7 @@ import { playEffect } from '../systems/soundEffects';
 import { HURT_SOUND } from '../data/audio';
 import { getMoveSpeedMultiplier } from '../systems/skills';
 
-type Facing = 'down' | 'up' | 'side';
+export type Facing = 'down' | 'up' | 'side';
 
 /** Tempo máximo (ms) que uma ação (golpe, rega, comer…) pode segurar o jogador ocupado (busy): bem acima da mais longa (~1 s); só age se a animação nunca terminar. */
 const ACTION_FAILSAFE_MS = 4000;
@@ -43,6 +43,9 @@ export class Player {
   private moving = false;
   private busy = false;
   private sitting = false;
+  /** Numa ação roteirizada (`beginScripted`) e o ajuste vertical da animação que ela está tocando. */
+  private scripted = false;
+  private scriptedYOffset = 0;
   private moveElapsed = 0;
   private fromX = 0;
   private fromY = 0;
@@ -279,6 +282,42 @@ const col = this.col + dCol;
     };
     this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, finish);
     this.sprite.scene.time.delayedCall(ACTION_FAILSAFE_MS, finish);
+  }
+
+  /**
+   * AÇÃO ROTEIRIZADA (pesca — `systems/fishingSession.ts`): diferente de `performAction` (uma animação e pronto), quem chamou comanda
+   * várias animações em sequência (`playScripted`) até `endScripted`. Enquanto isso o jogador fica ocupado (não anda nem age). Devolve
+   * `false` (sem mudar nada) se ele está andando, ocupado ou sentado.
+   */
+  beginScripted(): boolean {
+    if (this.moving || this.busy || this.sitting) return false;
+    this.clearPath();
+    this.busy = true;
+    this.scripted = true;
+    return true;
+  }
+
+  /** Toca `animKey` na pose roteirizada; `yOffset` = o mesmo ajuste de `ActionAnimSpec.yOffset` (folhas com mais margem embaixo). */
+  playScripted(animKey: string, yOffset = 0): void {
+    if (!this.scripted) return;
+    this.sprite.y += yOffset - this.scriptedYOffset;
+    this.scriptedYOffset = yOffset;
+    this.sprite.play(animKey);
+  }
+
+  /** Encerra a ação roteirizada: volta à posição e ao idle, e libera o jogador. */
+  endScripted(): void {
+    if (!this.scripted) return;
+    this.sprite.y -= this.scriptedYOffset;
+    this.scriptedYOffset = 0;
+    this.scripted = false;
+    this.busy = false;
+    this.playIdle();
+  }
+
+  /** Pra onde o personagem está virado (a linha da folha: baixo/cima/lado; o lado esquerdo é o direito espelhado). */
+  getFacing(): Facing {
+    return this.facing;
   }
 
   /**

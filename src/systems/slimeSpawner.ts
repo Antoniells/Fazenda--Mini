@@ -10,6 +10,8 @@ import { SLIME_GOO } from '../data/resources';
 import { spawnLoot } from './lootDrops';
 import { awardXp } from './skills';
 import { PLAYER_ATTACKED_EVENT } from './combat';
+import { getPlayerDefense } from './enchanting';
+import { isWorldAtPeace } from './story';
 
 /** Quantos Slimes existem na Floresta por dia (pedido explícito do usuário: só lá, nenhuma outra cena). */
 const SLIME_COUNT = 8;
@@ -51,7 +53,8 @@ export class SlimeSpawner {
       record.day = today;
       record.killed = 0;
     }
-    const aliveCount = Math.max(0, SLIME_COUNT - record.killed);
+    // Depois do fim da história (`isWorldAtPeace`) os monstros não voltam.
+    const aliveCount = isWorldAtPeace() ? 0 : Math.max(0, SLIME_COUNT - record.killed);
 
     for (let i = 0; i < aliveCount; i++) {
       const cell = randomWalkableCell(cols, rows, grid);
@@ -85,7 +88,7 @@ export class SlimeSpawner {
   private hurtPlayer(damage: number, time: number, attacker: Enemy): void {
     // Avisa a cena ANTES do teste de invencibilidade: o golpe foi uma agressão mesmo que a janela pós-dano o tenha absorvido — o pet revida do mesmo jeito.
     this.scene.events.emit(PLAYER_ATTACKED_EVENT, attacker);
-    if (!gameState.playerHealth.takeDamage(damage, time, gameState.inventory.getDefense())) return;
+    if (!gameState.playerHealth.takeDamage(damage, time, getPlayerDefense())) return;
     this.player.playHurtFeedback();
     if (gameState.playerHealth.isDead()) handlePlayerDeath(this.scene);
   }

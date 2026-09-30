@@ -3,6 +3,10 @@ import { SLIME_KEY, SLIME_IDLE_FRAMES } from './enemies';
 import { EGG_ICON } from './animals';
 import { nameWithQuality, parseQualityId } from './quality';
 import { GRASS_DETAILS_KEY, WILD_GRASS_DETAIL } from './grassDetails';
+import { FISH_RESOURCES } from './fishing';
+import { STORY_ITEMS_KEY, MAP_ICON_FRAME } from './caveLandmarks';
+import { ALL_CROPS_ICONS_KEY, CARROT } from './crops';
+import { GOLDEN_TINT } from './sanctuary';
 
 /**
  * Materiais coletáveis (Fase 7 — Coleta de Recursos): loot de árvores/
@@ -30,6 +34,8 @@ export interface ResourceDefinition {
   sellPrice?: number;
   /** Pode ter qualidade (estrelas Prata/Ouro/Irídio, `data/quality.ts`) — só o ovo por enquanto. */
   hasQuality?: boolean;
+  /** Tom aplicado ao ícone (uma arte real existente, tingida — a Cenoura Dourada é a cenoura do pacote em dourado). */
+  tint?: number;
 }
 
 /** Ícone reaproveita o mesmo frame já recortado por `systems/externalMapBuilder.ts` (pilha de madeira). */
@@ -93,6 +99,14 @@ export const GOLD_ORE: ResourceDefinition = { id: 'gold-ore', name: 'Ouro Bruto'
 export const COAL: ResourceDefinition = { id: 'coal', name: 'Carvão', textureKey: COAL_KEY, frameName: COAL_FRAME.name, sellPrice: 2 };
 export const COPPER_BAR: ResourceDefinition = { id: 'copper-bar', name: 'Barra de Cobre', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.copperBar.name, sellPrice: 8 };
 export const GOLD_BAR: ResourceDefinition = { id: 'gold-bar', name: 'Barra de Ouro', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.goldBar.name, sellPrice: 20 };
+/** Azurita (Fase 11): minério raro das Cavernas (andar 45+); a barra sai da Fornalha com Barra de Ouro e serve pros encantamentos. */
+export const AZURITE_ORE: ResourceDefinition = { id: 'azurite-ore', name: 'Azurita Bruta', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.azuriteOre.name, sellPrice: 12 };
+export const AZURITE_BAR: ResourceDefinition = { id: 'azurite-bar', name: 'Barra de Azurita', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.azuriteBar.name, sellPrice: 60 };
+/** Os pilares da terra (Fase 11, `data/sanctuary.ts`): a semente que o santuário entrega e a Cenoura colhida no altar — a arte da cenoura do pacote em dourado. Não se vendem. */
+export const GOLDEN_CARROT_SEED: ResourceDefinition = { id: 'golden-carrot-seed', name: 'Semente da Cenoura Dourada', textureKey: ALL_CROPS_ICONS_KEY, frameName: CARROT.seedFrameName, tint: GOLDEN_TINT };
+export const GOLDEN_CARROT: ResourceDefinition = { id: 'golden-carrot', name: 'Cenoura Dourada', textureKey: ALL_CROPS_ICONS_KEY, frameName: CARROT.cropFrameName, tint: GOLDEN_TINT };
+/** O mapa do baú esquecido do andar 50 (`data/caveLandmarks.ts`): item da história, não se vende. */
+export const MYSTERIOUS_MAP: ResourceDefinition = { id: 'mysterious-map', name: 'Mapa Misterioso', textureKey: STORY_ITEMS_KEY, frameName: MAP_ICON_FRAME.name };
 
 /** Ovo de galinha (`data/animals.ts`): produção diária do galinheiro. Ícone: o 1º quadro (16x16) de `Icons/Food Icons/Chicken Egg.png`, carregado como spritesheet. Vende na Caixa de Remessas. */
 export const EGG: ResourceDefinition = {
@@ -131,6 +145,13 @@ export const RESOURCES: Record<string, ResourceDefinition> = {
   [COAL.id]: COAL,
   [COPPER_BAR.id]: COPPER_BAR,
   [GOLD_BAR.id]: GOLD_BAR,
+  [AZURITE_ORE.id]: AZURITE_ORE,
+  [AZURITE_BAR.id]: AZURITE_BAR,
+  [MYSTERIOUS_MAP.id]: MYSTERIOUS_MAP,
+  [GOLDEN_CARROT_SEED.id]: GOLDEN_CARROT_SEED,
+  [GOLDEN_CARROT.id]: GOLDEN_CARROT,
   [WILD_GRASS.id]: WILD_GRASS,
   [EGG.id]: EGG,
+  // Os peixes (`data/fishing.ts`): pescados com a Vara, vendidos na Caixa de Remessas.
+  ...Object.fromEntries(FISH_RESOURCES.map((fish) => [fish.id, fish])),
 };

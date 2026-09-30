@@ -32,12 +32,15 @@ import {
   closeInventoryScreen,
   isFurnaceMenuOpen,
   closeFurnaceMenu,
+  isPauseMenuOpen,
+  escapeTogglesPause,
   isChestMenuOpen,
   closeChestMenu,
   HOTBAR_CHANGED_EVENT,
 } from './UIScene';
 import { FurniturePlacementSystem, preloadFurniture } from '../systems/furniturePlacement';
 import { DECORATIONS, DecorationDefinition, PET_BED } from '../data/decorations';
+import { applyUpgrades } from '../systems/farmUpgrades';
 import type { GridPoint } from '../systems/pathfinding';
 
 export const HOUSE_SCENE_KEY = 'HouseScene';
@@ -127,6 +130,7 @@ export class HouseScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyUpgrades(); // O tamanho do cômodo vem do nível da casa (`data/houseLevels.ts`).
     const { cols, rows, exitPosition, spawnPosition, bedPosition, bedFootprint } = houseMap;
     const tilePx = TILE_SIZE * DISPLAY_SCALE;
 
@@ -189,7 +193,7 @@ export class HouseScene extends Phaser.Scene {
 
     // Trava de clique enquanto dorme / Inventário, Fornalha ou Baú aberto (mesma ideia da Fazenda).
     this.controller.addInputInterceptor({
-      isActive: () => this.isSleeping || this.isLeaving || isInventoryOpen() || isFurnaceMenuOpen() || isChestMenuOpen(),
+      isActive: () => this.isSleeping || this.isLeaving || isInventoryOpen() || isFurnaceMenuOpen() || isChestMenuOpen() || isPauseMenuOpen(),
       handleClick: () => {},
     });
 
@@ -244,6 +248,7 @@ export class HouseScene extends Phaser.Scene {
       else if (isChestMenuOpen()) closeChestMenu();
       else if (isInventoryOpen()) closeInventoryScreen();
       else if (isFurnaceMenuOpen()) closeFurnaceMenu();
+      else escapeTogglesPause(); // Nada aberto: a Pausa.
     });
 
     // Dica (some sozinha): a cama é o jeito de dormir.
@@ -299,6 +304,10 @@ export class HouseScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    if (isPauseMenuOpen()) {
+      this.worldBlur.setActive(true); // Pausa aberta: a casa (e o relógio) para.
+      return;
+    }
     const menuOpen = isInventoryOpen() || isFurnaceMenuOpen() || isChestMenuOpen();
     if (!this.isSleeping && !this.isLeaving && !menuOpen) this.controller.update(time, delta);
     if (!this.isLeaving && !menuOpen) this.petCompanion?.update(time, delta);

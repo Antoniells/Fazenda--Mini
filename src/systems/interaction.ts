@@ -24,6 +24,11 @@ export interface Interactable {
    * na parede da casa): o clique leva o jogador até ela em vez de procurar a vizinha mais próxima. Ignorada se não for andável.
    */
   approachCell?: { col: number; row: number };
+  /**
+   * A interação vale AGORA? `false` = a célula se comporta como se nada estivesse registrado (o clique não leva o jogador até ela, o F
+   * não a aciona) — ex.: a água da margem, que só é ponto de pesca com a Vara na mão (`systems/fishingSpots.ts`). Ausente = sempre.
+   */
+  isAvailable?(): boolean;
 }
 
 export class InteractionRegistry {
@@ -37,8 +42,15 @@ export class InteractionRegistry {
     this.entries.set(this.key(col, row), interactable);
   }
 
+  /** A interação da célula, se houver e estiver valendo agora (`Interactable.isAvailable`). */
   get(col: number, row: number): Interactable | undefined {
-    return this.entries.get(this.key(col, row));
+    const entry = this.entries.get(this.key(col, row));
+    return entry && entry.isAvailable?.() !== false ? entry : undefined;
+  }
+
+  /** Há algo registrado na célula (mesmo que indisponível agora)? */
+  has(col: number, row: number): boolean {
+    return this.entries.has(this.key(col, row));
   }
 
   /** Desregistra a interação de uma célula (ex.: uma decoração removida — Fase 6). */

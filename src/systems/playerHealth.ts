@@ -1,3 +1,4 @@
+import { debugFlags } from '../debug/debugFlags';
 /**
  * A HUD mostra `HEART_COUNT` corações (cheio/meio/vazio) e a vida máxima é
  * escolhida pra que cada coração valha 10 HP e o meio-coração 5 HP — o dano
@@ -62,6 +63,7 @@ export class PlayerHealth {
   /** Aplica dano de contato de inimigo (reduzido pela `defense` da armadura equipada, ver `reduceDamage`), respeitando a invencibilidade. Devolve `false` (nada aplicado) se ainda estiver na janela de invencibilidade ou se já estiver morto (a morte está sendo tratada — não deve acumular golpes). */
   takeDamage(amount: number, time: number, defense = 0): boolean {
     if (this.isDead()) return false;
+    if (debugFlags.godMode) return false; // Menu de hack (`debug/hackMenu.ts`).
     if (time < this.invincibleUntil) return false;
     this.hp = Math.max(0, this.hp - reduceDamage(amount, defense));
     this.invincibleUntil = time + INVINCIBILITY_MS;

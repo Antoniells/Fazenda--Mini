@@ -1,5 +1,7 @@
 import { gameState } from './gameState';
 import { PET_BED } from '../data/decorations';
+import { NEW_PET_LETTER } from '../data/sanctuary';
+import { hasMilestone, reachMilestone } from './story';
 
 /** Quantas vezes o jogador precisa dormir na cama pra a caixa do pet aparecer. */
 export const SLEEPS_TO_UNLOCK_PET = 3;
@@ -32,6 +34,8 @@ export function isPetBoxPending(): boolean {
 /** A carta que vem na caixa (o texto do evento, com o nome do jogador). O coração do fim é desenhado pela tela da carta (arte do HUD). */
 export function getPetLetter(): { title: string; body: string } {
   const name = gameState.profile.playerName;
+  // Depois do fim (o pet virou a Amizade Dourada): a carta do filhote (`systems/ending.ts`).
+  if (hasMilestone('awakening') && !hasMilestone('newPet')) return { title: NEW_PET_LETTER.title, body: NEW_PET_LETTER.body.replace(/{nome}/g, name) };
   return {
     title: 'Uma carta chegou',
     body:
@@ -46,6 +50,7 @@ export function getPetLetter(): { title: string; body: string } {
 export function unlockPet(): void {
   gameState.petUnlocked = true;
   gameState.petBoxPlaced = false;
+  if (hasMilestone('awakening')) reachMilestone('newPet');
   grantPetBed();
 }
 

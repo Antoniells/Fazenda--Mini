@@ -25,7 +25,7 @@ import { gameState } from '../systems/gameState';
 import { onPlayerStepped } from '../systems/sceneEvents';
 import { installUiCamera } from '../systems/uiCamera';
 import { advanceWorldTime } from '../systems/worldTime';
-import { shouldStartHorde } from '../systems/horde';
+import { shouldRecallToFarm, recallToFarm } from '../systems/hordeRecall';
 import { DayNightOverlay } from '../systems/dayNightOverlay';
 import { WorldBlur } from '../systems/worldBlur';
 import { isWorkingNow, preloadNpcs, workingHoursText } from '../systems/npcSystem';
@@ -37,7 +37,7 @@ import { preloadVillageShop } from '../systems/villageShop';
 import { registerFrame } from '../systems/externalMapBuilder';
 import { ShopMenu } from '../ui/shopMenu';
 import { LockedMessage } from '../ui/lockedMessage';
-import { ensureUIScene, isDialogueOpen, isInventoryOpen, isFurnaceMenuOpen, toggleInventoryScreen, closeInventoryScreen, closeFurnaceMenu } from './UIScene';
+import { ensureUIScene, isDialogueOpen, isInventoryOpen, isFurnaceMenuOpen, toggleInventoryScreen, closeInventoryScreen, closeFurnaceMenu, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
 
 export const SHOP_INTERIOR_SCENE_KEY = 'ShopInteriorScene';
 /** A chave da `VillageScene` (repetida aqui em vez de importada: ela importa esta cena — evita a dependência circular). */
@@ -157,7 +157,7 @@ export class ShopInteriorScene extends Phaser.Scene {
 
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
     this.controller.addInputInterceptor({
-      isActive: () => this.isLeaving || isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen() || !!this.shop?.isOpen(),
+      isActive: () => this.isLeaving || isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen() || isPauseMenuOpen() || !!this.shop?.isOpen(),
       handleClick: () => {},
     });
 
@@ -185,6 +185,8 @@ export class ShopInteriorScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ESC', () => {
       if (this.shop?.isOpen()) this.shop.close();
       else if (isInventoryOpen()) closeInventoryScreen();
+      else if (isFurnaceMenuOpen()) closeFurnaceMenu();
+      else escapeTogglesPause(); // Nada aberto: a Pausa.
     });
 
     this.dayNightOverlay = new DayNightOverlay(this, INDOOR_NIGHT_INTENSITY);
@@ -309,13 +311,18 @@ export class ShopInteriorScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    if (isPauseMenuOpen()) {
+      this.worldBlur.setActive(true); // Pausa aberta: a loja (e o relógio) para.
+      return;
+    }
     const menuOpen = isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen() || !!this.shop?.isOpen();
     if (!this.isLeaving && !menuOpen) this.controller.update(time, delta);
 
-    // A horda chegou com o jogador aqui dentro: ele é posto pra fora (a Fazenda precisa de defesa).
-    if (!this.isLeaving && (gameState.horde.active || shouldStartHorde())) {
-      this.lockedMessage.show('A HORDA CHEGOU!', 'Volte para a Fazenda e defenda-a!');
-      this.leave();
+    // A horda chegou com o jogador aqui dentro: ele é levado direto pra Fazenda (`systems/hordeRecall.ts`).
+    if (!this.isLeaving && shouldRecallToFarm()) {
+      this.isLeaving = true;
+      if (this.shop?.isOpen()) this.shop.close();
+      recallToFarm(this);
     }
 
     if (!this.isLeaving) advanceWorldTime(delta, false);

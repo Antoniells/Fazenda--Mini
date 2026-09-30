@@ -1,13 +1,14 @@
-import { ORE_COAL_FRAME, ORE_COPPER_FRAME, ORE_GOLD_FRAME, ORE_IRON_FRAME } from './tiles';
-import { COAL, COPPER_ORE, GOLD_ORE, IRON_ORE } from './resources';
+import { ORE_AZURITE_FRAME, ORE_COAL_FRAME, ORE_COPPER_FRAME, ORE_GOLD_FRAME, ORE_IRON_FRAME } from './tiles';
+import { AZURITE_ORE, COAL, COPPER_ORE, GOLD_ORE, IRON_ORE } from './resources';
 import { quarryMap } from './maps/quarryMap';
 
 /**
  * Veios de minério da Pedreira (`QuarryScene`), minerados com a Picareta (`systems/oreInteraction.ts`). Cada veio é um nó do registro de recursos (`kind: 'ore'`, `data/maps/quarryMap.ts`
  * dá as posições): quebrado, some, e volta ao mesmo lugar com o passar dos dias (`ORE_RESPAWN_CHANCE`). Os metais mais nobres exigem picareta melhor
- * (`minToolTier`, o tier de `data/toolProgression.ts`): Cobre e Carvão com qualquer uma, Ferro com a de Cobre, Ouro com a de Ferro.
+ * (`minToolTier`, o tier de `data/toolProgression.ts`): Cobre e Carvão com qualquer uma, Ferro com a de Cobre, Ouro com a de Ferro. As Cavernas também têm veios
+ * (`systems/caveOres.ts`), incluindo a Azurita (só lá, com a de Ouro).
  */
-export type OreKind = 'copper' | 'coal' | 'iron' | 'gold';
+export type OreKind = 'copper' | 'coal' | 'iron' | 'gold' | 'azurite';
 
 export interface OreDefinition {
   kind: OreKind;
@@ -26,6 +27,8 @@ export const ORES: Record<OreKind, OreDefinition> = {
   coal: { kind: 'coal', name: 'Veio de Carvão', frame: ORE_COAL_FRAME, dropId: COAL.id, drop: [2, 4], minToolTier: 0 },
   iron: { kind: 'iron', name: 'Veio de Ferro', frame: ORE_IRON_FRAME, dropId: IRON_ORE.id, drop: [2, 4], minToolTier: 1 },
   gold: { kind: 'gold', name: 'Veio de Ouro', frame: ORE_GOLD_FRAME, dropId: GOLD_ORE.id, drop: [1, 3], minToolTier: 2 },
+  // Só nas Cavernas, do andar 45 pra baixo (`data/caveLandmarks.ts`); pede a Picareta de Ouro.
+  azurite: { kind: 'azurite', name: 'Veio de Azurita', frame: ORE_AZURITE_FRAME, dropId: AZURITE_ORE.id, drop: [1, 2], minToolTier: 3 },
 };
 
 /** Multiplica a escala de exibição dos veios (o recorte da pedra com minério é só 11x10 — pequeno perto do tile de 16). */
@@ -46,6 +49,7 @@ const EXTRA_VEINS: Record<OreKind, Array<[number, number]>> = {
   coal: [[10, 12], [23, 21], [31, 25], [14, 26]],
   iron: [[16, 20], [27, 19], [7, 25]],
   gold: [[13, 4], [25, 11], [34, 21], [3, 27], [30, 27]],
+  azurite: [], // Não existe na Pedreira.
 };
 
 export interface VeinPlacement {
@@ -56,6 +60,6 @@ export interface VeinPlacement {
 
 /** Todos os veios da Pedreira, na ordem em que nascem no começo do jogo. */
 export function getQuarryVeins(): VeinPlacement[] {
-  const fromMap: Record<OreKind, Array<[number, number]>> = { copper: [], coal: quarryMap.coalOrePositions, iron: quarryMap.ironOrePositions, gold: [] };
+  const fromMap: Record<OreKind, Array<[number, number]>> = { copper: [], coal: quarryMap.coalOrePositions, iron: quarryMap.ironOrePositions, gold: [], azurite: [] };
   return (Object.keys(ORES) as OreKind[]).flatMap((kind) => [...fromMap[kind], ...EXTRA_VEINS[kind]].map(([col, row]): VeinPlacement => ({ kind, col, row })));
 }

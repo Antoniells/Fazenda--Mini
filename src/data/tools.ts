@@ -22,7 +22,8 @@ export type ToolId =
   | 'axe-gold'
   | 'pickaxe-iron'
   | 'pickaxe-gold'
-  | 'hammer';
+  | 'hammer'
+  | 'fishing-rod';
 
 export interface ToolDefinition {
   id: ToolId;
@@ -97,6 +98,18 @@ export const HAMMER: ToolDefinition = {
 };
 
 /**
+ * Vara de Pescar (Fase 11 — pesca, `systems/fishingSpots.ts`): com ela na mão, clique na água da margem (Praia, lago da Floresta) ou
+ * encare a água e aperte F. Vendida pelo Ferreiro (`FISHING_ROD_PRICE` em `data/fishing.ts`). Mesma convenção de ícone (folha 32x16, frame 0).
+ */
+export const FISHING_ROD: ToolDefinition = {
+  id: 'fishing-rod',
+  name: 'Vara de Pescar',
+  textureKey: 'tool-fishing-rod',
+  texturePath: `${TOOLS_BASE_PATH}/Fishing Rod.png`,
+  iconFrame: 0,
+};
+
+/**
  * Ferramentas de progressão (Fase 8 — Upgrade de Ferramentas): diferente
  * das 5 acima (dadas de graça no início, nunca compradas), estas só
  * existem comprando no Ferreiro (`data/toolShop.ts`: moedas + 5 barras do metal) — não têm
@@ -165,4 +178,5 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
   'pickaxe-iron': IRON_PICKAXE,
   'pickaxe-gold': GOLD_PICKAXE,
   hammer: HAMMER,
+  'fishing-rod': FISHING_ROD,
 };

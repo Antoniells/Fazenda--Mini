@@ -1,5 +1,6 @@
 import { gameState } from './gameState';
 import { MAIL_SCHEDULE, MailMessage } from '../data/mail';
+import { reachMilestone } from './story';
 
 /**
  * Correio (pedido explícito): só estado, sem game object — quem mostra é `systems/mailbox.ts`. Uma carta está "na caixa" quando o
@@ -30,8 +31,11 @@ export function hasUnreadMail(): boolean {
   return getUnreadMail().length > 0;
 }
 
+/** Marca como lida e, se a carta faz parte da história, registra o marco dela (`MailMessage.milestone`). */
 export function markMailRead(id: string): void {
   if (!gameState.mail.readIds.includes(id)) gameState.mail.readIds.push(id);
+  const milestone = allMail().find((message) => message.id === id)?.milestone;
+  if (milestone) reachMilestone(milestone);
 }
 
 /** Título e corpo prontos pra mostrar: `{nome}` vira o nome do jogador. */

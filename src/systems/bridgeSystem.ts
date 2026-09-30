@@ -11,6 +11,7 @@ import { playEffect } from './soundEffects';
 import { SPEND_MONEY_SOUND } from '../data/audio';
 import { OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialoguePanel';
 import { isDialogueOpen } from '../scenes/UIScene';
+import { shouldRecallToFarm } from './hordeRecall';
 
 /**
  * DEBUG (Sistema de Cenas): `false` — pedido explícito do usuário pra
@@ -166,6 +167,11 @@ export class BridgeSystem {
   private handlePlayerStep(col: number, row: number): void {
     const bridge = this.map.bridges.find((b) => b.col === col && b.row === row);
     if (bridge && this.isUnlocked(bridge) && !this.isTransitioning) {
+      // Noite de horda: ninguém sai da Fazenda (de fora, o jogador seria trazido de volta — `systems/hordeRecall.ts`).
+      if (shouldRecallToFarm()) {
+        this.lockedMessage.show('A HORDA ESTÁ AQUI!', 'Não dá pra sair da Fazenda agora: defenda-a até o amanhecer.');
+        return;
+      }
       this.crossInto(bridge);
       return;
     }

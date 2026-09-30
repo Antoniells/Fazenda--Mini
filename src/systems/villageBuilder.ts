@@ -61,7 +61,7 @@ export function buildVillage(scene: Phaser.Scene): { trees: Phaser.GameObjects.I
 }
 
 /** Estruturas que são CASAS (ganham sombra colada na base da parede, `addBuildingShadows`): a banca e o chafariz não. */
-const HOUSE_ASSETS = new Set<string>(['house2', 'house3', 'house7', 'house8']);
+const HOUSE_ASSETS = new Set<string>(['house2', 'house3', 'house7', 'house8', 'blacksmithHouse']);
 /** Chafariz: troca os 4 quadros da folha em loop (o timer se remove sozinho quando a imagem some, com a cena). */
 function animateFountain(scene: Phaser.Scene, image: Phaser.GameObjects.Image): void {
   const asset = VILLAGE_ASSETS.fountain;

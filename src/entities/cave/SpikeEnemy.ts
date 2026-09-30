@@ -22,7 +22,8 @@ const EMERGE_HIT_RADIUS_PX = 52;
 /** Parado na superfície, vulnerável, depois de emergir. */
 const VULNERABLE_MS = 1500;
 const DIG_MS = 460;
-const SHADOW_OFFSET_Y = 6;
+/** A folha do Espinho tem 8 linhas nativas (16 px) de margem vazia sob os pés: a sombra fica logo sob eles. */
+const SHADOW_OFFSET_Y = 18;
 
 /**
  * O Espinho (Spike da Caverna): um ouriço que MERGULHA quando nota o jogador e anda debaixo da terra (invisível e intocável) até ficar embaixo dele; aí aparece só
@@ -134,6 +135,11 @@ export class SpikeEnemy extends Enemy {
     this.shadow.setVisible(true);
     this.sprite.play(dirAnimKey(SPIKE_SHEETS.leaving, 'emerge', this.facing));
     if (distance <= EMERGE_HIT_RADIUS_PX) this.onAttackHit(this.stats.contactDamage, time, this);
+  }
+
+  /** O empurrão do golpe para na parede (`Enemy.knockbackTarget`): a célula dos pés, como ao cavar. */
+  protected override canOccupy(x: number, y: number): boolean {
+    return this.grid.isWalkable(Math.floor(x / this.tilePx), Math.floor((y - 2) / this.tilePx));
   }
 
   private burrowToward(targetX: number, targetY: number, delta: number): void {

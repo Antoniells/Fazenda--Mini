@@ -11,6 +11,7 @@ import { startEating, isEdibleCropSelected } from './eating';
 import { tutorial } from './tutorial';
 import { playEffect } from './soundEffects';
 import { SWORD_SWING_SOUND } from '../data/audio';
+import { swordDamage } from './enchanting';
 
 /**
  * Alvo pendente de interação: `standCol/standRow` é a célula andável para
@@ -185,7 +186,7 @@ export class PlayerController {
     this.player.performAction(
       'sword',
       () => {
-        resolveSwordAttack(this.player, this.enemyProvider?.() ?? [], weapon.damage, facing);
+        resolveSwordAttack(this.player, this.enemyProvider?.() ?? [], swordDamage(weapon.id), facing); // (Espada encantada: +35%)
       },
       () => playEffect(this.scene, SWORD_SWING_SOUND), // O "vush" sai no início do golpe, acerte ou não.
     );

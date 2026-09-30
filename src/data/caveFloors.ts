@@ -1,4 +1,5 @@
 import { CaveEnemyKind, MYCONID_COLORS, SLIME_COLORS, SPROUT_COLORS } from './caveEnemies';
+import { ABYSS_BONUS, BARRIER_FLOOR } from './caveLandmarks';
 
 /**
  * Os ANDARES da Caverna (`scenes/CaveFloorScene.ts`): do 1 ao `CAVE_MAX_FLOOR`, cada um mais difícil que o anterior. Só DADOS + as fórmulas de dificuldade — o layout de cada
@@ -60,16 +61,18 @@ export function caveZone(floor: number): number {
 export function caveFloorConfig(floor: number): CaveFloorConfig {
   const f = Math.max(1, Math.min(CAVE_MAX_FLOOR, Math.floor(floor)));
   const zone = caveZone(f);
+  // Depois da barreira mágica do andar 50 (Fase 11): as profundezas são mais hostis.
+  const abyss = f > BARRIER_FLOOR;
   return {
     floor: f,
     cols: Math.min(35, 25 + Math.floor(f / 8)),
     rows: Math.min(25, 19 + Math.floor(f / 12)),
     zone,
     tint: ZONE_TINTS[zone],
-    enemyCount: Math.min(18, 4 + Math.floor(f * 0.14)),
+    enemyCount: Math.min(18, 4 + Math.floor(f * 0.14)) + (abyss ? ABYSS_BONUS.extraEnemies : 0),
     roster: ROSTER.filter((entry) => f >= entry.minFloor).map((entry) => ({ kind: entry.kind, weight: entry.weight * (1 + Math.min(1.5, (f - entry.minFloor) / 30)) })),
-    hpMult: 1 + 0.07 * (f - 1),
-    dmgMult: 1 + 0.02 * (f - 1),
+    hpMult: (1 + 0.07 * (f - 1)) * (abyss ? ABYSS_BONUS.hpMult : 1),
+    dmgMult: (1 + 0.02 * (f - 1)) * (abyss ? ABYSS_BONUS.dmgMult : 1),
     coinMult: 1 + 0.04 * (f - 1),
     guardian: f % CAVE_GUARDIAN_EVERY === 0,
     wallDensity: Math.min(0.2, 0.06 + f * 0.0015),

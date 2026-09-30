@@ -1,3 +1,5 @@
+import { COPPER_BAR, GOLD_BAR, IRON, STONE } from './resources';
+
 /**
  * Definições de objetos decorativos/construções posicionáveis (Fase 6).
  * Mesma filosofia de `data/crops.ts`: estrutura de dados separada da
@@ -15,6 +17,8 @@ export interface DecorationDefinition {
   frameRect: { x: number; y: number; width: number; height: number };
   /** Preço (moedas) para comprar na Loja. */
   price: number;
+  /** Recursos gastos ALÉM das moedas na compra (os aspersores): id de `data/resources.ts` e quantidade. A loja mostra o que o jogador tem e só compra com tudo. */
+  materials?: Array<{ resourceId: string; amount: number }>;
   /** Texto curto da Loja (painel de detalhe do item selecionado). */
   description: string;
   /**
@@ -153,13 +157,14 @@ const SPRINKLER_DISPLAY_SCALE_MULTIPLIER = 16 / SPRINKLER_ICON.width;
 
 export const SPRINKLER_WOOD: DecorationDefinition = {
   id: 'sprinkler',
-  name: 'Aspersor de Madeira',
+  name: 'Aspersor de Cobre',
   textureKey: 'decor-sprinkler-tiers',
   texturePath: 'Objects/Props/Sprinkler Tiers.png',
   frameName: 'decor-sprinkler-wood-icon',
   frameRect: { x: 4, y: 4, ...SPRINKLER_ICON },
   price: 300,
-  description: 'Rega toda manhã as 4 terras coladas nele (em cruz). Só em terreno não arado. Tire-o com a Picareta.',
+  materials: [{ resourceId: COPPER_BAR.id, amount: 5 }, { resourceId: STONE.id, amount: 10 }],
+  description: 'Rega as 4 terras coladas nele (em cruz) toda manhã. Só em terra não arada.',
   footprint: { width: 1, height: 1 },
   waterReach: { radius: 1, shape: 'cross' },
   placement: 'farmland',
@@ -175,7 +180,8 @@ export const SPRINKLER_IRON: DecorationDefinition = {
   frameName: 'decor-sprinkler-iron-icon',
   frameRect: { x: 37, y: 4, ...SPRINKLER_ICON },
   price: 900,
-  description: 'Rega toda manhã as 8 terras em volta dele (3x3). Só em terreno não arado. Tire-o com a Picareta.',
+  materials: [{ resourceId: IRON.id, amount: 5 }, { resourceId: STONE.id, amount: 10 }],
+  description: 'Rega as 8 terras em volta (3x3) toda manhã. Só em terra não arada.',
   footprint: { width: 1, height: 1 },
   waterReach: { radius: 1, shape: 'square' },
   placement: 'farmland',
@@ -191,7 +197,8 @@ export const SPRINKLER_GOLD: DecorationDefinition = {
   frameName: 'decor-sprinkler-gold-icon',
   frameRect: { x: 70, y: 4, ...SPRINKLER_ICON },
   price: 4000,
-  description: 'Rega toda manhã as 24 terras em volta dele (5x5). Só em terreno não arado. Tire-o com a Picareta.',
+  materials: [{ resourceId: GOLD_BAR.id, amount: 5 }, { resourceId: IRON.id, amount: 5 }],
+  description: 'Rega as 24 terras em volta (5x5) toda manhã. Só em terra não arada.',
   footprint: { width: 1, height: 1 },
   waterReach: { radius: 2, shape: 'square' },
   placement: 'farmland',

@@ -12,6 +12,7 @@ import { awardXp, rollDoubleDrop } from './skills';
 import { popText } from './floatingText';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { AXE_HIT_SOUNDS, TREE_FALL_SOUND, ROCK_HIT_SOUNDS, ROCK_BREAK_SOUND } from '../data/audio';
+import { enchantMultiplier } from './enchanting';
 
 /** Sprite + sombra (opcional) de um recurso no mundo — ambos destruídos juntos ao colher. */
 export interface HarvestableVisual {
@@ -29,7 +30,8 @@ function selectedToolPower(family: 'axe' | 'pickaxe'): number | null {
   const selected = gameState.inventory.getSelectedSlot();
   if (!selected || selected.category !== 'tool') return null;
   const info = getToolTierInfo(selected.id);
-  return info && info.family === family ? TOOL_TIER_POWER[info.tier] : null;
+  // Encantamento da família (Mesa do Mago, `systems/enchanting.ts`): +20% de força.
+  return info && info.family === family ? TOOL_TIER_POWER[info.tier] * enchantMultiplier(family) : null;
 }
 
 /** Duração do flash branco (ms) a cada golpe. */

@@ -13,8 +13,9 @@ import {
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
 import { Inventory } from '../systems/inventory';
-import { SMELTING_RECIPES, SMELT_COAL_AMOUNT, SMELT_FUEL_ID, SMELT_ORE_AMOUNT } from '../data/smelting';
+import { SMELTING_RECIPES, SMELT_COAL_AMOUNT, SMELT_ORE_AMOUNT, smeltingInputs } from '../data/smelting';
 import { resolveSlotVisual } from '../data/items';
+import { minutesToRealMs, queueStatus } from '../systems/smelting';
 
 const BOOK_SCALE = 2.2;
 const SLOT_SCALE = 2;
@@ -42,7 +43,7 @@ const CLOSE_BOOK_OVERLAP = 30;
 const CLOSE_X_TARGET_PX = 30;
 const CLOSE_X_OFFSET_X = CLOSE_BOOK_OVERLAP + (CLOSE_TAB_BG_FRAME.rect.width * CLOSE_MARK_SCALE - CLOSE_BOOK_OVERLAP) / 2;
 
-const INTRO_TEXT = `Cada barra leva ${SMELT_ORE_AMOUNT} minérios brutos e ${SMELT_COAL_AMOUNT} Carvões.\n\nClique na barra que quer fundir.\n\nO cobre, o ferro, o ouro e o carvão vêm dos veios da Pedreira. O Ferreiro cobra 5 barras (e moedas) por cada ferramenta.`;
+const INTRO_TEXT = `Cada barra leva ${SMELT_ORE_AMOUNT} minérios brutos e ${SMELT_COAL_AMOUNT} Carvões (a de Azurita, 1 Barra de Ouro).\n\nClique na barra que quer fundir: ela leva um tempinho e cai na Bolsa quando ficar pronta.\n\nOs minérios vêm da Pedreira e das Cavernas.`;
 
 /** Um slot com um ícone de recurso e o texto de "tenho/preciso" logo abaixo. */
 interface ItemSlot {
@@ -209,16 +210,20 @@ export class FurnaceMenu {
 
     SMELTING_RECIPES.forEach((recipe, index) => {
       const row = this.rows[index];
-      const ore = inventory.getResourceCount(recipe.oreId);
-      const coal = inventory.getResourceCount(SMELT_FUEL_ID);
+      const { oreId, oreAmount, fuelId, fuelAmount } = smeltingInputs(recipe);
+      const ore = inventory.getResourceCount(oreId);
+      const coal = inventory.getResourceCount(fuelId);
       const bars = inventory.getResourceCount(recipe.barId);
-      const oreEnough = ore >= SMELT_ORE_AMOUNT;
-      const coalEnough = coal >= SMELT_COAL_AMOUNT;
+      const oreEnough = ore >= oreAmount;
+      const coalEnough = coal >= fuelAmount;
       const canSmelt = oreEnough && coalEnough;
 
-      setSlot(row.ore, recipe.oreId, `${ore}/${SMELT_ORE_AMOUNT}`, oreEnough ? TEXT_ENOUGH : TEXT_MISSING, !oreEnough);
-      setSlot(row.coal, SMELT_FUEL_ID, `${coal}/${SMELT_COAL_AMOUNT}`, coalEnough ? TEXT_ENOUGH : TEXT_MISSING, !coalEnough);
-      setSlot(row.bar, recipe.barId, `${canSmelt ? 'Fundir' : 'Faltam'}\n(tem ${bars})`, canSmelt ? TEXT_ENOUGH : TEXT_MISSING, !canSmelt);
+      setSlot(row.ore, oreId, `${ore}/${oreAmount}`, oreEnough ? TEXT_ENOUGH : TEXT_MISSING, !oreEnough);
+      setSlot(row.coal, fuelId, `${coal}/${fuelAmount}`, coalEnough ? TEXT_ENOUGH : TEXT_MISSING, !coalEnough);
+      // Barras já na fila: mostra quantas e em quantos segundos sai a próxima (a fila anda em tempo de jogo, `systems/smelting.ts`).
+      const queue = queueStatus(recipe.id);
+      const detail = queue.count > 0 ? `Fila: ${queue.count} (${Math.ceil(minutesToRealMs(queue.nextInMinutes) / 1000)}s)` : `(tem ${bars})`;
+      setSlot(row.bar, recipe.barId, `${canSmelt ? 'Fundir' : 'Faltam'}\n${detail}`, canSmelt ? TEXT_ENOUGH : TEXT_MISSING, !canSmelt && queue.count === 0);
     });
   }
 

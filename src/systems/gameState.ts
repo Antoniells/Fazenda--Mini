@@ -1,4 +1,6 @@
 import { Inventory } from './inventory';
+import { createSmeltState, SmeltState } from '../data/smelting';
+import { createUpgradesState, UpgradesState } from '../data/upgrades';
 import { GameClock } from './gameClock';
 import { PlayerHealth } from './playerHealth';
 import { Farmland } from './farmland';
@@ -8,6 +10,9 @@ import { PetId, DEFAULT_PET_ID } from '../data/pets';
 import type { ChestSlot } from './chestStorage';
 import { HordeState, createHordeState } from '../data/horde';
 import { CampaignState, createCampaignState } from '../data/campaign';
+import { StoryState, createStoryState } from '../data/story';
+import type { EnchantTarget } from '../data/enchanting';
+import { SanctuaryState, createSanctuaryState } from '../data/sanctuary';
 import { RequestsState, createRequestsState } from '../data/requests';
 import { MailState, createMailState } from '../data/mail';
 import { EventsState, createEventsState } from '../data/events';
@@ -114,6 +119,14 @@ export const gameState = {
   horde: createHordeState() as HordeState,
   /** Campanha: missão atual dos moradores do Vilarejo, hordas vencidas e a Noite Final — `systems/campaign.ts`. Vai pro save. */
   campaign: createCampaignState() as CampaignState,
+  /** História principal ("Os Três Pilares do Equilíbrio"): marcos alcançados — `systems/story.ts`. Vai pro save. */
+  story: createStoryState() as StoryState,
+  /** Famílias encantadas na Mesa do Mago (`systems/enchanting.ts`). Vai pro save. */
+  enchants: [] as EnchantTarget[],
+  /** Peixes já entregues ao Mago (ids, `data/wizard.ts`). Vai pro save. */
+  wizardDelivered: [] as string[],
+  /** O santuário do andar 100: quando a semente dourada foi plantada no altar (`systems/sanctuary.ts`). Vai pro save. */
+  sanctuary: createSanctuaryState() as SanctuaryState,
   /** Pedidos diários dos moradores (missões secundárias) — `systems/requests.ts`. Vai pro save. */
   requests: createRequestsState() as RequestsState,
   /** Caixa de Correio: cartas já lidas e as agendadas por código — `systems/mail.ts`. Vai pro save. */
@@ -128,6 +141,10 @@ export const gameState = {
   construction: createConstructionState() as ConstructionState,
   /** Caverna: o andar mais fundo já alcançado (0 = nunca entrou) — libera um atalho a cada 5 andares (`data/caveFloors.ts`). Vai pro save. */
   cave: { deepest: 0 },
+  /** Fundições em andamento na Fornalha (`systems/smelting.ts`). Vai pro save. */
+  smelting: createSmeltState() as SmeltState,
+  /** Nível de cada melhoria do Marceneiro — casa, plantio e cerca (`data/upgrades.ts`, `systems/farmUpgrades.ts`). Vai pro save. */
+  upgrades: createUpgradesState() as UpgradesState,
   /** Cercas da lavoura destruídas pela horda ("col,row"), à espera do Martelo (`systems/farmFences.ts`) — vai pro save. */
   destroyedFences: new Set<string>(),
   /**

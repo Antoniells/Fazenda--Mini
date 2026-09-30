@@ -17,7 +17,6 @@ const STOP_DISTANCE_PX = 30;
 const STAGGER_MS = 550;
 const WINDUP_TINT = 0xff9a9a;
 /** Sombra mais rente aos pés que a do Slime (a arte destes bichos quase não tem margem embaixo). */
-const SHADOW_OFFSET_Y = 6;
 
 /**
  * Bicho de 4 direções da Caverna (Cogumelo, Goblin Lanceiro, Goblin Arqueiro e o Broto — `data/caveWalkers.ts` diz o que cada um faz): vaga, persegue o jogador
@@ -49,7 +48,7 @@ export class CaveWalker extends Enemy {
     /** O golpe acertou: quem chama aplica o dano no jogador (respeitando a invencibilidade) — `attacker` é este bicho (o pet revida contra ele). */
     private readonly onAttackHit: (damage: number, time: number, attacker: Enemy) => void,
   ) {
-    super(scene, x, y, config.sheets.idle.key, 0, stats, SHADOW_OFFSET_Y);
+    super(scene, x, y, config.sheets.idle.key, 0, stats, config.shadowOffsetY);
     this.sprite.setScale(this.sprite.scaleX * (config.scale ?? 1));
     ensureWalkerAnims(scene, config.sheets, config.attack);
     this.playLoop('idle');
@@ -195,6 +194,11 @@ export class CaveWalker extends Enemy {
       this.wanderTarget = Phaser.Math.Between(0, 1) === 0 ? null : { x: this.x + Math.cos(angle) * range, y: this.y + Math.sin(angle) * range };
     }
     if (this.wanderTarget) this.moveToward(this.wanderTarget.x, this.wanderTarget.y, delta);
+  }
+
+  /** O empurrão do golpe para na parede (`Enemy.knockbackTarget`). */
+  protected override canOccupy(x: number, y: number): boolean {
+    return this.canWalkTo(x, y);
   }
 
   /** O corpo (28x28 nos pés) cabe nesta posição? — só a célula exata que ele ocupa importa (grid 1x1). */

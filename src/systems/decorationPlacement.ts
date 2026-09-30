@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { remainingQueueMs } from './smelting';
 import { clearPlantsUnder } from './plantClearing';
 import { DecorationDefinition, DECORATIONS } from '../data/decorations';
 import { FarmMapData } from '../data/maps/farmMap';
@@ -29,10 +30,8 @@ import { OBJECT_BREAK_SOUND, ORE_HIT_SOUNDS, PLACE_SOUND, WATER_SOUND } from '..
 
 /** Nome do evento global disparado ao interagir com a Fornalha — ouvido pela `UIScene`, que é quem realmente sabe abrir o `FurnaceMenu` (ver `scenes/UIScene.ts`). Um evento em `scene.game.events` (não `scene.events`) evita este módulo (`systems/`) precisar importar de `scenes/`, na direção errada da arquitetura. */
 export const OPEN_FURNACE_MENU_EVENT = 'open-furnace-menu';
-/** Disparado pela `UIScene` a cada barra fundida: as Fornalhas posicionadas acendem o fogo por um tempo (`DecorationPlacementSystem.lightUsedStructures`). */
+/** Disparado pela `UIScene` a cada barra posta na fila da Fornalha, com o tempo (ms) que a fila ainda leva: as Fornalhas posicionadas acendem o fogo por esse tempo (`DecorationPlacementSystem.lightUsedStructures`). */
 export const FURNACE_SMELTED_EVENT = 'furnace-smelted';
-/** Por quanto tempo (ms) o fogo da Fornalha fica aceso depois de uma fundição. */
-const USED_BURN_MS = 4000;
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
@@ -220,7 +219,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.handlePointerMove(pointer.worldX, pointer.worldY));
 
     // Cada barra fundida acende o fogo das Fornalhas (o evento vem da UIScene, que não conhece este sistema).
-    const onSmelted = (): void => this.lightUsedStructures();
+    const onSmelted = (durationMs: number): void => this.lightUsedStructures(durationMs);
     scene.game.events.on(FURNACE_SMELTED_EVENT, onSmelted);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.game.events.off(FURNACE_SMELTED_EVENT, onSmelted));
   }
@@ -542,16 +541,16 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
   }
 
   /**
-   * Acende (`animatesWhenUsed`) as construções em uso — a Fornalha depois de uma fundição: o fogo (quadros 2..N em loop) fica aceso por `USED_BURN_MS` e ela volta ao quadro de repouso.
+   * Acende (`animatesWhenUsed`) as construções em uso — a Fornalha depois de uma fundição: o fogo (quadros 2..N em loop) fica aceso por `durationMs` (o que a fila de fundição ainda leva) e ela volta ao quadro de repouso.
    * Uma que já está acesa só ganha mais tempo.
    */
-  lightUsedStructures(): void {
+  lightUsedStructures(durationMs: number): void {
     for (const entry of this.placed.values()) {
       const decoration = DECORATIONS[entry.decorationId];
       const frames = decoration?.animatesWhenUsed ? decoration.animationFrames : undefined;
       if (!decoration || !frames || frames.length < 2 || !entry.image.active) continue;
 
-      entry.litUntil = this.scene.time.now + USED_BURN_MS;
+      entry.litUntil = this.scene.time.now + durationMs;
       if (entry.burning) continue;
       entry.burning = true;
       let step = 0;
@@ -595,6 +594,9 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
       if (!decoration) continue;
       this.placeAt(decoration, col, row);
     }
+    // Fundições ainda na fila (o jogador saiu da Fazenda e voltou): o fogo continua aceso até a fila acabar.
+    const smelting = remainingQueueMs();
+    if (smelting > 0) this.lightUsedStructures(smelting);
   }
 
   /**

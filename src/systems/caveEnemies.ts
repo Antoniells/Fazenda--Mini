@@ -17,6 +17,7 @@ import { PLAYER_ATTACKED_EVENT } from './combat';
 import { spawnLoot } from './lootDrops';
 import { awardXp } from './skills';
 import { popText } from './floatingText';
+import { getPlayerDefense } from './enchanting';
 
 /** Tamanho do Slime Guardião em relação ao slime comum. */
 const GUARDIAN_SIZE = 1.7;
@@ -57,14 +58,14 @@ function pickKind(roster: CaveFloorConfig['roster']): Exclude<CaveEnemyKind, 'gu
 export class CaveEnemies {
   private readonly enemies: Enemy[] = [];
   private killed = 0;
-  private readonly total: number;
-  /** Chamado uma vez, quando o último inimigo do andar cai. */
+  private total: number;
+  /** Chamado quando o último inimigo do andar cai (de novo a cada onda extra — `spawnWave`). */
   onCleared: (() => void) | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly config: CaveFloorConfig,
-    layout: CaveLayout,
+    private readonly layout: CaveLayout,
     private readonly grid: WalkableGrid,
     private readonly tilePx: number,
     private readonly player: Player,
@@ -106,7 +107,7 @@ export class CaveEnemies {
       case 'spike':
         return new SpikeEnemy(scene, x, y, stats, grid, tilePx, onDeath, onHit);
       case 'bloom':
-        return new BloomEnemy(scene, x, y, stats, onDeath, onHit);
+        return new BloomEnemy(scene, x, y, stats, grid, tilePx, onDeath, onHit);
       default: {
         const walker: WalkerKind = kind;
         const color = walker === 'myconid' ? this.config.myconidColor : walker === 'sprout' ? this.config.sproutColor : '';
@@ -137,9 +138,27 @@ export class CaveEnemies {
   /** Um golpe acertou: desconta a vida (respeitando a invencibilidade de `PlayerHealth`) e dá o feedback; o pet companheiro é avisado pra revidar. */
   private hurtPlayer(damage: number, time: number, attacker: Enemy): void {
     this.scene.events.emit(PLAYER_ATTACKED_EVENT, attacker);
-    if (!gameState.playerHealth.takeDamage(damage, time, gameState.inventory.getDefense())) return;
+    if (!gameState.playerHealth.takeDamage(damage, time, getPlayerDefense())) return;
     this.player.playHurtFeedback();
     if (gameState.playerHealth.isDead()) handlePlayerDeath(this.scene);
+  }
+
+  /**
+   * Mais uma ONDA (a Horda Final do andar 100, `data/caveLandmarks.ts`): `count` bichos do andar (e o Guardião, se pedido) nascem nas
+   * células de nascimento longe do jogador. Os contadores somam a onda nova.
+   */
+  spawnWave(count: number, guardian: boolean): void {
+    const playerCol = Math.floor(this.player.sprite.x / this.tilePx);
+    const playerRow = Math.floor(this.player.sprite.y / this.tilePx) - 1;
+    const far = this.layout.spawnCells.filter((cell) => Math.abs(cell.col - playerCol) + Math.abs(cell.row - playerRow) >= 7);
+    const cells = far.length > 0 ? far : this.layout.spawnCells;
+    const kinds: CaveEnemyKind[] = Array.from({ length: count }, () => pickKind(this.config.roster));
+    if (guardian) kinds.unshift('guardian');
+    this.total += kinds.length;
+    kinds.forEach((kind) => {
+      const cell = cells[Math.floor(Math.random() * cells.length)];
+      this.enemies.push(this.create(kind, cell.col * this.tilePx + this.tilePx / 2, (cell.row + 1) * this.tilePx));
+    });
   }
 
   getAliveEnemies(): Enemy[] {

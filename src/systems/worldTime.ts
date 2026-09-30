@@ -1,4 +1,5 @@
 import { gameState } from './gameState';
+import { debugFlags } from '../debug/debugFlags';
 import { runDayTurn, DayTurn } from './dayCycle';
 import { isDawn, finishHordeDefeat } from './horde';
 import { expireMissedFinalNight } from './campaign';
@@ -21,7 +22,7 @@ export interface WorldTimeResult {
  * recompensa sem lutar.
  */
 export function advanceWorldTime(deltaMs: number, onFarm: boolean): WorldTimeResult {
-  const newDay = gameState.gameClock.update(deltaMs);
+  const newDay = gameState.gameClock.update(deltaMs * debugFlags.timeScale); // (`timeScale` = 1, exceto acelerado pelo menu de hack)
   const dayTurn = newDay ? runDayTurn() : null;
   if (newDay) expireMissedFinalNight();
 

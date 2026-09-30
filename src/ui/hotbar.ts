@@ -157,6 +157,8 @@ export class Hotbar {
 
       if (visual) {
         slot.icon.setTexture(visual.textureKey, visual.iconFrame);
+        if (visual.tint !== undefined) slot.icon.setTint(visual.tint);
+        else slot.icon.clearTint();
         slot.icon.setVisible(true);
         // Recalculado a cada frame a partir do frame real: ferramentas/
         // sementes (16x16) e decorações (tamanhos variados, ex. o Poço a

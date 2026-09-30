@@ -3,6 +3,7 @@
  * dados — onde fica a caixa, a arte e as cartas fixas. Mesma filosofia de `data/crops.ts`: uma carta nova é só mais uma entrada em
  * `MAIL_SCHEDULE` (ou uma chamada a `scheduleMail` de qualquer sistema, pra cartas que dependem do que o jogador fez).
  */
+import { PROPHECY_MAIL_ID, StoryMilestoneId } from './story';
 
 /** Uma carta/mensagem. `{nome}` no título/corpo vira o nome do jogador na hora de abrir. */
 export interface MailMessage {
@@ -16,6 +17,8 @@ export interface MailMessage {
   buttonLabel?: string;
   /** Desenha o coração (arte do HUD) no fim da carta. */
   heart?: boolean;
+  /** Marco da história (`data/story.ts`) que ler esta carta registra. */
+  milestone?: StoryMilestoneId;
 }
 
 /** O que precisa ir pro save: quais cartas já foram lidas e as agendadas por código (as fixas vêm de `MAIL_SCHEDULE`, não são duplicadas no save). */
@@ -54,5 +57,19 @@ export const MAIL_SCHEDULE: MailMessage[] = [
     deliverOnDay: 2,
     buttonLabel: 'Guardar',
     heart: true,
+  },
+  {
+    // A história principal começa aqui (`data/story.ts`): lida a carta, os Três Pilares aparecem no marcador de objetivo.
+    id: PROPHECY_MAIL_ID,
+    title: 'A antiga profecia',
+    body:
+      '{nome},\n\n' +
+      'Uma antiga profecia diz que o mundo, em desequilíbrio há tantos anos, só terá paz quando os Três Pilares forem oferecidos ao altar ' +
+      'do Grande Sábio Coelho: a Cenoura Dourada, o Peixe Dourado e um terceiro pilar, cuja essência se perdeu no tempo.\n\n' +
+      'Dizem que o altar repousa no fundo das Cavernas. Cuide da sua terra e de quem estiver ao seu lado.\n\n' +
+      'Um velho amigo do Vilarejo',
+    deliverOnDay: 3,
+    buttonLabel: 'Guardar',
+    milestone: 'prophecy',
   },
 ];

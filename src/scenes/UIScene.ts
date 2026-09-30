@@ -12,11 +12,15 @@ import { dayMusic } from '../systems/dayMusic';
 import { HEALTH_HEARTS_KEY, HEALTH_HEARTS_PATH, ARMOR_HUD_KEY, ARMOR_HUD_PATH, INVENTORY_PANEL_KEY, INVENTORY_PANEL_PATH, INVENTORY_LARGE_PANEL_KEY, INVENTORY_LARGE_PANEL_PATH } from '../data/ui';
 import { InventoryScreen } from '../ui/inventoryScreen';
 import { FurnaceMenu } from '../ui/furnaceMenu';
+import { PauseMenu } from '../ui/pauseMenu';
+import { exitToMainMenu } from '../systems/sessionExit';
+import { MAIN_MENU_SCENE_KEY } from './MainMenuScene';
 import { ChestMenu } from '../ui/chestMenu';
 import { LetterPanel } from '../ui/letterPanel';
 import { DialoguePanel, OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialoguePanel';
 import { QuestTracker } from '../ui/questTracker';
 import { describeObjective } from '../systems/campaign';
+import { describeStoryObjective } from '../systems/story';
 import { WATER_OBJECTIVE_TEXT } from '../data/tutorial';
 import { TutorialPanel } from '../ui/tutorialPanel';
 import { tutorial } from '../systems/tutorial';
@@ -26,9 +30,11 @@ import { OPEN_LETTER_EVENT, OpenLetterPayload } from '../systems/petBox';
 import { OPEN_CHEST_MENU_EVENT, OpenChestMenuPayload } from '../systems/furniturePlacement';
 import { Tooltip } from '../ui/tooltip';
 import { FURNACE_SMELTED_EVENT, OPEN_FURNACE_MENU_EVENT } from '../systems/decorationPlacement';
-import { SMELT_COAL_AMOUNT, SMELT_FUEL_ID, SMELT_ORE_AMOUNT, getSmeltingRecipe } from '../data/smelting';
+import { getSmeltingRecipe, smeltingInputs } from '../data/smelting';
+import { collectFinished, queueSmelt, remainingQueueMs } from '../systems/smelting';
 import { resourceDisplayName } from '../data/resources';
 import { popText } from '../systems/floatingText';
+import { getPlayerDefense } from '../systems/enchanting';
 
 export const UI_SCENE_KEY = 'UIScene';
 /** Emitido (via `scene.game.events`) sempre que o slot ativo da Hotbar muda — quem mutou o `Inventory` é sempre quem emite, ver `UIScene`/`MainScene`. Outras cenas (ex.: `MainScene`, pra reagir com posicionamento de decoração) escutam este evento em vez de conhecer a `UIScene`. */
@@ -122,6 +128,34 @@ export function closeFurnaceMenu(): void {
   sharedFurnaceMenu?.close();
 }
 
+/**
+ * O Menu de Pausa (`ui/pauseMenu.ts`) mora aqui, na `UIScene` persistente, pra o ESC funcionar em TODAS as cenas de jogo (Fazenda, Vilarejo, Pedreira, Floresta, Praia, Cavernas, casa, lojas).
+ * Cada cena resolve o ESC na sua ordem (fecha o que estiver aberto) e, se nada estava aberto, chama `escapeTogglesPause`; enquanto `isPauseMenuOpen`, ela para o mundo (movimento e relógio).
+ */
+let sharedPauseMenu: PauseMenu | null = null;
+/** Última vez (relógio da cena) em que se viu uma conversa aberta — o ESC que a fecha (a `UIScene` trata dele) não pode abrir a Pausa junto, no mesmo frame. */
+let dialogueSeenOpenAt = -Infinity;
+const DIALOGUE_ESC_GRACE_MS = 200;
+
+export function isPauseMenuOpen(): boolean {
+  return sharedPauseMenu?.isOpen() ?? false;
+}
+
+export function closePauseMenu(): void {
+  sharedPauseMenu?.close();
+}
+
+/** Alterna o Menu de Pausa (com os ajustes abertos, o ESC fecha só os ajustes). */
+export function togglePauseMenu(): void {
+  sharedPauseMenu?.toggle();
+}
+
+/** O fim da cadeia do ESC de cada cena (nada mais estava aberto): abre/fecha a Pausa — menos no frame em que o ESC acabou de fechar uma conversa. */
+export function escapeTogglesPause(): void {
+  if (isDialogueOpen() || Date.now() - dialogueSeenOpenAt < DIALOGUE_ESC_GRACE_MS) return;
+  togglePauseMenu();
+}
+
 /** Mesma ideia, para o painel da carta (evento do pet, `ui/letterPanel.ts`). */
 let sharedLetterPanel: LetterPanel | null = null;
 
@@ -179,6 +213,7 @@ export class UIScene extends Phaser.Scene {
   private weatherOverlay!: WeatherOverlay;
   private inventoryScreen!: InventoryScreen;
   private furnaceMenu!: FurnaceMenu;
+  private pauseMenu!: PauseMenu;
   private chestMenu!: ChestMenu;
   private letterPanel!: LetterPanel;
   private dialoguePanel!: DialoguePanel;
@@ -229,7 +264,7 @@ export class UIScene extends Phaser.Scene {
     this.weatherOverlay.refresh(gameState.weather.raining);
 
     this.armorHud = new ArmorHud(this);
-    this.armorHud.refresh(gameState.inventory.getDefense());
+    this.armorHud.refresh(getPlayerDefense());
 
     // Mesma mutação central usada pelo teclado/scroll (`requestHotbarSelect`)
     // — clicar num slot da aba Mochila é só mais um jeito de trocar o slot.
@@ -238,6 +273,9 @@ export class UIScene extends Phaser.Scene {
 
     this.furnaceMenu = new FurnaceMenu(this, (recipeId) => this.smelt(recipeId));
     sharedFurnaceMenu = this.furnaceMenu;
+
+    this.pauseMenu = new PauseMenu(this, { onExitToMenu: () => this.exitToMenu() });
+    sharedPauseMenu = this.pauseMenu;
 
     this.chestMenu = new ChestMenu(this, () => gameState.inventory);
     sharedChestMenu = this.chestMenu;
@@ -273,7 +311,10 @@ export class UIScene extends Phaser.Scene {
     // importar `scenes/UIScene.ts` (interface) diretamente, na direção
     // errada da arquitetura. Reaproveita `toggleFurnaceMenu` (mesma função
     // exportada que qualquer cena já usaria) em vez de duplicar a lógica.
-    const onOpenFurnaceMenu = (): void => toggleFurnaceMenu();
+    const onOpenFurnaceMenu = (): void => {
+      toggleFurnaceMenu();
+      if (this.furnaceMenu.isOpen()) this.collectSmelted(); // Abriu: entrega o que já ficou pronto.
+    };
     this.game.events.on(OPEN_FURNACE_MENU_EVENT, onOpenFurnaceMenu);
 
     this.setupHotbarKeys();
@@ -288,6 +329,7 @@ export class UIScene extends Phaser.Scene {
       this.game.events.off(PLAYER_ATE_EVENT, onPlayerAte);
       if (sharedInventoryScreen === this.inventoryScreen) sharedInventoryScreen = null;
       if (sharedFurnaceMenu === this.furnaceMenu) sharedFurnaceMenu = null;
+      if (sharedPauseMenu === this.pauseMenu) sharedPauseMenu = null;
       if (sharedChestMenu === this.chestMenu) sharedChestMenu = null;
       this.game.events.off(OPEN_FURNACE_MENU_EVENT, onOpenFurnaceMenu);
       this.game.events.off(OPEN_CHEST_MENU_EVENT, onOpenChestMenu);
@@ -299,29 +341,48 @@ export class UIScene extends Phaser.Scene {
   }
 
   /**
-   * Funde UMA barra na Fornalha: único ponto que de fato gasta `SMELT_ORE_AMOUNT` minérios brutos + `SMELT_COAL_AMOUNT` Carvões e entrega a barra — o `FurnaceMenu` só pede (`onSmelt`), nunca muta
-   * o `Inventory` sozinho. Revalida os materiais aqui em vez de confiar no clique (a tela já apaga o que falta, mas a mutação real não pode depender só da UI). Ao fundir, avisa as Fornalhas do
-   * mundo (`FURNACE_SMELTED_EVENT`) pra acenderem o fogo.
+   * Manda UMA barra pra fila da Fornalha: único ponto que de fato gasta os minérios brutos + o carvão (ou a Barra de Ouro da Azurita, `smeltingInputs`) — o `FurnaceMenu` só pede (`onSmelt`), nunca muta
+   * o `Inventory` sozinho. Revalida os materiais aqui em vez de confiar no clique. A barra leva um tempo (`SMELT_MINUTES`, `systems/smelting.ts`) e é entregue por `collectSmelted`; enquanto a
+   * fila anda, as Fornalhas do mundo ficam com o fogo aceso (`FURNACE_SMELTED_EVENT`, com o tempo que falta).
    */
   private smelt(recipeId: string): void {
     const recipe = getSmeltingRecipe(recipeId);
     if (!recipe) return;
     const inventory = gameState.inventory;
-    if (inventory.getResourceCount(recipe.oreId) < SMELT_ORE_AMOUNT || inventory.getResourceCount(SMELT_FUEL_ID) < SMELT_COAL_AMOUNT) {
+    const { oreId, oreAmount, fuelId, fuelAmount } = smeltingInputs(recipe);
+    if (inventory.getResourceCount(oreId) < oreAmount || inventory.getResourceCount(fuelId) < fuelAmount) {
       console.log('Materiais insuficientes para fundir.');
       return;
     }
 
-    inventory.useResource(recipe.oreId, SMELT_ORE_AMOUNT);
-    inventory.useResource(SMELT_FUEL_ID, SMELT_COAL_AMOUNT);
-    inventory.addResources(recipe.barId, 1);
-    console.log(`Fundido: 1 ${resourceDisplayName(recipe.barId)}.`);
+    inventory.useResource(oreId, oreAmount);
+    inventory.useResource(fuelId, fuelAmount);
+    queueSmelt(recipeId);
     playEffect(this, CRAFT_SOUND);
-    popText(this, this.scale.width / 2, this.scale.height / 2 - 150, `+1 ${resourceDisplayName(recipe.barId)}`, { color: '#ffd98a', fontSize: 18, screenFixed: true });
-    this.game.events.emit(FURNACE_SMELTED_EVENT);
+    this.game.events.emit(FURNACE_SMELTED_EVENT, remainingQueueMs());
 
     this.furnaceMenu.refresh(inventory);
     this.hotbar.refresh(inventory);
+  }
+
+  /** Entrega à Bolsa as barras que ficaram prontas na Fornalha (chamado ao abrir a tela dela e a cada frame com ela aberta). */
+  private collectSmelted(): void {
+    const finished = collectFinished();
+    if (finished.length === 0) return;
+    for (const job of finished) {
+      const recipe = getSmeltingRecipe(job.recipeId);
+      if (!recipe) continue;
+      gameState.inventory.addResources(recipe.barId, 1);
+      popText(this, this.scale.width / 2, this.scale.height / 2 - 150, `+1 ${resourceDisplayName(recipe.barId)}`, { color: '#ffd98a', fontSize: 18, screenFixed: true, delay: finished.indexOf(job) * 250 });
+    }
+    playEffect(this, CRAFT_SOUND);
+    this.hotbar.refresh(gameState.inventory);
+  }
+
+  /** "Sair para o Menu Principal" da Pausa: salva e volta ao menu, a partir da cena de jogo que estiver rodando (é ela que sai). */
+  private exitToMenu(): void {
+    const mapScene = this.scene.manager.getScenes(true).find((scene) => scene.scene.key !== UI_SCENE_KEY && scene.scene.key !== MAIN_MENU_SCENE_KEY);
+    exitToMainMenu(mapScene ?? this);
   }
 
   /** Único ponto que muta o slot selecionado — qualquer gatilho (teclado/scroll aqui, clique na linha de cima do Inventário em `MainScene`) passa por aqui. */
@@ -356,7 +417,7 @@ export class UIScene extends Phaser.Scene {
     this.timeMoneyHud.refreshCoins(gameState.inventory.getCoins());
     this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString(), gameState.gameClock.getHours());
     this.healthHud.refresh(gameState.playerHealth.getHp(), gameState.playerHealth.getMaxHp());
-    this.armorHud.refresh(gameState.inventory.getDefense());
+    this.armorHud.refresh(getPlayerDefense());
     this.weatherOverlay.refresh(gameState.weather.raining);
     if (this.inventoryScreen.isOpen()) this.inventoryScreen.refresh(gameState.inventory);
     if (this.furnaceMenu.isOpen()) this.furnaceMenu.refresh(gameState.inventory);
@@ -364,11 +425,13 @@ export class UIScene extends Phaser.Scene {
     // Objetivo: só depois do tutorial (o painel dele já ocupa a tela) e enquanto a campanha não acabou.
     // O objetivo da água sai sozinho quando o regador é enchido (no poço da Vila ou da Fazenda).
     if (gameState.waterObjective && gameState.inventory.getWateringCanCharges() > 0) gameState.waterObjective = false;
-    const objectives = [gameState.waterObjective ? WATER_OBJECTIVE_TEXT : null, describeObjective()].filter((line): line is string => line !== null);
+    const objectives = [gameState.waterObjective ? WATER_OBJECTIVE_TEXT : null, describeObjective(), describeStoryObjective()].filter((line): line is string => line !== null);
     this.questTracker.refresh(gameState.tutorialCompleted && objectives.length > 0 ? objectives.map((line) => `• ${line}`).join('\n') : null);
   }
 
   update(): void {
+    if (isDialogueOpen()) dialogueSeenOpenAt = Date.now(); // Ver `escapeTogglesPause`.
+    if (this.furnaceMenu.isOpen()) this.collectSmelted(); // Com a tela da Fornalha aberta, as barras prontas caem na Bolsa na hora.
     this.refresh();
   }
 }

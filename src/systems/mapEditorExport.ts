@@ -538,7 +538,7 @@ const VILLAGE_FILE_HEADER = [
   "export type VillageStructureRole = 'shop' | 'banker' | 'pirate' | 'supplier' | 'carpenter';",
   '',
   'export interface VillageStructureLayout {',
-  '  /** Id de `VILLAGE_ASSETS` (`data/maps/villageMap.ts`): house2, house3, house7, house8, newsstand, fountain. */',
+  '  /** Id de `VILLAGE_ASSETS` (`data/maps/villageMap.ts`): house2, house3, house7, house8, blacksmithHouse, newsstand, fountain. */',
   '  asset: string;',
   '  /** Célula do canto superior-esquerdo da ARTE (não das paredes). */',
   '  col: number;',

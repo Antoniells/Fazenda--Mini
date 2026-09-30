@@ -5,8 +5,7 @@ import { gameState } from './gameState';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { popText } from './floatingText';
 import { Player } from '../entities/Player';
-import { FENCE_HP } from '../data/horde';
-import { FENCE_BROKEN_INDEX } from '../data/tiles';
+import { fenceSkin } from './upgradeLevels';
 import { HAMMER } from '../data/tools';
 import { AXE_HIT_SOUNDS, OBJECT_BREAK_SOUND, HAMMER_SOUND } from '../data/audio';
 
@@ -46,7 +45,7 @@ class BrokenFenceInteractable implements Interactable {
 
 /**
  * As cercas da lavoura como ALVO da horda: cada célula de cerca (as mesmas imagens que `buildFarmlandFence` desenha e que o
- * `WalkableGrid` já bloqueia) ganha vida (`FENCE_HP`). Levar dano racha/avermelha a cerca; a última pancada a DESTRÓI: o quadro
+ * `WalkableGrid` já bloqueia) ganha vida (`FenceSkin.hp`, o material da cerca — `data/fenceSkins.ts`). Levar dano racha/avermelha a cerca; a última pancada a DESTRÓI: o quadro
  * vira a cerca quebrada (`FENCE_BROKEN_INDEX`), a célula é liberada no grid (o inimigo passa) e ela fica registrada em
  * `gameState.destroyedFences` (vai pro save e sobrevive a trocas de cena). Cerca destruída NÃO se conserta sozinha: só o
  * Martelo (`repair`) a devolve ao estado normal — reconstrói o quadro, recupera a vida e volta a bloquear a célula.
@@ -62,7 +61,7 @@ export class FarmFences {
     private readonly player: Player,
   ) {
     for (const [cellKey, image] of images) {
-      this.cells.set(cellKey, { image, hp: FENCE_HP, destroyed: false, intactFrame: image.frame.name });
+      this.cells.set(cellKey, { image, hp: fenceSkin().hp, destroyed: false, intactFrame: image.frame.name });
     }
     // Cercas que a horda já derrubou em outra sessão/cena: a cena nova as recria já destruídas.
     for (const cellKey of gameState.destroyedFences) {
@@ -123,7 +122,7 @@ export class FarmFences {
     cell.destroyed = true;
     cell.hp = 0;
     cell.image.clearTint();
-    cell.image.setFrame(FENCE_BROKEN_INDEX);
+    cell.image.setFrame(fenceSkin().broken);
     this.grid.unblock(col, row);
     gameState.destroyedFences.add(cellKey);
     this.interactions.set(col, row, new BrokenFenceInteractable(this, this.player, col, row));
@@ -141,7 +140,7 @@ export class FarmFences {
     if (!cell || !cell.destroyed) return false;
 
     cell.destroyed = false;
-    cell.hp = FENCE_HP;
+    cell.hp = fenceSkin().hp;
     cell.image.clearTint();
     cell.image.setFrame(cell.intactFrame);
     this.grid.block(col, row);
@@ -164,7 +163,7 @@ export class FarmFences {
   healDamaged(): void {
     for (const cell of this.cells.values()) {
       if (cell.destroyed) continue;
-      cell.hp = FENCE_HP;
+      cell.hp = fenceSkin().hp;
       cell.image.clearTint();
     }
   }

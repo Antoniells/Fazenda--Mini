@@ -136,7 +136,7 @@ const BUY_ENABLED_TINT = 0xffffff;
 const BUY_DISABLED_TINT = 0x8f8f8f;
 
 /** As 3 categorias da Loja (Fase 8) — preparadas para o upgrade futuro de ferramentas. */
-export type ShopCategory = 'agriculture' | 'tools' | 'construction' | 'animals';
+export type ShopCategory = 'agriculture' | 'tools' | 'construction' | 'animals' | 'upgrades';
 
 /**
  * Formato mínimo que qualquer coisa vendida na Loja precisa ter — sementes
@@ -714,6 +714,11 @@ export class ShopMenu {
   toggle(): void {
     if (this.isOpen_) this.close();
     else this.open();
+  }
+
+  /** Redesenha os slots e o detalhe depois de os `ShopItem`s terem mudado no lugar (ex.: a melhoria que passou pro próximo nível). */
+  refreshItems(): void {
+    this.renderActiveCategory();
   }
 
   /** Reflete o saldo: escurece os itens que o jogador não pode pagar e liga/desliga o botão Comprar. */

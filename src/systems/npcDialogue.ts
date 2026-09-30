@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { NPCS, NpcId } from '../data/npcs';
-import { ACTS, QUESTS, QuestDefinition } from '../data/campaign';
+import { ACTS, FINAL_NIGHT_PEACE_TEXT, QUESTS, QuestDefinition } from '../data/campaign';
 import { OPEN_DIALOGUE_EVENT, DialoguePayload, DialogueAction } from '../ui/dialoguePanel';
 import { gameState } from './gameState';
+import { isWorldAtPeace } from './story';
 import { canScheduleFinalNight, describeReward, getCurrentQuest, getQuestStatus, scheduleFinalNight, turnInCurrentQuest } from './campaign';
 import { save as saveGame } from './saveManager';
 import { playEffect } from './soundEffects';
@@ -86,7 +87,9 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
     if (canScheduleFinalNight()) {
       actions.push({ label: 'Estou pronto!', onSelect: () => confirmFinalNight(context, id) });
     }
-    open(scene, { ...base, text: quest.intro, details, actions: withShop(actions) });
+    // Depois do fim da história: não há mais Noite Final, e o morador entrega a recompensa assim mesmo.
+    if (status.ready) actions.push({ label: 'Entregar', onSelect: () => deliver(context, id) });
+    open(scene, { ...base, text: isWorldAtPeace() ? FINAL_NIGHT_PEACE_TEXT : quest.intro, details, actions: withShop(actions) });
     return;
   }
 
@@ -172,7 +175,7 @@ function confirmFinalNight(context: NpcTalkContext, id: NpcId): void {
     subtitle: def.title,
     portrait: { key: def.portrait.key, frame: def.portrait.frame },
     text: `Então está combinado. A Noite Final será ${when}, às ${HORDE_START_HOUR}:00. Volte pra Fazenda, reforce as cercas, leve a melhor espada e a melhor armadura. Sobreviva até o amanhecer!`,
-    details: ['Dormir fica bloqueado até a Noite Final acontecer.', `Você não pode estar longe da Fazenda às ${HORDE_START_HOUR}:00.`],
+    details: ['Dormir fica bloqueado até a Noite Final acontecer.', `Onde você estiver às ${HORDE_START_HOUR}:00, será levado de volta à Fazenda.`],
     actions: [],
   });
 }

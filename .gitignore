@@ -10,3 +10,7 @@ release-*
 
 # Pack de assets original (a mesclagem já foi feita em assets/): só referência local, não vai pro git
 /Farm RPG - Tiny Asset Pack - (All in One)/
+
+# Resultados dos testes de ponta a ponta (Playwright)
+/test-results/
+/playwright-report/

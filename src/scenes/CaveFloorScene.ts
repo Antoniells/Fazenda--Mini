@@ -1,11 +1,20 @@
 import Phaser from 'phaser';
 import { ExternalMapEntryData, buildExternalGrid } from './ExternalMapScene';
 import { CAVE_MAX_FLOOR, caveFloorConfig, CaveFloorConfig } from '../data/caveFloors';
-import { CaveLayout, generateCaveFloor } from '../systems/caveGenerator';
+import { CaveLayout, generateCaveFloor, generateSanctuaryFloor } from '../systems/caveGenerator';
 import { CaveEnemies, enemySheetsFor } from '../systems/caveEnemies';
 import { preloadSheets } from '../entities/cave/caveAnims';
 import { CAVE_TILES, CAVE_STAIRS } from '../data/caveTiles';
-import { TILE_SIZE } from '../data/tiles';
+import { TILE_SIZE, ORE_KEY, ORE_PATH } from '../data/tiles';
+import { buildOreDeposit } from '../systems/externalMapBuilder';
+import { OreInteractable } from '../systems/oreInteraction';
+import { placeCaveOres } from '../systems/caveOres';
+import { buildCaveLandmarks, forgottenChestCell, isBarrierActive, preloadCaveLandmarks } from '../systems/caveLandmarks';
+import { BARRIER_FLOOR, FINAL_FLOOR, FINAL_HORDE_WAVES, FINAL_HORDE_WAVE_DELAY_MS } from '../data/caveLandmarks';
+import { SANCTUARY_LINES, SANCTUARY_TINT } from '../data/sanctuary';
+import { Sanctuary, grantGoldenSeed, preloadSanctuary } from '../systems/sanctuary';
+import { hasMilestone, isWorldAtPeace, reachMilestone } from '../systems/story';
+import { isEnchantedPickaxeSelected } from '../systems/enchanting';
 import { SHADOW_KEY, SHADOW_PATH } from '../data/effects';
 import { PET_ROAM } from '../data/pets';
 import { gameState } from '../systems/gameState';
@@ -18,14 +27,15 @@ import { PetCompanion } from '../systems/petCompanion';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
 import { InteractionRegistry } from '../systems/interaction';
+import { WalkableGrid } from '../systems/grid';
 import { attachFootstepSounds, playEffect } from '../systems/soundEffects';
 import { onPlayerStepped } from '../systems/sceneEvents';
 import { advanceWorldTime, describeNewDay } from '../systems/worldTime';
-import { shouldStartHorde } from '../systems/horde';
+import { shouldRecallToFarm, recallToFarm } from '../systems/hordeRecall';
 import { LockedMessage } from '../ui/lockedMessage';
 import { WorldBlur } from '../systems/worldBlur';
 import { UNLOCK_SOUND } from '../data/audio';
-import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen } from './UIScene';
+import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
 
 export const CAVE_FLOOR_SCENE_KEY = 'CaveFloorScene';
 
@@ -36,6 +46,8 @@ export interface CaveFloorEntryData {
   from: 'above' | 'below';
   /** Os dados da entrada da Caverna na superfície — pra voltar pra ela ao subir do andar 1. */
   surface: ExternalMapEntryData;
+  /** O santuário acabou de se revelar (a Horda Final caiu agora): mostra a fala da luz ao abrir. */
+  sanctuaryRevealed?: boolean;
 }
 
 const FADE_MS = 300;
@@ -61,7 +73,11 @@ export class CaveFloorScene extends Phaser.Scene {
   private worldBlur!: WorldBlur;
   private counterText!: Phaser.GameObjects.Text;
   private isLeaving = false;
-  private hordeWarned = false;
+  /** Andar 100 depois da Horda Final (`systems/sanctuary.ts`): sem inimigos, o altar, o lago e o ritual. */
+  private sanctuary: Sanctuary | null = null;
+  /** Andar 100 antes dele: quantas ondas extras da Horda Final já vieram (`FINAL_HORDE_WAVES`). */
+  private wavesSpawned = 0;
+  private waveIncoming = false;
 
   constructor() {
     super(CAVE_FLOOR_SCENE_KEY);
@@ -70,10 +86,16 @@ export class CaveFloorScene extends Phaser.Scene {
   init(data: CaveFloorEntryData): void {
     this.entry = data;
     this.config = caveFloorConfig(data.floor);
-    this.layout = generateCaveFloor(this.config);
+    // O andar 100 depois da Horda Final é o santuário: um salão aberto, claro e sem inimigos.
+    if (this.isSanctuaryFloor()) this.config = { ...this.config, enemyCount: 0, guardian: false, tint: SANCTUARY_TINT };
+    // Depois do fim da história a luz do Sábio Coelho limpou as Cavernas: nenhum andar tem monstros.
+    else if (isWorldAtPeace()) this.config = { ...this.config, enemyCount: 0, guardian: false };
+    this.layout = this.isSanctuaryFloor() ? generateSanctuaryFloor(this.config) : generateCaveFloor(this.config);
     // A instância da cena é reaproveitada entre `scene.start()`.
     this.isLeaving = false;
-    this.hordeWarned = false;
+    this.sanctuary = null;
+    this.wavesSpawned = 0;
+    this.waveIncoming = false;
   }
 
   preload(): void {
@@ -83,6 +105,13 @@ export class CaveFloorScene extends Phaser.Scene {
     preloadPlayerSprites(this, gameState.profile.characterId);
     preloadPet(this, gameState.profile.petId);
     preloadSheets(this, enemySheetsFor(this.config));
+    if (!this.textures.exists(ORE_KEY)) this.load.image(ORE_KEY, encodeURI(`/${ORE_PATH}`));
+    preloadCaveLandmarks(this);
+    if (this.config.floor === FINAL_FLOOR) preloadSanctuary(this);
+  }
+
+  private isSanctuaryFloor(): boolean {
+    return this.config.floor === FINAL_FLOOR && hasMilestone('sanctuary');
   }
 
   create(): void {
@@ -108,19 +137,46 @@ export class CaveFloorScene extends Phaser.Scene {
     this.player = new Player(this, spawn.col, spawn.row, tilePx);
     this.player.sprite.setScale(DISPLAY_SCALE);
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
-    for (const menuOpen of [isInventoryOpen, isFurnaceMenuOpen, isDialogueOpen]) this.controller.addInputInterceptor({ isActive: () => menuOpen(), handleClick: () => {} });
+    for (const menuOpen of [isInventoryOpen, isFurnaceMenuOpen, isDialogueOpen, isPauseMenuOpen]) this.controller.addInputInterceptor({ isActive: () => menuOpen(), handleClick: () => {} });
     this.controller.addInputInterceptor({ isActive: () => this.isLeaving, handleClick: () => {} });
+
+    // Andar 50: o baú esquecido fica ao lado da escada de descida — ninguém nasce em cima dele.
+    const chestCell = this.config.floor === BARRIER_FLOOR ? forgottenChestCell(stairsDown, cols) : null;
+    if (chestCell) this.layout.spawnCells = this.layout.spawnCells.filter((cell) => cell.col !== chestCell.col || cell.row !== chestCell.row);
 
     this.enemies = new CaveEnemies(this, this.config, this.layout, grid, tilePx, this.player);
     this.controller.setEnemyProvider(() => this.enemies.getAliveEnemies());
 
+    if (!this.isSanctuaryFloor()) this.buildOres(grid, interactions);
+    this.lockedMessage = new LockedMessage(this);
+    if (chestCell) {
+      buildCaveLandmarks({
+        scene: this,
+        floor: this.config.floor,
+        tilePx,
+        stairsDown,
+        chestCell,
+        grid,
+        interactions,
+        player: this.player,
+        message: this.lockedMessage,
+        canBreakBarrier: () => isEnchantedPickaxeSelected(), // A Picareta encantada na Mesa do Mago.
+        onBarrierBroken: () => this.refreshCounter(),
+      });
+    }
+
     setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
     this.worldBlur = new WorldBlur(this.cameras.main);
-    this.lockedMessage = new LockedMessage(this);
     ensureUIScene(this);
     attachFootstepSounds(this, () => 'bridge');
 
     if (gameState.petUnlocked) this.petCompanion = new PetCompanion(this, this.player, this.controller, grid, tilePx, PET_ROAM.area, (col, row) => col > 0 && row > 0 && col < cols - 1 && row < rows - 1);
+
+    if (this.isSanctuaryFloor()) {
+      this.sanctuary = new Sanctuary({ scene: this, tilePx, grid, interactions, player: this.player, message: this.lockedMessage, petCompanion: () => this.petCompanion });
+      this.sanctuary.build();
+      if (this.entry.sanctuaryRevealed) this.time.delayedCall(700, () => this.lockedMessage.show('O SANTUÁRIO', SANCTUARY_LINES.revealed));
+    }
 
     onPlayerStepped(this, (col, row) => {
       if (this.isLeaving) return;
@@ -136,10 +192,15 @@ export class CaveFloorScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ESC', () => {
       if (isInventoryOpen()) closeInventoryScreen();
       else if (isFurnaceMenuOpen()) closeFurnaceMenu();
+      else escapeTogglesPause(); // Nada aberto: a Pausa.
     });
 
     this.buildHud(isBottom);
-    this.enemies.onCleared = () => this.lockedMessage.show(isBottom ? 'O FUNDO DA CAVERNA' : 'ANDAR LIMPO', isBottom ? 'Você derrotou o Guardião do abismo!' : 'A escada de descida está livre.');
+    this.enemies.onCleared = () => {
+      if (this.config.floor === FINAL_FLOOR && !this.isSanctuaryFloor()) this.nextFinalWave();
+      else this.lockedMessage.show('ANDAR LIMPO', 'A escada de descida está livre.');
+    };
+    if (this.config.floor === FINAL_FLOOR && !this.isSanctuaryFloor() && !isWorldAtPeace()) this.time.delayedCall(400, () => this.lockedMessage.show('A HORDA FINAL', `Derrote cada criatura: ${FINAL_HORDE_WAVES.length + 1} ondas.`));
 
     // Registra o andar alcançado e libera o atalho a cada 5 andares.
     const firstTime = this.config.floor > gameState.cave.deepest;
@@ -152,6 +213,55 @@ export class CaveFloorScene extends Phaser.Scene {
       }
     }
     this.cameras.main.fadeIn(FADE_MS, 0, 0, 0);
+  }
+
+  /**
+   * Os VEIOS do andar (`systems/caveOres.ts`): encostados nas paredes, fora de onde os inimigos nascem, sem fechar passagem — minerados
+   * com a Picareta como os da Pedreira, mas de uma visita só. A primeira Azurita (andar 45+) é um marco da história.
+   */
+  private buildOres(grid: WalkableGrid, interactions: InteractionRegistry): void {
+    const { spawnCells } = this.layout;
+    const occupied = new Set(spawnCells.slice(0, this.config.enemyCount + 1).map((cell) => `${cell.col},${cell.row}`));
+    const last = spawnCells[spawnCells.length - 1];
+    if (last) occupied.add(`${last.col},${last.row}`);
+    for (const ore of placeCaveOres(this.config, this.layout, occupied)) {
+      const sprite = buildOreDeposit(this, TILE_SIZE, ore.col, ore.row, ore.kind);
+      grid.block(ore.col, ore.row);
+      interactions.set(ore.col, ore.row, new OreInteractable(this.player, { sprite }, grid, interactions, null, ore.col, ore.row, ore.kind, (kind) => {
+        if (kind === 'azurite' && reachMilestone('azurite')) this.lockedMessage.show('AZURITA!', 'Um minério raro e cintilante. Dizem que serve para forjar magia.');
+      }));
+    }
+  }
+
+  /** HORDA FINAL (andar 100): cada vez que o andar esvazia vem a próxima onda; depois da última, o santuário se revela. */
+  private nextFinalWave(): void {
+    if (this.wavesSpawned < FINAL_HORDE_WAVES.length) {
+      const wave = FINAL_HORDE_WAVES[this.wavesSpawned];
+      this.wavesSpawned += 1;
+      this.waveIncoming = true;
+      this.lockedMessage.show(`ONDA ${this.wavesSpawned + 1} DE ${FINAL_HORDE_WAVES.length + 1}`, wave.guardian ? 'A última onda vem com um Guardião!' : 'A horda não para!');
+      this.time.delayedCall(FINAL_HORDE_WAVE_DELAY_MS, () => {
+        this.waveIncoming = false;
+        this.enemies.spawnWave(wave.count, wave.guardian);
+      });
+      return;
+    }
+    this.revealSanctuary();
+  }
+
+  /** A Horda Final caiu: o marco `sanctuary`, a semente dourada na Bolsa e, num clarão, o andar reabre como o santuário. */
+  private revealSanctuary(): void {
+    if (this.isLeaving) return;
+    this.isLeaving = true;
+    reachMilestone('sanctuary');
+    grantGoldenSeed();
+    saveGame();
+    this.cameras.main.shake(900, 0.008);
+    this.cameras.main.fadeOut(1600, 255, 250, 220);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      const data: CaveFloorEntryData = { floor: FINAL_FLOOR, from: 'above', surface: this.entry.surface, sanctuaryRevealed: true };
+      this.scene.start(CAVE_FLOOR_SCENE_KEY, data);
+    });
   }
 
   /** Chão e paredes do `Tileset` de dungeon, com o tom da zona (um clima diferente a cada 10 andares). */
@@ -177,24 +287,43 @@ export class CaveFloorScene extends Phaser.Scene {
 
   private buildHud(isBottom: boolean): void {
     const centerX = this.scale.width / 2;
-    const name = isBottom ? 'O Fundo da Caverna' : `Andar ${this.config.floor}`;
+    const name = this.isSanctuaryFloor() ? 'O Santuário do Sábio Coelho' : isBottom ? 'O Fundo da Caverna' : `Andar ${this.config.floor}`;
     this.add.text(centerX, 20, `Caverna — ${name}`, TITLE_STYLE).setOrigin(0.5, 0).setScrollFactor(0).setDepth(4000);
     this.counterText = this.add.text(centerX, 42, '', HINT_STYLE).setOrigin(0.5, 0).setScrollFactor(0).setDepth(4000);
     this.refreshCounter();
   }
 
   private refreshCounter(): void {
+    if (this.isSanctuaryFloor()) {
+      this.counterText.setText('Um lugar de paz');
+      return;
+    }
+    if (isWorldAtPeace()) {
+      this.counterText.setText('As Cavernas estão em paz');
+      return;
+    }
     const { left, total } = this.enemies.remaining();
+    if (this.config.floor === FINAL_FLOOR) {
+      const wave = `HORDA FINAL — onda ${this.wavesSpawned + 1}/${FINAL_HORDE_WAVES.length + 1}`;
+      this.counterText.setText(this.waveIncoming ? `${wave} — prepare-se!` : `${wave} — inimigos: ${left}/${total}`);
+      return;
+    }
     const guardian = this.config.guardian ? ' (Guardião!)' : '';
-    this.counterText.setText(left > 0 ? `Inimigos: ${left}/${total}${guardian}` : 'Andar limpo — pise na escada pra descer');
+    const cleared = isBarrierActive(this.config.floor) ? 'Andar limpo — uma barreira mágica bloqueia a descida' : 'Andar limpo — pise na escada pra descer';
+    this.counterText.setText(left > 0 ? `Inimigos: ${left}/${total}${guardian}` : cleared);
   }
 
   update(time: number, delta: number): void {
+    if (isPauseMenuOpen()) {
+      this.worldBlur.setActive(true); // Pausa aberta: o andar (e o relógio) para.
+      return;
+    }
     const menuOpen = isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen();
     if (!menuOpen) {
       this.controller.update(time, delta);
       this.petCompanion?.update(time, delta);
       this.enemies.update(time, delta);
+      this.sanctuary?.update(delta);
     }
     this.refreshCounter();
 
@@ -205,9 +334,10 @@ export class CaveFloorScene extends Phaser.Scene {
       this.lockedMessage.show(title, subtitle);
     }
     if (hordeMissed) this.lockedMessage.show('A HORDA PASSOU', 'Você estava longe da Fazenda: sem recompensa.');
-    if (!this.hordeWarned && shouldStartHorde()) {
-      this.hordeWarned = true;
-      this.lockedMessage.show('A HORDA CHEGOU!', 'Volte para a Fazenda e defenda-a antes da meia-noite!');
+    // Hora da horda: o jogador é levado pra Fazenda, mesmo do fundo da Caverna (`systems/hordeRecall.ts`).
+    if (!this.isLeaving && !this.sanctuary?.isRitualRunning() && shouldRecallToFarm()) {
+      this.isLeaving = true;
+      recallToFarm(this);
     }
     this.worldBlur.setActive(menuOpen);
   }

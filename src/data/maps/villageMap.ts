@@ -46,6 +46,11 @@ export const VILLAGE_ASSETS = {
   house3: { key: 'village-house-3', path: 'Objects/Exterior/Houses/3.png', solid: ['........', '........', '........', '########', '########', '########', '........'], door: { dx: 3, dy: 6 } },
   house7: { key: 'village-house-7', path: 'Objects/Exterior/Houses/7.png', solid: ['........', '........', '........', '########', '########', '.###....'], door: { dx: 1, dy: 6 } },
   house8: { key: 'village-house-8', path: 'Objects/Exterior/Houses/8.png', solid: ['........', '........', '........', '........', '########', '########', '########', '........'], door: { dx: 1, dy: 7 } },
+  /**
+   * A casa do Ferreiro (`Houses/NPCS houses/Blacksmith/Blacksmith house.png`, 144x96 = 9x6 células): a casa principal com a placa da bigorna e a porta, e um alpendre aberto com a forja à direita. Máscara medida
+   * pela ocupação de cada célula: as paredes da casa (colunas 0-5) e a lareira do alpendre (colunas 6-7, só a fileira de cima). A porta fica na coluna 2 da fileira de baixo; a célula da frente, na rua, é a fileira seguinte.
+   */
+  blacksmithHouse: { key: 'village-blacksmith-house', path: 'Objects/Exterior/Houses/NPCS houses/Blacksmith/Blacksmith house.png', solid: ['.........', '.........', '.........', '.........', '########.', '######...'], door: { dx: 2, dy: 6 } },
   newsstand: { key: 'village-newsstand', path: 'Objects/Exterior/Newsstand.png', solid: ['..', '##', '##'] },
   /** `Water fountain.png` (192x128): folha de 4x2 quadros de 48x64 — a fileira de cima é o chafariz cheio, animado (`VILLAGE_FOUNTAIN_FRAMES`). */
   fountain: { key: 'village-fountain', path: 'Objects/Exterior/Water fountain.png', frame: { x: 0, y: 0, width: 48, height: 64 }, solid: ['...', '...', '###', '###'] },
@@ -86,7 +91,7 @@ function structureWithRole(role: VillageStructureRole, fallback: VillageStructur
 }
 
 /** A casa que é a LOJA do vilarejo e a moradia do Ferreiro (fachada e balcão em `data/villageShop.ts`, `systems/villageShop.ts`): a de madeira com toldo, na entrada da rua principal. */
-export const VILLAGE_SHOP_HOUSE: VillageStructure = structureWithRole('shop', { asset: 'house8', col: 3, row: 7 });
+export const VILLAGE_SHOP_HOUSE: VillageStructure = structureWithRole('shop', { asset: 'blacksmithHouse', col: 2, row: 8 });
 /** Casa do Padeiro (ex-Banqueiro; o id interno segue `banker` — layout, campanha e saves — ao longo da rua principal, ao leste da praça) e do Pirata (fileira sul, de frente pra viela). */
 export const VILLAGE_BANKER_HOUSE: VillageStructure = structureWithRole('banker', { asset: 'house3', col: 21, row: 8 });
 export const VILLAGE_PIRATE_HOUSE: VillageStructure = structureWithRole('pirate', { asset: 'house7', col: 21, row: 18 });

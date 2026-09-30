@@ -1,7 +1,11 @@
 import Phaser from 'phaser';
 import { ExternalMapScene } from './ExternalMapScene';
 import { SHOP_INTERIOR_SCENE_KEY, ShopInteriorEntryData } from './ShopInteriorScene';
-import { VILLAGE_COLS, VILLAGE_ROWS, VILLAGE_WELL, villageBlockedCells, villageDirtZone, structureDoorCell } from '../data/maps/villageMap';
+import { VILLAGE_ASSETS, VILLAGE_COLS, VILLAGE_ROWS, VILLAGE_WELL, villageBlockedCells, villageDirtZone, structureDoorCell } from '../data/maps/villageMap';
+import { TILE_SIZE } from '../data/tiles';
+import { DISPLAY_SCALE } from '../systems/mapBuilder';
+import { installEnterHoverCursor } from '../systems/gameCursor';
+import { isDialogueOpen, isInventoryOpen } from './UIScene';
 import { popText } from '../systems/floatingText';
 import { villageLayout } from '../data/maps/villageLayout';
 import { buildVillage, preloadVillage } from '../systems/villageBuilder';
@@ -107,6 +111,7 @@ export class VillageScene extends ExternalMapScene {
     for (const [col, row] of this.lightSources.blockedCells()) ctx.grid.block(col, row);
 
     this.registerShopDoors(interactions, player);
+    this.registerEnterCursor();
     this.registerWell(interactions, player, ctx.tilePx);
 
     // Moradores: cada um na sua rotina do dia (`data/npcs.ts`); clicar num deles conversa.
@@ -123,6 +128,19 @@ export class VillageScene extends ExternalMapScene {
       const doorCell = { col: front.col, row: front.row - 1 };
       interactions.set(doorCell.col, doorCell.row, new ShopDoorInteractable(player, front, () => this.enterShop(npcId, front)));
     }
+  }
+
+  /** O ponteiro vira a luva sobre as casas em que se pode entrar (as com loja, `SHOP_INTERIOR_BY_NPC`) — a área é a da arte inteira da casa. */
+  private registerEnterCursor(): void {
+    const tile = TILE_SIZE * DISPLAY_SCALE;
+    const areas: Phaser.Geom.Rectangle[] = [];
+    for (const npcId of Object.keys(SHOP_INTERIOR_BY_NPC) as NpcId[]) {
+      const home = NPCS[npcId].home;
+      if (!home) continue;
+      const source = this.textures.get(VILLAGE_ASSETS[home.asset].key).getSourceImage();
+      areas.push(new Phaser.Geom.Rectangle(home.col * tile, home.row * tile, source.width * DISPLAY_SCALE, source.height * DISPLAY_SCALE));
+    }
+    installEnterHoverCursor(this, () => areas, () => isDialogueOpen() || isInventoryOpen());
   }
 
   /** O poço da praça (2x1 células sólidas): clicar em qualquer uma leva o jogador até a rua logo abaixo e enche o regador. */

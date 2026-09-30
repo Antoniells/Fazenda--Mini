@@ -117,7 +117,7 @@ export const SKILLS: SkillDefinition[] = [
   {
     id: 'fishingLuck',
     name: 'Sorte do Pescador',
-    description: 'Mais sorte no minigame de pesca: peixes melhores mordem a isca.',
+    description: 'Mais sorte na pesca: peixes raros mordem mais e a faixa verde do minijogo fica mais larga.',
     icon: {
       key: 'skill-icon-rod',
       path: `${SKILL_ICON_DIR}/Weapons and Armor/1. Wood/Fishing Rod.png`,
@@ -125,7 +125,6 @@ export const SKILLS: SkillDefinition[] = [
     },
     costs: [30, 60, 100, 150, 220],
     effectText: (rank) => `+${rank * SKILL_BONUS.fishingLuckPerRank} de sorte na pesca`,
-    pendingNote: 'A pesca ainda não existe no jogo: o bônus fica guardado e passa a valer quando ela chegar.',
   },
   {
     id: 'stamina',

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { debugFlags } from '../debug/debugFlags';
 import { Npc, NpcPost } from '../entities/Npc';
 import { Player } from '../entities/Player';
 import { NPCS, NpcDefinition, NpcId, NpcPlace } from '../data/npcs';
@@ -36,6 +37,7 @@ export function workingHoursText(def: NpcDefinition): string {
 
 /** O vendedor está em EXPEDIENTE agora (o trecho atual da rotina tem `working`)? Na chuva, quem estaria na rua fica em casa e não atende. Função pura. */
 export function isWorkingNow(def: NpcDefinition, hours: number, raining: boolean): boolean {
+  if (debugFlags.shopsAlwaysOpen) return true; // Menu de hack (`debug/hackMenu.ts`).
   let entry = def.schedule[0];
   for (const candidate of def.schedule) if (hours >= candidate.fromHour) entry = candidate;
   if (!entry.working) return false;

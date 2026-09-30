@@ -80,6 +80,12 @@ export class Raider extends Enemy {
 
   // --- Helpers de grade --------------------------------------------------------------------------------------------
 
+  /** O empurrão do golpe para em cerca/parede (`Enemy.knockbackTarget`): só entra em célula andável do grid. */
+  protected override canOccupy(x: number, y: number): boolean {
+    const cell = this.cellOf(x, y);
+    return this.ctx.grid.isWalkable(cell.col, cell.row);
+  }
+
   private cellOf(x: number, y: number): GridPoint {
     return { col: Math.floor(x / this.ctx.tilePx), row: Math.floor((y - this.ctx.tilePx / 2) / this.ctx.tilePx) };
   }

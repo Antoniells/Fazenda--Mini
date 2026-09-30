@@ -82,6 +82,13 @@ let staticGrid: WalkableGrid | null = null;
 let farmlandCellKeys: Set<string> | null = null;
 let keyPoints: Array<[number, number]> | null = null;
 
+/** As melhorias (`systems/farmUpgrades.ts`) mudam a lavoura e a porta da casa: descarta o que estava guardado em cache sobre elas. */
+export function resetFarmResourceCaches(): void {
+  staticGrid = null;
+  farmlandCellKeys = null;
+  keyPoints = null;
+}
+
 function cellKey(col: number, row: number): string {
   return `${col},${row}`;
 }

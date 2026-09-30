@@ -25,6 +25,7 @@ export class BeachScene extends ExternalMapScene {
       rows,
       areaName: 'Praia',
       mapType: 'beach',
+      fishing: 'beach', // O mar: pesca com a Vara na margem (`data/fishing.ts`).
       // O retângulo do oceano entra no próprio chão como água (ver `groundWithWaterRect`) — antes era uma textura plana por cima, em outra cor.
       ground: groundWithWaterRect(beachMap.ground, oceanArea),
       backgroundColor: beachMap.backgroundColor,

@@ -16,7 +16,9 @@ import {
   MENU_UI_PATH,
   MENU_PART_FRAMES,
 } from '../data/ui';
-import { EPILOGUE_PAGES } from '../data/campaign';
+import { CREDITS, ENDING_PAGES } from '../data/sanctuary';
+import { getPetDefinition } from '../data/pets';
+import { prepareWorldAfterEnding } from '../systems/ending';
 import { gameState } from '../systems/gameState';
 import { countCompletedRequests } from '../systems/requests';
 import { save as saveGame } from '../systems/saveManager';
@@ -34,18 +36,23 @@ const PANEL_HEIGHT = 380;
 const BUTTON_WIDTH = 250;
 const BUTTON_HEIGHT = 40;
 const FADE_MS = 900;
+/** Velocidade da subida dos créditos (px por segundo) e a pausa no fim antes de voltar ao mundo. */
+const CREDITS_SPEED = 38;
+const CREDITS_END_HOLD_MS = 2500;
 
 /**
- * Tela FINAL (epílogo): aparece quando o jogador vence a Noite Final e a campanha se completa (`systems/campaign.ts` `completeCampaign`).
- * Fundo da Fazenda (o mesmo do menu, escurecido), o logo do jogo e o texto do epílogo em páginas ("Continuar"); a última página mostra
- * um resumo da jornada (dias, hordas vencidas, moedas) e dois botões: "Continuar jogando" (volta pra Fazenda, modo livre — a campanha
- * fica completa, os moradores só conversam) e "Menu principal". Só texto e a arte do jogo: nada desenhado por código além da moldura
- * de papel/escurecimento de UI.
+ * Tela FINAL: o fim da história dos Três Pilares (`data/story.ts`), aberta pela cinemática da onda de luz (`scenes/FinalCinematicScene.ts`).
+ * Fundo da Fazenda (o mesmo do menu, escurecido), o logo do jogo e o epílogo em páginas ("Continuar"), um resumo da jornada e os CRÉDITOS
+ * subindo (`CREDITS`). "Pular" (ou o fim dos créditos) volta ao mundo — sem o pet, e com a caixa do filhote esperando em frente à casa
+ * (`systems/ending.ts`). O menu de hack abre esta tela só pra ver (`fromStory` ausente: nada muda no jogo). Só texto e a arte do jogo:
+ * nada desenhado por código além da moldura de papel/escurecimento de UI.
  */
 export class EndingScene extends Phaser.Scene {
   private pageIndex = 0;
   private panelObjects: Phaser.GameObjects.GameObject[] = [];
   private transitioning = false;
+  /** Veio do fim de verdade (a cinemática): ao sair, prepara o mundo depois do fim. */
+  private fromStory = false;
 
   constructor() {
     super(ENDING_SCENE_KEY);
@@ -56,6 +63,10 @@ export class EndingScene extends Phaser.Scene {
     this.load.image(MENU_UI_KEY, encodeURI(`/${MENU_UI_PATH}`));
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
     this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
+  }
+
+  init(data?: { fromStory?: boolean }): void {
+    this.fromStory = data?.fromStory === true;
   }
 
   create(): void {
@@ -105,8 +116,13 @@ export class EndingScene extends Phaser.Scene {
     this.panelObjects = [];
   }
 
+  private pages(): string[] {
+    const pet = getPetDefinition(gameState.profile.petId).name;
+    return ENDING_PAGES.map((page) => page.replace(/{pet}/g, pet).replace(/{nome}/g, gameState.profile.playerName));
+  }
+
   private isLastPage(): boolean {
-    return this.pageIndex >= EPILOGUE_PAGES.length;
+    return this.pageIndex >= ENDING_PAGES.length;
   }
 
   /** Desenha a página atual: as do epílogo (texto + "Continuar") e, depois, o resumo da jornada com os botões finais. */
@@ -132,8 +148,8 @@ export class EndingScene extends Phaser.Scene {
     this.panelObjects.push(panel);
 
     if (!this.isLastPage()) {
-      this.addText(cx, top + 150, EPILOGUE_PAGES[this.pageIndex], 19, false, PANEL_WIDTH - 120);
-      this.addButton(cx, top + PANEL_HEIGHT - 60, this.pageIndex === EPILOGUE_PAGES.length - 1 ? 'Ver a minha história' : 'Continuar', () => this.nextPage());
+      this.addText(cx, top + 150, this.pages()[this.pageIndex], 19, false, PANEL_WIDTH - 120);
+      this.addButton(cx, top + PANEL_HEIGHT - 60, this.pageIndex === ENDING_PAGES.length - 1 ? 'Ver a minha história' : 'Continuar', () => this.nextPage());
       return;
     }
 
@@ -151,8 +167,41 @@ export class EndingScene extends Phaser.Scene {
       'Obrigado por jogar Mini Fazenda!',
     ];
     this.addText(cx, top + 175, lines.join('\n'), 17, false, PANEL_WIDTH - 120);
-    this.addButton(cx - BUTTON_WIDTH / 2 - 12, top + PANEL_HEIGHT - 52, 'Continuar jogando', () => this.leave('MainScene'));
+    this.addButton(cx - BUTTON_WIDTH / 2 - 12, top + PANEL_HEIGHT - 52, 'Créditos', () => this.showCredits());
     this.addButton(cx + BUTTON_WIDTH / 2 + 12, top + PANEL_HEIGHT - 52, 'Menu principal', () => this.leave(MAIN_MENU_SCENE_KEY));
+  }
+
+  /** Os créditos subindo pela tela; "Pular" (ou o fim) volta ao mundo. */
+  private showCredits(): void {
+    this.clearPanel();
+    const cx = this.scale.width / 2;
+    const container = this.add.container(0, this.scale.height + 20).setDepth(6);
+    let y = 0;
+    for (const block of CREDITS) {
+      if (block.title) {
+        container.add(this.add.text(cx, y, block.title, { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#ffe9b3', stroke: '#2b1d0e', strokeThickness: 4 }).setOrigin(0.5, 0));
+        y += 36;
+      }
+      for (const line of block.lines) {
+        container.add(this.add.text(cx, y, line, { fontFamily: FONT, fontSize: '18px', color: '#fff6d8', stroke: '#2b1d0e', strokeThickness: 3 }).setOrigin(0.5, 0));
+        y += 28;
+      }
+      y += 46;
+    }
+    const travel = this.scale.height + 20 + y;
+    this.tweens.add({
+      targets: container,
+      y: -y,
+      duration: (travel / CREDITS_SPEED) * 1000,
+      onComplete: () => this.time.delayedCall(CREDITS_END_HOLD_MS, () => this.backToWorld()),
+    });
+    this.addButton(this.scale.width - BUTTON_WIDTH / 2 - 30, this.scale.height - 40, 'Pular', () => this.backToWorld());
+  }
+
+  /** Volta ao mundo depois do fim: sem o pet, e com a caixa do filhote esperando (`systems/ending.ts`). */
+  private backToWorld(): void {
+    if (this.fromStory) prepareWorldAfterEnding();
+    this.leave('MainScene');
   }
 
   private addText(x: number, y: number, text: string, size: number, bold: boolean, wrapWidth: number): void {

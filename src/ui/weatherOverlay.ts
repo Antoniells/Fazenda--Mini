@@ -22,8 +22,8 @@ const SPLASH_FRAME_RATE = 12;
 /** Cenas de mapa a céu aberto — onde os respingos são criados (a que estiver ativa). */
 const WORLD_SCENE_KEYS = ['MainScene', 'ForestScene', 'QuarryScene', 'BeachScene', 'VillageScene'];
 
-/** Cenas fechadas (sem céu) onde não chove: a Caverna e o interior da casa. */
-const INDOOR_SCENE_KEYS = ['CaveScene', 'HouseScene'];
+/** Cenas fechadas (sem céu) onde não chove: a Caverna (a entrada e os andares), o interior da casa e o das lojas. */
+const INDOOR_SCENE_KEYS = ['CaveScene', 'CaveFloorScene', 'HouseScene', 'ShopInteriorScene'];
 
 /**
  * Clima na tela (chuva): um véu cinza-azulado por cima do mundo + partículas
@@ -32,7 +32,7 @@ const INDOOR_SCENE_KEYS = ['CaveScene', 'HouseScene'];
  * `scrollFactor` 0), então cobre qualquer mapa sem cada cena precisar
  * conhecer o clima; puramente visual — quem decide se chove é
  * `systems/weather.ts` (sorteio na virada do dia), aqui só se espelha
- * `gameState.weather.raining` via `refresh`. Na Caverna não chove.
+ * `gameState.weather.raining` via `refresh`. Não chove nas cenas fechadas (`INDOOR_SCENE_KEYS`).
  */
 export class WeatherOverlay {
   private readonly veil: Phaser.GameObjects.Rectangle;

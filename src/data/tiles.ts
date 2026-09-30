@@ -377,6 +377,8 @@ export const ORE_IRON_FRAME = { name: 'ore-iron', rect: { x: 18, y: 4, width: 11
 export const ORE_COAL_FRAME = { name: 'ore-coal', rect: { x: 130, y: 4, width: 11, height: 10 } };
 export const ORE_COPPER_FRAME = { name: 'ore-copper', rect: { x: 2, y: 4, width: 11, height: 10 } };
 export const ORE_GOLD_FRAME = { name: 'ore-gold', rect: { x: 34, y: 4, width: 11, height: 10 } };
+/** Azurita (Fase 11 — só nas Cavernas, a partir do andar 45): a 8ª pedra da 1ª linha, a de cristais azul-ciano (mesmo recorte 11x10 em y=4). */
+export const ORE_AZURITE_FRAME = { name: 'ore-azurite', rect: { x: 114, y: 4, width: 11, height: 10 } };
 
 /**
  * Entrada de caverna (Caverna): a escadaria descendo pra dentro da terra de `Objects/Exterior/Deep Forest/Hidden Entrance.png` (80x96, um kit de peças: 4 colunas e essa
@@ -396,7 +398,7 @@ export const IRON_FRAME = { name: 'iron-bar-icon', rect: { x: 32, y: 0, width: 1
 
 /**
  * Ícones do resto dos metais (`data/resources.ts`), da MESMA folha (`IRON_KEY`, células 16x16): linha 0 = cobre (barra, minério bruto), ferro (barra — `IRON_FRAME` —, minério bruto);
- * linha 1 = ouro (barra, minério bruto). Registrados na `MainScene`.
+ * linha 1 = ouro (barra, minério bruto); linha 2 = azurita (barra, minério bruto). Registrados na `MainScene`.
  */
 export const METAL_ICON_FRAMES = {
   copperBar: { name: 'metal-copper-bar', rect: { x: 0, y: 0, width: 16, height: 16 } },
@@ -404,6 +406,9 @@ export const METAL_ICON_FRAMES = {
   ironOre: { name: 'metal-iron-ore', rect: { x: 48, y: 0, width: 16, height: 16 } },
   goldBar: { name: 'metal-gold-bar', rect: { x: 0, y: 16, width: 16, height: 16 } },
   goldOre: { name: 'metal-gold-ore', rect: { x: 16, y: 16, width: 16, height: 16 } },
+  // Linha 2: a barra dourada com azul (a "mesclagem do ouro com a azurita") e a pedrinha azul do minério bruto.
+  azuriteBar: { name: 'metal-azurite-bar', rect: { x: 32, y: 32, width: 16, height: 16 } },
+  azuriteOre: { name: 'metal-azurite-ore', rect: { x: 48, y: 32, width: 16, height: 16 } },
 };
 
 /** Ícone do Carvão: `Icons/RPG icons/Extras/Coal.png` (32x32, 2x2 células de 16x16) — a 1ª célula. */

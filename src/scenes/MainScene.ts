@@ -36,8 +36,6 @@ import {
   SHIPPING_BIN_PATH,
   CONSTRUCTION_SIGN_KEY,
   CONSTRUCTION_SIGN_PATH,
-  PLAYER_HOUSE_KEY,
-  PLAYER_HOUSE_PATH,
   BRIDGE_KEY,
   BRIDGE_PATH,
   WATER_KEY,
@@ -46,6 +44,10 @@ import {
   PROPS_TILESET_PATH,
 } from '../data/tiles';
 import { PLAYER_START } from '../data/player';
+import { installEnterHoverCursor } from '../systems/gameCursor';
+import { applyUpgrades } from '../systems/farmUpgrades';
+import { HOUSE_LEVELS } from '../data/houseLevels';
+import { FENCE_SKINS } from '../data/fenceSkins';
 import { preloadPlayerSprites } from '../systems/playerSprites';
 import { preloadPet } from '../systems/petSprites';
 import { PetCompanion } from '../systems/petCompanion';
@@ -118,7 +120,6 @@ import { InteractionRegistry } from '../systems/interaction';
 import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
 import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
 import { registerEnterHouseInteractable } from '../systems/enterHouseInteraction';
-import { exitToMainMenu } from '../systems/sessionExit';
 import { startNextDay, DayTurn } from '../systems/dayCycle';
 import { shouldStartHorde } from '../systems/horde';
 import { advanceWorldTime, describeNewDay } from '../systems/worldTime';
@@ -145,7 +146,6 @@ import { materializeDone, occupiedFootprintCells } from '../systems/construction
 import { preloadNpcs } from '../systems/npcSystem';
 import { CARPENTER_PICKAXE_SHEET, type BuildRequest } from '../data/construction';
 import { DebugGridOverlay } from '../systems/debugGridOverlay';
-import { PauseMenu } from '../ui/pauseMenu';
 import { LockedMessage } from '../ui/lockedMessage';
 import { gameState } from '../systems/gameState';
 import {
@@ -155,6 +155,8 @@ import {
   toggleInventoryScreen,
   closeInventoryScreen,
   isFurnaceMenuOpen,
+  isPauseMenuOpen,
+  togglePauseMenu,
   closeFurnaceMenu,
   isChestMenuOpen,
   closeChestMenu,
@@ -162,6 +164,9 @@ import {
   isDialogueOpen,
 } from './UIScene';
 import type { WakeUpAfterDeath } from '../systems/playerDeath';
+import { consumeRecallNotice } from '../systems/hordeRecall';
+import { preloadFishingAssets } from '../systems/fishingAssets';
+import { MAP_ICON_FRAME, STORY_ITEMS_KEY, STORY_ITEMS_PATH } from '../data/caveLandmarks';
 import { setupWorldCamera, applyWorldCameraBounds } from '../systems/cameraSetup';
 import { ANIMAL_ICONS, EGG_ICON } from '../data/animals';
 import { registerQualityIcons } from '../systems/qualityIcons';
@@ -220,7 +225,6 @@ export class MainScene extends Phaser.Scene {
   private gameClock!: GameClock;
   private dayNightOverlay!: DayNightOverlay;
   private worldBlur!: WorldBlur;
-  private pauseMenu!: PauseMenu;
   private lockedMessage!: LockedMessage;
   private chickenFlock!: ChickenFlock;
   private constructionSites!: ConstructionSiteSystem;
@@ -327,6 +331,10 @@ export class MainScene extends Phaser.Scene {
       frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
       frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
     });
+    // Vara de Pescar e os peixes (ícones da Bolsa, da loja e da Caixa de Remessas).
+    preloadFishingAssets(this);
+    // Itens da história (o Mapa Misterioso do baú do andar 50).
+    if (!this.textures.exists(STORY_ITEMS_KEY)) this.load.image(STORY_ITEMS_KEY, encodeURI(`/${STORY_ITEMS_PATH}`));
 
     for (const weapon of Object.values(WEAPONS)) {
       this.load.spritesheet(weapon.textureKey, encodeURI(`/${weapon.texturePath}`), {
@@ -369,7 +377,11 @@ export class MainScene extends Phaser.Scene {
     this.load.image(SHIPPING_BIN_KEY, encodeURI(`/${SHIPPING_BIN_PATH}`));
     this.load.image(GRASS_DETAILS_KEY, encodeURI(`/${GRASS_DETAILS_PATH}`));
     this.load.image(CONSTRUCTION_SIGN_KEY, encodeURI(`/${CONSTRUCTION_SIGN_PATH}`));
-    this.load.image(PLAYER_HOUSE_KEY, encodeURI(`/${PLAYER_HOUSE_PATH}`));
+    // As 3 casas do jogador (`data/houseLevels.ts`) e os materiais da cerca da lavoura (`data/fenceSkins.ts`) — o nível atual decide qual aparece.
+    for (const level of HOUSE_LEVELS) if (!this.textures.exists(level.textureKey)) this.load.image(level.textureKey, encodeURI(`/${level.texturePath}`));
+    for (const skin of FENCE_SKINS) {
+      if (skin.textureKey !== FENCE_TILESET_KEY) this.load.spritesheet(skin.textureKey, encodeURI(`/${skin.texturePath}`), { frameWidth: TILE_SIZE, frameHeight: TILE_SIZE });
+    }
     this.load.image(BRIDGE_KEY, encodeURI(`/${BRIDGE_PATH}`));
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
 
@@ -392,6 +404,14 @@ export class MainScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyUpgrades(); // Casa, lavoura e cerca do nível atual das melhorias do Marceneiro (`systems/farmUpgrades.ts`).
+    for (const level of HOUSE_LEVELS) {
+      // Os recortes das casas de folha (a loja do Marceneiro, no Vilarejo, usa como ícone).
+      if (level.frame && this.textures.exists(level.textureKey) && !this.textures.get(level.textureKey).has(level.frame.name)) {
+        const { name, rect } = level.frame;
+        this.textures.get(level.textureKey).add(name, 0, rect.x, rect.y, rect.width, rect.height);
+      }
+    }
     registerQualityIcons(this); // Ícones dos itens com estrela (Prata/Ouro/Irídio), usados por toda a interface.
     const pineTexture = this.textures.get(PINE_TREE_KEY);
     pineTexture.add(PINE_TREE_FRAME_NAME, 0, PINE_TREE_FRAME.x, PINE_TREE_FRAME.y, PINE_TREE_FRAME.width, PINE_TREE_FRAME.height);
@@ -422,6 +442,8 @@ export class MainScene extends Phaser.Scene {
     for (const { name, rect } of Object.values(METAL_ICON_FRAMES)) {
       if (!ironTexture.has(name)) ironTexture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
     }
+    const storyItems = this.textures.get(STORY_ITEMS_KEY);
+    if (!storyItems.has(MAP_ICON_FRAME.name)) storyItems.add(MAP_ICON_FRAME.name, 0, MAP_ICON_FRAME.rect.x, MAP_ICON_FRAME.rect.y, MAP_ICON_FRAME.rect.width, MAP_ICON_FRAME.rect.height);
     const coalTexture = this.textures.get(COAL_KEY);
     if (!coalTexture.has(COAL_FRAME.name)) coalTexture.add(COAL_FRAME.name, 0, COAL_FRAME.rect.x, COAL_FRAME.rect.y, COAL_FRAME.rect.width, COAL_FRAME.rect.height);
 
@@ -547,7 +569,9 @@ export class MainScene extends Phaser.Scene {
     this.grassTufts = buildGrassDetails(this, farmMap, buildDirtZone(farmMap), occupiedFootprintCells());
 
     const shippingBin = buildShippingBin(this, farmMap);
-    buildPlayerHouse(this, farmMap);
+    const playerHouse = buildPlayerHouse(this, farmMap);
+    // A casa em que se pode entrar: o ponteiro vira a luva apontando sobre ela (`systems/gameCursor.ts`).
+    installEnterHoverCursor(this, () => [playerHouse.getBounds()], () => isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen());
     const fenceImages = buildFarmlandFence(this, farmMap);
     // Props de decoração ambiente autorados no MapEditorScene (aba
     // Decoração, pedido explícito) — puramente visuais, sem colisão.
@@ -671,8 +695,6 @@ export class MainScene extends Phaser.Scene {
 
     new TileCursor(this, tilePx, grid, farmMap.farmlandArea);
 
-    this.pauseMenu = new PauseMenu(this, { onExitToMenu: () => this.exitToMainMenu() });
-
     this.controller = new PlayerController(this, this.player, grid, tilePx, interactions);
     // As galinhas dos galinheiros (comprados/salvos) — ver `systems/chickenFlock.ts`; clicar numa dá carinho.
     this.chickenFlock = new ChickenFlock(this, grid, tilePx, new Set(farmMap.farmlandArea.map(([col, row]) => `${col},${row}`)), () => this.gameClock.getHours(), this.player, this.controller);
@@ -691,6 +713,11 @@ export class MainScene extends Phaser.Scene {
     // Hordas: a cada 10 dias, à noite. Os inimigos entram no PlayerController (colisão com o jogador e golpe de espada).
     this.hordeDirector = new HordeDirector(this, grid, tilePx, this.farmland, this.farmlandRenderer, this.farmFences, this.player, lockedMessage);
     this.controller.setEnemyProvider(() => this.hordeDirector.getAliveEnemies());
+    // Chegou pelo chamado da horda (teletransportado de outra cena): a tela clareia e o aviso explica.
+    if (consumeRecallNotice()) {
+      this.cameras.main.fadeIn(400, 0, 0, 0);
+      this.hordeDirector.noteRecalled();
+    }
     this.debugGridOverlay = new DebugGridOverlay(this, grid, tilePx, this.player); // DEBUG TEMPORÁRIO
     this.controller.addInputInterceptor(this.decorationPlacement);
     if (this.buildRequest) {
@@ -734,7 +761,7 @@ export class MainScene extends Phaser.Scene {
     });
 
     this.controller.addInputInterceptor({
-      isActive: () => this.pauseMenu.isOpen(),
+      isActive: () => isPauseMenuOpen(),
       handleClick: () => {},
     });
 
@@ -774,7 +801,7 @@ export class MainScene extends Phaser.Scene {
         return;
       }
       if (this.isEnteringHouse) return;
-      this.pauseMenu.toggle();
+      togglePauseMenu();
     });
 
     this.input.keyboard!.on('keydown-E', () => {
@@ -934,11 +961,6 @@ export class MainScene extends Phaser.Scene {
       });
   }
 
-  /** "Sair para o Menu Principal" (Pausa): salva e volta ao menu — ver `systems/sessionExit.ts`. */
-  private exitToMainMenu(): void {
-    exitToMainMenu(this);
-  }
-
   /** Porta de casa: fade out e vai pro interior (`HouseScene`) — dormir é na cama de lá. */
   private enterHouse(): void {
     if (this.isEnteringHouse) return;
@@ -961,7 +983,7 @@ export class MainScene extends Phaser.Scene {
       isDialogueOpen() ||
       isChestMenuOpen() ||
       this.isEnteringHouse ||
-      this.pauseMenu.isOpen() ||
+      isPauseMenuOpen() ||
       this.shippingBinMenu.isOpen()
     );
   }
@@ -989,8 +1011,8 @@ export class MainScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     if (!this.isInputLocked()) this.controller.update(time, delta);
-    if (!this.isEnteringHouse && !this.pauseMenu.isOpen()) this.petCompanion?.update(time, delta);
-    if (!this.pauseMenu.isOpen()) this.eventManager.update(time, delta);
+    if (!this.isEnteringHouse && !isPauseMenuOpen()) this.petCompanion?.update(time, delta);
+    if (!isPauseMenuOpen()) this.eventManager.update(time, delta);
     if (isDialogueOpen()) this.dialogueSeenOpenAt = time;
 
     // Pedido explícito do usuário: árvores plantadas pelo jogador (bolota)
@@ -999,13 +1021,13 @@ export class MainScene extends Phaser.Scene {
     // checagem — combina as duas fontes.
     updateTreeOverlap(this.player, this.farmResources.getTreeSprites());
     this.decorationPlacement.updateOcclusion();
-    if (!this.pauseMenu.isOpen()) this.chickenFlock.update(time, delta);
-    if (!this.pauseMenu.isOpen()) this.builderCrew.update(time, delta);
+    if (!isPauseMenuOpen()) this.chickenFlock.update(time, delta);
+    if (!isPauseMenuOpen()) this.builderCrew.update(time, delta);
     this.mailbox.update();
     this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts` quando não precisar mais.
     this.farmlandRenderer.renderAll(this.farmland);
 
-    if (!this.isEnteringHouse && !this.pauseMenu.isOpen()) {
+    if (!this.isEnteringHouse && !isPauseMenuOpen()) {
       const { dayTurn } = advanceWorldTime(delta, true);
       if (dayTurn) {
         this.playDayTurnSplashes(dayTurn);

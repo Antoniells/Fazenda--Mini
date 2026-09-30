@@ -19,7 +19,7 @@ import { InteractionRegistry } from '../systems/interaction';
 import { attachFootstepSounds } from '../systems/soundEffects';
 import { attachFootDust, isDirtGround } from '../systems/grassDust';
 import { onPlayerStepped } from '../systems/sceneEvents';
-import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen } from './UIScene';
+import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
 import { DebugGridOverlay } from '../systems/debugGridOverlay';
 import { MapType } from './MapEditorScene';
 import type { DirtZone } from '../systems/dirtPaths';
@@ -27,8 +27,11 @@ import { registerMapEditorShortcut } from '../systems/mapEditorLauncher';
 import { DayNightOverlay } from '../systems/dayNightOverlay';
 import { WorldBlur } from '../systems/worldBlur';
 import { advanceWorldTime, describeNewDay } from '../systems/worldTime';
-import { shouldStartHorde } from '../systems/horde';
+import { shouldRecallToFarm, recallToFarm } from '../systems/hordeRecall';
 import { LockedMessage } from '../ui/lockedMessage';
+import { FishingSpots } from '../systems/fishingSpots';
+import { preloadFishingAssets } from '../systems/fishingAssets';
+import type { FishingLocation } from '../data/fishing';
 
 /** Dados que chegam de `scene.start(key, data)` ao atravessar a ponte da Fazenda (ver `systems/bridgeSystem.ts`). */
 export interface ExternalMapEntryData {
@@ -37,6 +40,8 @@ export interface ExternalMapEntryData {
   returnSpawn: { col: number; row: number };
   /** Onde o jogador aparece (em vez de em frente à ponte de volta): usado ao sair do interior de uma loja do Vilarejo (`ShopInteriorScene`). */
   spawnPoint?: { col: number; row: number };
+  /** Os dados de entrada da cena de VOLTA, quando ela não é a Fazenda (a área oculta volta pra Floresta, que precisa dos dados dela pra voltar pra Fazenda depois). */
+  returnData?: ExternalMapEntryData;
 }
 
 /** O que cada cena concreta (Floresta/Pedreira/Caverna/Praia) precisa fornecer ao construtor — ver `ExternalMapScene`. */
@@ -61,6 +66,8 @@ export interface ExternalMapConfig {
   backgroundColor?: string;
   /** Ruas/praças de terra pintadas por cima da grama procedural (só vale sem `ground` autorado) — o Vilarejo. */
   dirtZone?: DirtZone;
+  /** Pesca (Fase 11): a água deste mapa é um ponto de pesca deste lugar (`systems/fishingSpots.ts`). Ausente = não se pesca aqui. */
+  fishing?: FishingLocation;
   /** Folha da água animada deste mapa (`WATER_STYLES`); ausente = a da Praia. A Floresta usa `'waterGround'` (margem de terra). */
   waterStyle?: WaterStyleId;
   /** Células extras bloqueadas no `WalkableGrid`, além da borda (árvores, pedras, água, etc.) — cada subclasse monta a lista a partir dos próprios dados (`data/maps/*.ts`). */
@@ -73,6 +80,10 @@ export interface ExternalMapConfig {
    * uma só é alcançável por UMA ponte da Fazenda), não vem de `entryData`.
    */
   returnDirection: ExpansionDirection;
+  /** Sem a arte da ponte de volta: a cena desenha a própria passagem (a área oculta da Floresta volta por um arco de árvores). A célula de volta funciona igual. */
+  hideReturnBridge?: boolean;
+  /** Dica sob o título (padrão: voltar pela ponte pra Fazenda). */
+  returnHint?: string;
 }
 
 /** Célula (na própria parede) de uma ponte nesta direção — mesma convenção de `farmMap.bridges` (centralizada no lado). Exportada para as cenas concretas excluírem essa célula ao sortear posições de respawn (`systems/resourceNodeRegistry.ts`). */
@@ -186,8 +197,8 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   private dayNightOverlay!: DayNightOverlay;
   private worldBlur!: WorldBlur;
   protected lockedMessage!: LockedMessage;
-  /** Já avisou (nesta visita) que a noite de horda começou com o jogador longe da Fazenda. */
-  private hordeWarned = false;
+  /** Pontos de pesca da água do mapa (só com `config.fishing`). */
+  private fishingSpots: FishingSpots | null = null;
 
   constructor(
     key: string,
@@ -203,7 +214,6 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // `returnToFarm()` continuava `true` pra sempre depois da primeira
     // viagem, travando qualquer transição seguinte por esta mesma ponte.
     this.isTransitioning = false;
-    this.hordeWarned = false;
   }
 
   preload(): void {
@@ -221,6 +231,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     this.load.image(PROPS_TILESET_KEY, encodeURI(`/${PROPS_TILESET_PATH}`));
     preloadPlayerSprites(this, gameState.profile.characterId);
     preloadPet(this, gameState.profile.petId);
+    if (this.config.fishing) preloadFishingAssets(this);
 
     this.loadMapAssets();
   }
@@ -254,7 +265,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       destinationSceneKey: this.entryData.returnSceneKey,
       requirement: {},
     };
-    buildBridge(this, TILE_SIZE, returnBridge);
+    if (!this.config.hideReturnBridge) buildBridge(this, TILE_SIZE, returnBridge);
     this.bridgeWalkway = bridgeWalkwayCells(returnBridge);
 
 // A água pintada no chão (lago/mar) bloqueia sozinha — não depende de `blockedArea`/`lakeArea` estarem preenchidos no mapa.
@@ -268,7 +279,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // regra da Fazenda — ver `bridgeRailingCells`): a ponte de volta aqui
     // não tem trava/placa (sempre destravada), mas a arte é igualmente
     // mais larga que 1 tile, então precisa do mesmo "túnel" invisível.
-    for (const [col, row] of bridgeRailingCells(returnBridge)) grid.block(col, row);
+    if (!this.config.hideReturnBridge) for (const [col, row] of bridgeRailingCells(returnBridge)) grid.block(col, row);
 
     attachFootstepSounds(this, (col, row) => (col === bridgeCell.col && row === bridgeCell.row ? 'bridge' : 'grass'));
 
@@ -297,7 +308,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       handleClick: () => {},
     });
     this.controller.addInputInterceptor({
-      isActive: () => isFurnaceMenuOpen(),
+      isActive: () => isFurnaceMenuOpen() || isPauseMenuOpen(),
       handleClick: () => {},
     });
     // Conversa com um morador aberta: o clique é só dela.
@@ -327,11 +338,20 @@ export abstract class ExternalMapScene extends Phaser.Scene {
         closeInventoryScreen();
         return;
       }
-      if (isFurnaceMenuOpen()) closeFurnaceMenu();
+      if (isFurnaceMenuOpen()) {
+        closeFurnaceMenu();
+        return;
+      }
+      escapeTogglesPause(); // Nada aberto: a Pausa.
     });
     if (this.config.mapType) registerMapEditorShortcut(this, this.config.mapType); // Só os mapas com editor (o Vilarejo não tem).
 
     this.buildMapContent({ tilePx, grid, interactions, player: this.player });
+
+    // Pesca: a água da margem vira ponto de pesca (depois do conteúdo do mapa, que tem prioridade nas células).
+    this.fishingSpots = this.config.fishing
+      ? new FishingSpots(this, this.player, tilePx, this.config.fishing, grid, interactions, waterCellsFromGround(this.config.ground))
+      : null;
 
     // Depois do conteúdo do mapa (árvores/pedras/água já bloqueados no grid): o pet nunca nasce nem passeia em cima de obstáculo.
     // (fora do anel da borda — parede e a célula da ponte de volta — pra ele nunca ficar parado em cima do "portão".)
@@ -341,7 +361,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     const centerX = this.scale.width / 2;
     this.add.text(centerX, 20, `Você está em: ${this.config.areaName}`, TITLE_STYLE).setOrigin(0.5, 0).setScrollFactor(0).setDepth(4000);
     this.add
-      .text(centerX, 42, 'Ande até a ponte para voltar para a Fazenda.', HINT_STYLE)
+      .text(centerX, 42, this.config.returnHint ?? 'Ande até a ponte para voltar para a Fazenda.', HINT_STYLE)
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(4000);
@@ -356,12 +376,18 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   protected buildMapContent(_ctx: { tilePx: number; grid: WalkableGrid; interactions: InteractionRegistry; player: Player }): void {}
 
   update(time: number, delta: number): void {
+    // Pausa aberta: o mundo (movimento e relógio) para.
+    if (isPauseMenuOpen()) {
+      this.worldBlur.setActive(true);
+      return;
+    }
     // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário/Fornalha
     // está aberto (ver `MainScene.isInputLocked`) — aqui não há Menu de
     // Pausa/Dormir ainda, então esses dois são as únicas causas possíveis.
     if (!isInventoryOpen() && !isFurnaceMenuOpen() && !isDialogueOpen()) {
       this.controller.update(time, delta);
       this.petCompanion?.update(time, delta);
+      this.fishingSpots?.update(delta);
     }
 
     // O dia corre aqui também: véu da noite, virada de dia (meia-noite) e a faixa "DIA n".
@@ -371,10 +397,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       this.lockedMessage.show(title, subtitle);
     }
     if (hordeMissed) this.lockedMessage.show('A HORDA PASSOU', 'Você estava longe da Fazenda: sem recompensa.');
-    // A horda só começa com o jogador na Fazenda (é ela quem a conduz): longe dela, avisa pra ele voltar antes da meia-noite.
-    if (!this.hordeWarned && shouldStartHorde()) {
-      this.hordeWarned = true;
-      this.lockedMessage.show('A HORDA CHEGOU!', 'Volte para a Fazenda e defenda-a antes da meia-noite!');
+    // Hora da horda: o jogador é levado pra Fazenda de onde estiver (`systems/hordeRecall.ts`).
+    if (!this.isTransitioning && shouldRecallToFarm()) {
+      this.isTransitioning = true; // Nenhuma outra saída (ponte de volta, porta de loja) dispara durante o fade.
+      recallToFarm(this);
     }
     this.dayNightOverlay.setHours(gameState.gameClock.getHours());
     this.worldBlur.setActive(isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen());
@@ -384,7 +410,8 @@ export abstract class ExternalMapScene extends Phaser.Scene {
 returnToFarm(): void {
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start(this.entryData.returnSceneKey, { spawnPoint: this.entryData.returnSpawn });
+      const { returnSceneKey, returnSpawn, returnData } = this.entryData;
+      this.scene.start(returnSceneKey, returnData ? { ...returnData, spawnPoint: returnSpawn } : { spawnPoint: returnSpawn });
     });
   }
 }

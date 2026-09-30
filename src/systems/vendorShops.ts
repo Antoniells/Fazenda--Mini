@@ -7,7 +7,8 @@ import { CHAIR, DECORATIONS, DecorationDefinition, SPRINKLER_WOOD, WELL } from '
 import type { BuildRequest } from '../data/construction';
 import { availableActions, buildHoursOf, cancelOrder, destroyBuilt, targetsFor } from './construction';
 import { RESOURCES, STONE, WOOD } from '../data/resources';
-import { HAMMER, HAMMER_PRICE, HOE, TOOLS } from '../data/tools';
+import { FISHING_ROD, HAMMER, HAMMER_PRICE, HOE, TOOLS } from '../data/tools';
+import { FISHING_ROD_PRICE } from '../data/fishing';
 import { TOOL_OFFERS, getToolOffer } from '../data/toolShop';
 import { ANIMAL_ICONS, CHICKEN_PRICE, CHICKEN_SHOP_ID, COOP_CAPACITY } from '../data/animals';
 import { VILLAGE_SHOP_GOODS, VILLAGE_SHOP_ITEMS } from '../data/villageShop';
@@ -19,6 +20,8 @@ import {
   TAB_FRAME_ANIMALS_LIGHT,
   TAB_FRAME_CONSTRUCTION,
   TAB_FRAME_CONSTRUCTION_LIGHT,
+  TAB_FRAME_SKILLS,
+  TAB_FRAME_SKILLS_LIGHT,
   TAB_FRAME_TOOLS,
   TAB_FRAME_TOOLS_LIGHT,
 } from '../data/ui';
@@ -29,11 +32,15 @@ import { popText } from './floatingText';
 import { playEffect } from './soundEffects';
 import { SELL_SOUND, SPEND_MONEY_SOUND } from '../data/audio';
 import type { NpcId } from '../data/npcs';
+import { UPGRADE_TRACKS, UPGRADE_TRACK_IDS, UpgradeTrack, maxUpgradeLevel } from '../data/upgrades';
+import { HOUSE_LEVELS } from '../data/houseLevels';
+import { FENCE_SKINS } from '../data/fenceSkins';
+import { nextUpgradeStep, purchaseUpgrade, upgradeBlocker, upgradeLevel } from './farmUpgrades';
 
 /**
  * As LOJAS dos vendedores do Vilarejo (cada morador que `sells` em `data/npcs.ts`), no mesmo painel de livro do `ShopMenu`:
  *
- * - **Bruno (Ferreiro)** — a aba de Ferramentas inteira: o Martelo, as ferramentas de Cobre/Ferro/Ouro, as espadas e as armaduras (tudo, menos o Martelo: moedas + 5 barras do metal,
+ * - **Bruno (Ferreiro)** — a aba de Ferramentas inteira: o Martelo, a Vara de Pescar, as ferramentas de Cobre/Ferro/Ouro, as espadas e as armaduras (tudo, menos o Martelo e a Vara: moedas + 5 barras do metal,
  *   feitas na Fornalha — `data/toolShop.ts`, `data/villageShop.ts`).
  * - **Lia (Insumos)** — o que é da lavoura e da casa: Sementes, Móveis (cadeira, mesa, sofá, cômoda, baú) e Animais (a Galinha; um dia, filhotes que crescem).
  * - **Tomás (Marceneiro)** — Estruturas (poço, fornalha, galinheiro), Ferramentas (aspersores) e Materiais (madeira e pedra em pacotes).
@@ -43,11 +50,11 @@ import type { NpcId } from '../data/npcs';
  */
 export type VendorId = Extract<NpcId, 'blacksmith' | 'supplier' | 'carpenter'>;
 
-/** Pacotes de material do Marceneiro: comprar custa ~2,5x o que a Caixa de Remessas paga por unidade (madeira 1, pedra 2), pra vender de volta nunca valer a pena. */
+/** Pacotes de material do Marceneiro: comprar custa ~1,5x o que a Caixa de Remessas paga por unidade (madeira 1, pedra 2), pra vender de volta nunca valer a pena. */
 const MATERIAL_BUNDLE_SIZE = 10;
 const MATERIAL_BUNDLES = [
-  { id: 'buy-wood', resource: WOOD, price: 30 },
-  { id: 'buy-stone', resource: STONE, price: 50 },
+  { id: 'buy-wood', resource: WOOD, price: 15 },
+  { id: 'buy-stone', resource: STONE, price: 25 },
 ];
 
 const isFurniture = (decoration: DecorationDefinition): boolean => decoration.placement === 'house';
@@ -60,6 +67,7 @@ const decorationItem = (decoration: DecorationDefinition, category: ShopItem['ca
   textureKey: decoration.textureKey,
   iconFrame: decoration.frameName,
   price: decoration.price,
+  materials: decoration.materials?.map(({ resourceId, amount }) => ({ resourceId, name: RESOURCES[resourceId].name, amount })),
 });
 
 /** Estrutura do Marceneiro: não vai pra Bolsa — comprar abre a Fazenda pra escolher o local, e o Tomás constrói no dia seguinte. */
@@ -90,6 +98,16 @@ const toolItems = (): ShopItem[] => [
     iconFrame: HAMMER.iconFrame,
     price: HAMMER_PRICE,
   },
+  // Vara de Pescar: compra DIRETA em moedas (pesca na Praia e no lago da Floresta).
+  {
+    id: FISHING_ROD.id,
+    category: 'tools' as const,
+    name: FISHING_ROD.name,
+    description: 'Pesca na Praia e no lago da Floresta. Com a Vara na mão, clique na água (ou encare a água e aperte F).',
+    textureKey: FISHING_ROD.textureKey,
+    iconFrame: FISHING_ROD.iconFrame,
+    price: FISHING_ROD_PRICE,
+  },
   // Ferramentas de progressão: moedas + as barras do metal (feitas na Fornalha); a nova substitui a do tier anterior no mesmo slot.
   ...TOOL_OFFERS.map((offer): ShopItem => {
     const tool = TOOLS[offer.toolId];
@@ -106,6 +124,43 @@ const toolItems = (): ShopItem[] => [
     };
   }),
 ];
+
+/** Id dos itens da aba Melhorias: `upgrade-house`, `upgrade-plot`, `upgrade-fence`. */
+const UPGRADE_ID_PREFIX = 'upgrade-';
+
+/** O ícone de cada melhoria (mostra o que a compra traz): a arte da casa/cerca do PRÓXIMO nível (a do último, se já está no máximo) e, no plantio, a cenoura. */
+function upgradeIcon(track: UpgradeTrack): { textureKey: string; iconFrame: string | number } {
+  const level = Math.min(upgradeLevel(track) + 1, maxUpgradeLevel(track));
+  if (track === 'house') {
+    const house = HOUSE_LEVELS[level];
+    return { textureKey: house.textureKey, iconFrame: house.frame?.name ?? '__BASE' };
+  }
+  if (track === 'fence') return { textureKey: FENCE_SKINS[level].textureKey, iconFrame: FENCE_SKINS[level].edgeTop };
+  return { textureKey: ALL_CROPS_ICONS_KEY, iconFrame: CARROT.cropFrameName };
+}
+
+/** Preenche (ou atualiza, no lugar) as 3 melhorias com o degrau que vem agora — no nível máximo ficam com o último degrau, como "Já possui". */
+function syncUpgradeItems(items: ShopItem[]): void {
+  for (const item of items) {
+    if (!item.id.startsWith(UPGRADE_ID_PREFIX)) continue;
+    const track = item.id.slice(UPGRADE_ID_PREFIX.length) as UpgradeTrack;
+    const definition = UPGRADE_TRACKS[track];
+    const level = upgradeLevel(track);
+    const step = nextUpgradeStep(track) ?? definition.steps[definition.steps.length - 1];
+    const shownLevel = Math.min(level + 1, definition.steps.length);
+    item.name = `${step.name} (${shownLevel + 1}/${definition.steps.length + 1})`;
+    item.description = step.description;
+    item.price = step.price;
+    item.materials = step.materials.map(({ resourceId, amount }) => ({ resourceId, name: RESOURCES[resourceId].name, amount }));
+    Object.assign(item, upgradeIcon(track));
+  }
+}
+
+const upgradeItems = (): ShopItem[] => {
+  const items = UPGRADE_TRACK_IDS.map((track): ShopItem => ({ id: `${UPGRADE_ID_PREFIX}${track}`, category: 'upgrades', name: '', description: '', textureKey: '', iconFrame: 0, price: 0 }));
+  syncUpgradeItems(items);
+  return items;
+};
 
 const animalItems = (): ShopItem[] => [
   {
@@ -170,6 +225,7 @@ function catalogFor(id: VendorId): VendorCatalog {
         tabs: [
           tab('construction', WELL.textureKey, WELL.frameName, TAB_FRAME_CONSTRUCTION, TAB_FRAME_CONSTRUCTION_LIGHT),
           tab('tools', SPRINKLER_WOOD.textureKey, SPRINKLER_WOOD.frameName, TAB_FRAME_TOOLS, TAB_FRAME_TOOLS_LIGHT),
+          tab('upgrades', HOUSE_LEVELS[HOUSE_LEVELS.length - 1].textureKey, HOUSE_LEVELS[HOUSE_LEVELS.length - 1].frame?.name ?? '__BASE', TAB_FRAME_SKILLS, TAB_FRAME_SKILLS_LIGHT),
         ],
         items: [
           // Construções: o Tomás as constrói no local escolhido. Ferramentas: aspersores (vão direto pra Bolsa) e os pacotes de material.
@@ -180,6 +236,7 @@ function catalogFor(id: VendorId): VendorCatalog {
             .filter((decoration) => !decoration.notForSale && !isFurniture(decoration) && !decoration.carpenterBuilt)
             .map((decoration) => decorationItem(decoration, 'tools')),
           ...materialItems(),
+          ...upgradeItems(),
         ],
       };
   }
@@ -197,6 +254,8 @@ function ensureTabRibbons(scene: Phaser.Scene): void {
     TAB_FRAME_CONSTRUCTION_LIGHT,
     TAB_FRAME_ANIMALS,
     TAB_FRAME_ANIMALS_LIGHT,
+    TAB_FRAME_SKILLS,
+    TAB_FRAME_SKILLS_LIGHT,
   ]) {
     if (!texture.has(ribbon.name)) texture.add(ribbon.name, 0, ribbon.rect.x, ribbon.rect.y, ribbon.rect.width, ribbon.rect.height);
   }
@@ -204,7 +263,8 @@ function ensureTabRibbons(scene: Phaser.Scene): void {
 
 /** O jogador já tem este item (compras únicas: ferramentas de progressão, Martelo e as armas/armaduras do Ferreiro)? O botão vira "Já possui". */
 function owns(inventory: Inventory, itemId: string): boolean {
-  return (!!getToolOffer(itemId) && getToolUpgradeBlock(inventory, itemId) === 'owned') || (itemId === HAMMER.id && inventory.hasTool(HAMMER.id)) || VILLAGE_SHOP_GOODS.some((good) => good.definition.id === itemId && ownsVillageShopItem(inventory, itemId));
+  if (itemId.startsWith(UPGRADE_ID_PREFIX)) return nextUpgradeStep(itemId.slice(UPGRADE_ID_PREFIX.length) as UpgradeTrack) === null; // Melhoria no nível máximo.
+  return (!!getToolOffer(itemId) && getToolUpgradeBlock(inventory, itemId) === 'owned') || ((itemId === HAMMER.id || itemId === FISHING_ROD.id) && inventory.hasTool(itemId)) || VILLAGE_SHOP_GOODS.some((good) => good.definition.id === itemId && ownsVillageShopItem(inventory, itemId));
 }
 
 /** Efetiva a compra de `itemId` (cada tipo de item tem a sua regra de recusa); nada é cobrado numa recusa. */
@@ -223,7 +283,11 @@ function purchase(scene: Phaser.Scene, inventory: Inventory, player: Player, ite
     else console.log(`Moedas insuficientes para encomendar ${decoration.name} (precisa de ${decoration.price}).`);
   } else if (DECORATIONS[itemId]) {
     const decoration = DECORATIONS[itemId];
-    if (inventory.spendCoins(decoration.price)) {
+    const materials = decoration.materials ?? [];
+    if (materials.some(({ resourceId, amount }) => inventory.getResourceCount(resourceId) < amount)) {
+      warn('Faltam materiais'); // Nada é cobrado: as moedas só saem com todos os materiais em mãos.
+    } else if (inventory.spendCoins(decoration.price)) {
+      for (const { resourceId, amount } of materials) inventory.useResource(resourceId, amount);
       inventory.addDecorations(itemId, 1);
       console.log(`Comprado: 1 ${decoration.name} por ${decoration.price} moedas. Tecla B para posicionar.`);
     } else console.log(`Moedas insuficientes para comprar ${decoration.name} (precisa de ${decoration.price}).`);
@@ -238,10 +302,22 @@ function purchase(scene: Phaser.Scene, inventory: Inventory, player: Player, ite
       inventory.useResource(offer.barId, offer.barAmount);
       inventory.upgradeTool(itemId);
     } else console.log(`Moedas insuficientes para ${TOOLS[offer.toolId].name} (precisa de ${offer.price}).`);
+  } else if (itemId.startsWith(UPGRADE_ID_PREFIX)) {
+    // Melhoria do Marceneiro (casa, plantio, cerca): confere tudo antes de cobrar; comprada, o mundo já está no novo nível na próxima vez que a cena abrir.
+    const track = itemId.slice(UPGRADE_ID_PREFIX.length) as UpgradeTrack;
+    const result = purchaseUpgrade(inventory, track);
+    if (result === 'bought') popText(scene, player.sprite.x, player.sprite.y - 44, 'Melhoria concluída!', { color: '#b8f5a0', fontSize: 14 });
+    else if (result === 'blocked') warn(upgradeBlocker(track) ?? 'Tem algo no caminho');
+    else if (result === 'noMaterials') warn('Faltam materiais');
+    else if (result === 'poor') console.log('Moedas insuficientes para a melhoria.');
   } else if (itemId === HAMMER.id) {
     if (inventory.hasTool(HAMMER.id)) console.log('Você já tem o Martelo.');
     else if (inventory.spendCoins(HAMMER_PRICE)) inventory.unlockTool(HAMMER.id);
     else console.log(`Moedas insuficientes para comprar o Martelo (precisa de ${HAMMER_PRICE}).`);
+  } else if (itemId === FISHING_ROD.id) {
+    if (inventory.hasTool(FISHING_ROD.id)) console.log('Você já tem a Vara de Pescar.');
+    else if (inventory.spendCoins(FISHING_ROD_PRICE)) inventory.unlockTool(FISHING_ROD.id);
+    else console.log(`Moedas insuficientes para a Vara de Pescar (precisa de ${FISHING_ROD_PRICE}).`);
   } else if (itemId === CHICKEN_SHOP_ID) {
     const result = buyChicken();
     if (result === 'noCoop') warn('Compre um Galinheiro antes');
@@ -305,7 +381,10 @@ export function createVendorShop(scene: Phaser.Scene, id: VendorId, inventory: I
   // Materiais e bloqueios das ofertas (as barras das ferramentas do Ferreiro): a loja mostra o que o jogador tem e apaga o que ele ainda não pode comprar.
   const requirements: ShopRequirements = {
     count: (resourceId) => inventory.getResourceCount(resourceId),
-    blockedReason: (itemId) => (getToolOffer(itemId) && getToolUpgradeBlock(inventory, itemId) === 'needsPrevious' ? `Precisa: ${previousToolName(itemId)}` : null),
+    blockedReason: (itemId) => {
+      if (itemId.startsWith(UPGRADE_ID_PREFIX)) return upgradeBlocker(itemId.slice(UPGRADE_ID_PREFIX.length) as UpgradeTrack);
+      return getToolOffer(itemId) && getToolUpgradeBlock(inventory, itemId) === 'needsPrevious' ? `Precisa: ${previousToolName(itemId)}` : null;
+    },
   };
   let menu: ShopMenu;
   menu = new ShopMenu(
@@ -314,6 +393,10 @@ export function createVendorShop(scene: Phaser.Scene, id: VendorId, inventory: I
     items,
     (itemId) => {
       purchase(scene, inventory, player, itemId, hooks);
+      if (itemId.startsWith(UPGRADE_ID_PREFIX)) {
+        syncUpgradeItems(items); // A melhoria passou pro próximo degrau.
+        menu.refreshItems();
+      }
       menu.refresh(inventory.getCoins());
     },
     (itemId) => owns(inventory, itemId),

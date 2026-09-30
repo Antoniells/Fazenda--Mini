@@ -17,6 +17,9 @@ import { waterCellsFromGround } from '../systems/waterCells';
 import { onPlayerStepped } from '../systems/sceneEvents';
 import { Player } from '../entities/Player';
 import { isInventoryOpen } from './UIScene';
+import { hasMilestone } from '../systems/story';
+import { DISPLAY_SCALE } from '../systems/mapBuilder';
+import { FOREST_PORTAL, HIDDEN_FOREST_NAME, HIDDEN_FOREST_SCENE_KEY, ROOT_PORTAL, forestPortalCells } from '../data/hiddenForest';
 
 export const FOREST_SCENE_KEY = 'ForestScene';
 
@@ -46,6 +49,8 @@ export function advanceForestDay(): void {
   const waterCells = new Set(waterCellsFromGround(forestMap.ground).map(([c, r]) => `${c},${r}`));
 
   const arrivalCells = new Set(forestArrivalCells().map(([c, r]) => `${c},${r}`));
+  // O arco da Floresta Oculta (e a célula da frente dele) nunca vira árvore/pedra.
+  for (const [c, r] of [...forestPortalCells(), [FOREST_PORTAL.returnSpawn.col, FOREST_PORTAL.returnSpawn.row]]) arrivalCells.add(`${c},${r}`);
 
   const isCellFree = (col: number, row: number): boolean =>
     !lakeCells.has(`${col},${row}`) && !birchCells.has(`${col},${row}`) && !waterCells.has(`${col},${row}`) && !arrivalCells.has(`${col},${row}`);
@@ -84,6 +89,7 @@ export class ForestScene extends ExternalMapScene {
       rows,
       areaName: 'Floresta',
       mapType: 'forest',
+      fishing: 'forestLake', // O lago: pesca com a Vara na margem (`data/fishing.ts`).
       ground: forestMap.ground,
       backgroundColor: forestMap.backgroundColor,
       waterStyle: 'waterGround', // Lago com a folha "Water Ground animations tiles" (margem de terra), não a de areia da Praia.
@@ -101,6 +107,7 @@ export class ForestScene extends ExternalMapScene {
   }
 
   protected loadMapAssets(): void {
+    if (!this.textures.exists(ROOT_PORTAL.key)) this.load.image(ROOT_PORTAL.key, encodeURI(`/${ROOT_PORTAL.path}`));
     this.load.image(BIRCH_TREE_KEY, encodeURI(`/${BIRCH_TREE_PATH}`));
     this.load.image(ROCK_KEY, encodeURI(`/${ROCK_PATH}`));
     this.load.image(WATER_KEY, encodeURI(`/${WATER_PATH}`));
@@ -122,6 +129,9 @@ export class ForestScene extends ExternalMapScene {
     // Saves antigos guardam as árvores/pedras do mapa anterior (a ponte de volta ficava a oeste): a cada entrada limpa a zona de chegada
     // nova, pra nenhuma delas fechar a saída da passarela. (Aqui, e não no construtor: o save só é restaurado depois dele.)
     for (const [col, row] of forestArrivalCells()) resourceNodeRegistry.removeNode(FOREST_SCENE_KEY, col, row);
+
+    // O Mapa Misterioso revela o arco de árvores pra Floresta Oculta (antes dele, o canto noroeste é só mato).
+    if (hasMilestone('map')) this.buildHiddenPortal(ctx.tilePx, grid);
 
     const { lakeArea } = forestMap;
     buildWaterArea(this, TILE_SIZE, lakeArea.col0, lakeArea.row0, lakeArea.cols, lakeArea.rows);
@@ -186,6 +196,32 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // jogador pisar em cima em QUALQUER cena, não só a Fazenda — mesmo
     // evento/técnica de `MainScene.ts`.
     onPlayerStepped(this, (col, row) => rustleGrassTuft(this, this.wildFoliage, col, row));
+  }
+
+  /**
+   * O ARCO DE ÁRVORES (Fase 11): 3x3 células no canto noroeste; a base do meio é a passagem (pisar nela leva à Floresta Oculta) e o
+   * resto é sólido. Árvores/pedras que tenham nascido ali saem do registro. A volta de lá chega logo abaixo do arco, com os dados de
+   * entrada desta cena (pra a ponte daqui continuar levando à Fazenda).
+   */
+  private buildHiddenPortal(tilePx: number, grid: WalkableGrid): void {
+    const { cell, returnSpawn } = FOREST_PORTAL;
+    for (const [col, row] of [...forestPortalCells(), [returnSpawn.col, returnSpawn.row]]) resourceNodeRegistry.removeNode(FOREST_SCENE_KEY, col, row);
+    for (const [col, row] of forestPortalCells()) if (col !== cell.col || row !== cell.row) grid.block(col, row);
+
+    const texture = this.textures.get(ROOT_PORTAL.key);
+    const { name, rect } = ROOT_PORTAL.forestFrame;
+    if (!texture.has(name)) texture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+    const arch = this.add.image(cell.col * tilePx + tilePx / 2, (cell.row + 1) * tilePx, ROOT_PORTAL.key, name);
+    arch.setOrigin(0.5, 1).setScale(DISPLAY_SCALE).setDepth(arch.y);
+
+    onPlayerStepped(this, (col, row) => {
+      if (col !== cell.col || row !== cell.row || this.isTransitioning) return;
+      this.isTransitioning = true;
+      this.cameras.main.fadeOut(400, 0, 0, 0);
+      this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        this.scene.start(HIDDEN_FOREST_SCENE_KEY, { areaName: HIDDEN_FOREST_NAME, returnSceneKey: FOREST_SCENE_KEY, returnSpawn, returnData: this.entryData });
+      });
+    });
   }
 
   update(time: number, delta: number): void {
