@@ -1,7 +1,7 @@
 {
   "name": "mini-fazenda",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Mini Fazenda — jogo 2D de fazenda",
   "author": "Mini Fazenda",
   "type": "module",
