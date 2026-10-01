@@ -14,6 +14,7 @@ import { DISPLAY_SCALE } from './mapBuilder';
 import { buildWeed, clearWeedVisuals } from './wildGrass';
 import { TUTORIAL_CUT_STEP_INDEX } from '../data/tutorial';
 import { hash2D } from './groundVariation';
+import { pushPlant } from './foliageSway';
 
 /** Chave da Fazenda no `resourceNodeRegistry` — árvores (as do mapa, as plantadas e os brotos que nascem sozinhos) e pedras, tudo no mesmo registro. */
 export const FARM_RESOURCES_KEY = 'MainScene:resources';
@@ -225,20 +226,9 @@ export class FarmResources {
   }
 
   /** Broto/muda balançam ao jogador pisar em cima (a adulta e as pedras ficam paradas). */
-  rustle(col: number, row: number): void {
+  rustle(col: number, row: number, direction = 1): void {
     const entry = this.visuals.get(cellKey(col, row));
     if (!entry || entry.kind !== 'tree' || entry.stage === 'mature') return;
-    const sprite = entry.visual.sprite;
-    if (this.scene.tweens.isTweening(sprite)) return;
-
-    this.scene.tweens.add({
-      targets: sprite,
-      angle: { from: 0, to: 8 },
-      duration: 120,
-      yoyo: true,
-      repeat: 1,
-      ease: 'Sine.easeInOut',
-      onComplete: () => sprite.setAngle(0),
-    });
+    pushPlant(entry.visual.sprite, direction); // Pende pro lado em que o personagem anda (`systems/foliageSway.ts`).
   }
 }

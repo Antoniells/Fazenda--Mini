@@ -10,10 +10,12 @@ import {
   CHICKEN_VARIANTS,
   COOP_CAPACITY,
   COOP_MAX_EGGS,
+  CHICKEN_FEED_ID,
   EGGS_PER_CHICKEN_PER_DAY,
   EGG_TIERS,
+  FEEDER_CAPACITY,
   MAX_AFFECTION,
-  eggTierForAffection,
+  eggTierForCare,
   type ChickenRecord,
   type CoopState,
 } from '../data/animals';
@@ -86,15 +88,23 @@ export function buyChicken(): ChickenPurchaseResult {
   return 'bought';
 }
 
-/** Virada de dia: cada galinha põe seu ovo no galinheiro — de qualidade conforme o carinho dela (`EGG_TIERS`), até `COOP_MAX_EGGS` guardados. Devolve o total posto. */
+/**
+ * Virada de dia (o relógio JÁ está no dia novo): cada galinha come 1 Capim do comedouro, se tiver, e põe seu ovo no galinheiro — de
+ * qualidade conforme o carinho acumulado e o cuidado do dia que passou (`eggTierForCare`: carinho nesse dia + comida), até
+ * `COOP_MAX_EGGS` guardados. Devolve o total posto.
+ */
 export function layEggs(): number {
   let laid = 0;
+  const endedDay = gameState.gameClock.getDay() - 1;
   for (const coop of getPlacedCoops()) {
     const state = getCoopState(coop.key);
     for (const bird of state.birds ?? []) {
+      const fed = (state.feed ?? 0) > 0;
+      if (fed) state.feed! -= 1;
+      const tier = eggTierForCare(bird.affection, fed, bird.pettedDay === endedDay);
       for (let n = 0; n < EGGS_PER_CHICKEN_PER_DAY; n++) {
         if (state.eggs >= COOP_MAX_EGGS) break;
-        state.eggTiers![eggTierForAffection(bird.affection)] += 1;
+        state.eggTiers![tier] += 1;
         state.eggs += 1;
         laid += 1;
       }
@@ -103,20 +113,34 @@ export function layEggs(): number {
   return laid;
 }
 
+/** `petted` = +1 de carinho; `max` = carinho no máximo, mas o carinho de HOJE conta (ela fica feliz); `already` = já ganhou hoje. */
 export type PetResult = 'petted' | 'already' | 'max';
 
 /**
- * Dá carinho à galinha `index` do galinheiro `key` — UM por dia (`pettedDay`), até `MAX_AFFECTION`. Cada carinho sobe a qualidade dos ovos dela
- * quando cruza um degrau de `EGG_TIERS`. Devolve o resultado e o carinho atual.
+ * Dá carinho à galinha `index` do galinheiro `key` — UM por dia (`pettedDay`). Até `MAX_AFFECTION` cada carinho soma (e sobe a qualidade dos
+ * ovos dela quando cruza um degrau de `EGG_TIERS`); no máximo, o carinho do dia continua valendo pra felicidade (`eggTierForCare`).
  */
 export function petChicken(key: string, index: number): { result: PetResult; affection: number } {
   const bird = getCoopState(key).birds?.[index];
-  if (!bird) return { result: 'max', affection: 0 };
+  if (!bird) return { result: 'already', affection: 0 };
+  const today = gameState.gameClock.getDay();
+  if (bird.pettedDay === today) return { result: 'already', affection: bird.affection };
+  bird.pettedDay = today;
   if (bird.affection >= MAX_AFFECTION) return { result: 'max', affection: bird.affection };
-  if (bird.pettedDay === gameState.gameClock.getDay()) return { result: 'already', affection: bird.affection };
   bird.affection += 1;
-  bird.pettedDay = gameState.gameClock.getDay();
   return { result: 'petted', affection: bird.affection };
+}
+
+/** Enche o comedouro do galinheiro `key` com o Capim da Bolsa (até `FEEDER_CAPACITY`). Devolve quanto entrou e quanto ficou lá. */
+export function fillFeeder(key: string): { added: number; feed: number } {
+  const state = getCoopState(key);
+  const feed = state.feed ?? 0;
+  const added = Math.min(FEEDER_CAPACITY - feed, gameState.inventory.getResourceCount(CHICKEN_FEED_ID));
+  if (added > 0) {
+    gameState.inventory.useResource(CHICKEN_FEED_ID, added);
+    state.feed = feed + added;
+  }
+  return { added: Math.max(0, added), feed: state.feed ?? 0 };
 }
 /** O galinheiro pode ser quebrado/recolhido? Só sem galinhas (não há como "devolvê-las"). */
 export function canRemoveCoop(key: string): boolean {
@@ -129,13 +153,21 @@ export function discardCoop(key: string): void {
 }
 
 /**
- * O jogador clicou no galinheiro: os ovos guardados caem no chão à frente da porta (mesmo loot das colheitas — o jogador os pega ao chegar
- * perto) e o drop duplo da habilidade Mãos de Ouro pode dobrá-los. Sem ovos, só avisa.
+ * O jogador clicou no galinheiro: o comedouro é enchido com o Capim da Bolsa (`fillFeeder`), os ovos guardados caem no chão à frente da
+ * porta (mesmo loot das colheitas — o jogador os pega ao chegar perto) e o drop duplo da habilidade Mãos de Ouro pode dobrá-los. Sem ovos,
+ * só avisa.
  */
 export function collectCoopEggs(scene: Phaser.Scene, player: Player, col: number, row: number, tilePx: number): void {
-  const state = getCoopState(coopKey(col, row));
+  const key = coopKey(col, row);
+  const state = getCoopState(key);
   const x = (col + CHICKEN_COOP.footprint.width - 0.5) * tilePx;
   const y = (row + CHICKEN_COOP.footprint.height) * tilePx + tilePx * 0.4;
+
+  if (state.chickens > 0) {
+    const { added, feed } = fillFeeder(key);
+    const text = added > 0 ? `Comedouro: +${added} Capim (${feed}/${FEEDER_CAPACITY})` : feed > 0 ? `Comedouro: ${feed} Capim` : 'Comedouro vazio: traga Capim (Foice no mato)';
+    popText(scene, x, y - 52, text, { color: feed > 0 ? '#b8f5a0' : '#ffb07a', fontSize: 12 });
+  }
 
   if (state.eggs <= 0) {
     popText(scene, x, y - 30, state.chickens > 0 ? 'Sem ovos por enquanto' : 'Compre galinhas na Loja', { color: '#fff2a8', fontSize: 13 });

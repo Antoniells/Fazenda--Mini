@@ -13,6 +13,7 @@ import { NpcSystem, isWorkingNow, preloadNpcs, workingHoursText } from '../syste
 import { NPCS, VILLAGE_NPC_IDS, NpcId } from '../data/npcs';
 import { SHOP_INTERIOR_BY_NPC } from '../data/maps/shopInteriors';
 import { updateTreeOverlap } from '../systems/treeOverlap';
+import { updateTreeSway } from '../systems/treeSway';
 import { LightSourceSystem, preloadLightSources } from '../systems/lightSources';
 import { VILLAGE_LIGHT_SOURCES } from '../data/lighting';
 import { gameState } from '../systems/gameState';
@@ -185,5 +186,6 @@ export class VillageScene extends ExternalMapScene {
     this.npcs.update(time, delta);
     this.lightSources.update(gameState.gameClock.getHours(), time);
     updateTreeOverlap(this.player, this.trees);
+    updateTreeSway(this.player, this.trees);
   }
 }

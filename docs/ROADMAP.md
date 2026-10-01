@@ -76,7 +76,8 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 - [x] Efeitos (poeira, respingo, pulo elástico — "Pit Stop de Polimento")
 - [x] Feedback visual (sombras, cursor, SeedBar/CoinBar animadas — "Pit Stop de Polimento")
 - [x] Sons e Música (SFX de ferramentas, passos, combate e interface; música do dia; narração da cena introdutória) — os sons dos momentos da história ficam na Fase 11, Etapa 6
-- [ ] Animações (vento nas árvores, água animada) — a água já é animada; falta o vento nas árvores
+- [x] Animações (água animada; vento global que balança a vegetação em onda, árvores e plantas empurradas por quem passa, folhas caindo)
+- [x] Atmosfera (Cavernas em penumbra com o halo do personagem e escadas iluminadas; veios que cintilam)
 - [ ] Balanceamento (ajuste de preços da loja e custo das pontes de expansão) — junto com a rodada de jogo da história (Fase 11, Etapa 6)
 - [x] Salvamento (3 slots; no executável, em `Documentos/Mini Fazenda`; campos novos sempre opcionais, pra saves antigos continuarem carregando)
 
@@ -103,4 +104,4 @@ A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à pa
 
 ---
 
-**Status atual (versão 0.1.9):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface, vento nas árvores e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.
+**Status atual (versão 0.1.9):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.

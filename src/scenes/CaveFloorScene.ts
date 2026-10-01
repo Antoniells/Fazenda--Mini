@@ -34,6 +34,9 @@ import { advanceWorldTime, describeNewDay } from '../systems/worldTime';
 import { shouldRecallToFarm, recallToFarm } from '../systems/hordeRecall';
 import { LockedMessage } from '../ui/lockedMessage';
 import { WorldBlur } from '../systems/worldBlur';
+import { CaveLighting } from '../systems/caveLighting';
+import { preloadLightSources } from '../systems/lightSources';
+import { OreSparkles, preloadOreSparkles } from '../systems/oreSparkle';
 import { UNLOCK_SOUND } from '../data/audio';
 import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
 
@@ -75,6 +78,10 @@ export class CaveFloorScene extends Phaser.Scene {
   private isLeaving = false;
   /** Andar 100 depois da Horda Final (`systems/sanctuary.ts`): sem inimigos, o altar, o lago e o ritual. */
   private sanctuary: Sanctuary | null = null;
+  /** Penumbra + halo do personagem (`systems/caveLighting.ts`); o santuário não tem. */
+  private lighting: CaveLighting | null = null;
+  /** As estrelinhas sobre os veios (`systems/oreSparkle.ts`). */
+  private sparkles: OreSparkles | null = null;
   /** Andar 100 antes dele: quantas ondas extras da Horda Final já vieram (`FINAL_HORDE_WAVES`). */
   private wavesSpawned = 0;
   private waveIncoming = false;
@@ -94,6 +101,8 @@ export class CaveFloorScene extends Phaser.Scene {
     // A instância da cena é reaproveitada entre `scene.start()`.
     this.isLeaving = false;
     this.sanctuary = null;
+    this.lighting = null;
+    this.sparkles = null;
     this.wavesSpawned = 0;
     this.waveIncoming = false;
   }
@@ -107,6 +116,8 @@ export class CaveFloorScene extends Phaser.Scene {
     preloadSheets(this, enemySheetsFor(this.config));
     if (!this.textures.exists(ORE_KEY)) this.load.image(ORE_KEY, encodeURI(`/${ORE_PATH}`));
     preloadCaveLandmarks(this);
+    preloadLightSources(this); // A mancha de brilho do halo e das escadas.
+    preloadOreSparkles(this);
     if (this.config.floor === FINAL_FLOOR) preloadSanctuary(this);
   }
 
@@ -166,6 +177,7 @@ export class CaveFloorScene extends Phaser.Scene {
     }
 
     setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
+    if (!this.isSanctuaryFloor()) this.lighting = new CaveLighting(this, this.config.floor, this.player.sprite, tilePx, { up: stairsUp, down: isBottom ? null : stairsDown });
     this.worldBlur = new WorldBlur(this.cameras.main);
     ensureUIScene(this);
     attachFootstepSounds(this, () => 'bridge');
@@ -224,8 +236,10 @@ export class CaveFloorScene extends Phaser.Scene {
     const occupied = new Set(spawnCells.slice(0, this.config.enemyCount + 1).map((cell) => `${cell.col},${cell.row}`));
     const last = spawnCells[spawnCells.length - 1];
     if (last) occupied.add(`${last.col},${last.row}`);
+    this.sparkles = new OreSparkles(this, this.player.sprite, TILE_SIZE * DISPLAY_SCALE);
     for (const ore of placeCaveOres(this.config, this.layout, occupied)) {
       const sprite = buildOreDeposit(this, TILE_SIZE, ore.col, ore.row, ore.kind);
+      this.sparkles.add(sprite, ore.kind);
       grid.block(ore.col, ore.row);
       interactions.set(ore.col, ore.row, new OreInteractable(this.player, { sprite }, grid, interactions, null, ore.col, ore.row, ore.kind, (kind) => {
         if (kind === 'azurite' && reachMilestone('azurite')) this.lockedMessage.show('AZURITA!', 'Um minério raro e cintilante. Dizem que serve para forjar magia.');
@@ -326,6 +340,8 @@ export class CaveFloorScene extends Phaser.Scene {
       this.sanctuary?.update(delta);
     }
     this.refreshCounter();
+    this.lighting?.update(time);
+    this.sparkles?.update(delta);
 
     // O dia corre aqui também (a Caverna não pausa o relógio).
     const { dayTurn, hordeMissed } = advanceWorldTime(delta, false);

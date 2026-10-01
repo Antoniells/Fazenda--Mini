@@ -126,8 +126,8 @@ export function buildCaveLandmarks(ctx: CaveLandmarkContext): void {
   if (isBarrierActive(ctx.floor)) {
     grid.block(ctx.stairsDown.col, ctx.stairsDown.row);
     interactions.set(ctx.stairsDown.col, ctx.stairsDown.row, new BarrierInteractable(scene, ctx.stairsDown, grid, interactions, ctx.message, ctx.canBreakBarrier, ctx.onBarrierBroken));
-    // Depois do aviso de atalho (o 50 também libera um), que a cena mostra ao abrir.
-    if (reachMilestone('barrier')) scene.time.delayedCall(2800, () => ctx.message.show('UMA BARREIRA MÁGICA', 'A descida está bloqueada por uma força impenetrável. Só uma picareta encantada pode quebrá-la.'));
+    // (O 50 também libera um atalho: a fila de avisos mostra um depois do outro.)
+    if (reachMilestone('barrier')) ctx.message.show('UMA BARREIRA MÁGICA', 'A descida está bloqueada por uma força impenetrável. Só uma picareta encantada pode quebrá-la.');
   }
 
   // O baú esquecido (aberto, se o mapa já foi pego).

@@ -25,6 +25,8 @@ export const STEP_GRASS_SOUNDS: SoundEffectDef[] = [
   { key: 'sfx-step-grass-2', path: `${EFFECTS_DIR}/Passos de grama 2.wav`, volume: 1 },
   { key: 'sfx-step-grass-3', path: `${EFFECTS_DIR}/Passos de grama 3.wav`, volume: 1 },
 ];
+/** Farfalhar da copa quando o personagem passa pelas folhas (`systems/treeSway.ts`): os mesmos passos na grama, mais baixos (já carregados). */
+export const TREE_RUSTLE_SOUNDS: SoundEffectDef[] = STEP_GRASS_SOUNDS.map((sound) => ({ ...sound, volume: 0.45 }));
 export const STEP_BRIDGE_SOUND: SoundEffectDef = { key: 'sfx-step-bridge', path: `${EFFECTS_DIR}/Passos ponte.wav`, volume: 1 };
 export const HURT_SOUND: SoundEffectDef = { key: 'sfx-hurt', path: `${EFFECTS_DIR}/Dano.wav`, volume: 1 };
 export const PICKUP_SOUND: SoundEffectDef = { key: 'sfx-pickup', path: `${EFFECTS_DIR}/Coletor de itens.wav`, volume: 1 };

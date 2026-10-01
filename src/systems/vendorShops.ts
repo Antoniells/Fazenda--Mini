@@ -167,7 +167,7 @@ const animalItems = (): ShopItem[] => [
     id: CHICKEN_SHOP_ID,
     category: 'animals' as const,
     name: 'Galinha',
-    description: `Precisa de um Galinheiro com vaga (cada um abriga ${COOP_CAPACITY}). Põe 1 ovo por dia: recolha no galinheiro e venda na Caixa de Remessas.`,
+    description: `Precisa de um Galinheiro com vaga (cada um abriga ${COOP_CAPACITY}). Põe 1 ovo por dia: recolha no galinheiro e venda na Caixa de Remessas. Carinho todo dia e Capim no comedouro (clique no galinheiro) deixam os ovos melhores.`,
     textureKey: ANIMAL_ICONS.key,
     iconFrame: ANIMAL_ICONS.chicken.name,
     price: CHICKEN_PRICE,

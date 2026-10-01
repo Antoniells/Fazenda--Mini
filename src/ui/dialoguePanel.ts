@@ -203,7 +203,8 @@ export class DialoguePanel {
 
     if (payload.portrait) {
       const { key, frame } = payload.portrait;
-      const frameName = `${key}-face`;
+      // Um quadro por célula da folha (cada expressão do retrato é uma célula).
+      const frameName = `${key}-face-${frame.x}-${frame.y}`;
       const texture = this.scene.textures.get(key);
       if (!texture.has(frameName)) texture.add(frameName, 0, frame.x, frame.y, frame.width, frame.height);
       // O retrato-padrão é 64x64; um quadro menor (o de repouso 32x32 dos NPCs `Pre-made`) é ampliado pra ocupar o mesmo espaço.

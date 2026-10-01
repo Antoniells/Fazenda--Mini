@@ -5,6 +5,7 @@ import { SOIL_TILESET_KEY, SOIL_DRY_AUTOTILE, SOIL_WET_AUTOTILE, SoilAutotileSet
 import { SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
+import { pushPlant, registerSway } from './foliageSway';
 import { FarmMapData } from '../data/maps/farmMap';
 
 /** Os 4 vizinhos ortogonais de uma célula — usado tanto para escolher a borda do autotile quanto para saber quem re-renderizar depois de arar/limpar. */
@@ -176,6 +177,7 @@ private renderCrop(plot: Plot): void {
       image.setOrigin(0.5, 1);
       image.setScale(DISPLAY_SCALE);
       this.cropImages.set(key, image);
+      registerSway(image, 'crop');
     } else {
       // 3. Atualizamos a posição caso ela já exista (para ela subir quando passar do stage 0 para o 1)
       image.setPosition(x, y);
@@ -223,21 +225,9 @@ private renderCrop(plot: Plot): void {
   }
 
   /** Faz a plantinha balançar (efeito puramente visual) quando o jogador passa por perto. */
-  rustleCrop(col: number, row: number): void {
-    const key = this.key(col, row);
-    const image = this.cropImages.get(key);
-
-    if (!image || this.scene.tweens.isTweening(image)) return;
-
-    this.scene.tweens.add({
-      targets: image,
-      angle: { from: 0, to: 8 },
-      duration: 120,
-      yoyo: true,
-      repeat: 1,
-      ease: 'Sine.easeInOut',
-      onComplete: () => image.setAngle(0),
-    });
+  rustleCrop(col: number, row: number, direction = 1): void {
+    const image = this.cropImages.get(this.key(col, row));
+    if (image) pushPlant(image, direction); // Pende pro lado em que o personagem anda (`systems/foliageSway.ts`).
   }
 
   /**

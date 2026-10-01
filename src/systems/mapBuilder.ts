@@ -25,6 +25,7 @@ import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
 import { GROUND_TILESETS } from './groundTilesets';
 import { buildWaterAutotile } from './waterAutotile';
+import { registerSway } from './foliageSway';
 import type { WaterStyleId } from '../data/tiles';
 
 /** Escala de exibição: cada tile de 16px é desenhado em 32px na tela. */
@@ -512,6 +513,7 @@ export function buildFarmDecorations(
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra
     // o personagem (que tem profundidade dinâmica igual ao seu próprio Y).
     tree.setDepth(tree.y);
+    registerSway(tree, 'tree');
     trees.push(tree);
   }
 

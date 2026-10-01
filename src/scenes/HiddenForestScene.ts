@@ -12,6 +12,7 @@ import { onMilestoneReached, reachMilestone } from '../systems/story';
 import { isEnchantTableUnlocked } from '../systems/enchanting';
 import { openEnchantTable, talkToWizard } from '../systems/wizard';
 import { updateTreeOverlap } from '../systems/treeOverlap';
+import { updateTreeSway } from '../systems/treeSway';
 
 /** Clicar no Mago (ou F de frente): conversa. */
 class WizardInteractable implements Interactable {
@@ -135,6 +136,7 @@ export class HiddenForestScene extends ExternalMapScene {
   update(time: number, delta: number): void {
     super.update(time, delta);
     updateTreeOverlap(this.player, this.treeVisuals);
+    updateTreeSway(this.player, this.treeVisuals);
   }
 
   private addFrame(key: string, frame: { name: string; rect: { x: number; y: number; width: number; height: number } }): void {

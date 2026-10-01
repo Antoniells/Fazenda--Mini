@@ -10,6 +10,7 @@ import { playEffect } from './soundEffects';
 import { UNLOCK_SOUND } from '../data/audio';
 import { HORDE_START_HOUR } from '../data/horde';
 import { getCurrentRequest, getRequestStatus, turnInRequest } from './requests';
+import { getPortrait, pickNpcLine } from './npcLines';
 
 /** O que a conversa precisa da cena: o painel da loja (dos moradores que vendem) e um jeito de tocar som. */
 export interface NpcTalkContext {
@@ -27,11 +28,6 @@ const COMPLETED_LINES: Record<NpcId, string[]> = {
   pirate: ['Arr! Um verdadeiro herói de terra firme. Quem diria!', 'Quando quiser navegar de novo, o convés é seu, marujo.'],
   mermaid: ['Ouvi dizer que a Fazenda foi salva! Até as ondas comemoraram.', 'Volte sempre à praia, herói. O mar nunca esquece quem protege a terra.'],
 };
-
-function pickChatter(id: NpcId): string {
-  const lines = NPCS[id].chatter;
-  return lines[Math.floor(Math.random() * lines.length)];
-}
 
 function open(scene: Phaser.Scene, payload: DialoguePayload): void {
   scene.game.events.emit(OPEN_DIALOGUE_EVENT, payload);
@@ -51,7 +47,7 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
   const { scene } = context;
   const quest = getCurrentQuest();
 
-  const base = { speaker: def.name, subtitle: def.title, portrait: { key: def.portrait.key, frame: def.portrait.frame } };
+  const base = { speaker: def.name, subtitle: def.title, portrait: getPortrait(id) };
   const shopAction: DialogueAction | null =
     def.sells && context.canOpenShop(id)
       ? {
@@ -65,15 +61,16 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
 
   // Campanha completa: só conversa de agradecimento.
   if (!quest) {
-    const lines = COMPLETED_LINES[id];
-    open(scene, { ...base, text: lines[Math.floor(Math.random() * lines.length)], actions: withShop([]) });
+    const line = pickNpcLine(id, COMPLETED_LINES[id].map((text) => ({ text, expression: 'happy' as const })));
+    open(scene, { ...base, portrait: getPortrait(id, line.expression), text: line.text, actions: withShop([]) });
     return;
   }
 
   // A missão é de OUTRO morador.
   if (quest.giver !== id) {
     const giver = NPCS[quest.giver];
-    open(scene, { ...base, text: `${pickChatter(id)}\n\nAh, e ${giver.name} (${giver.title}) está procurando por você: ele tem um pedido.`, actions: withShop([]) });
+    const line = pickNpcLine(id);
+    open(scene, { ...base, portrait: getPortrait(id, line.expression), text: `${line.text}\n\nAh, e ${giver.name} (${giver.title}) está procurando por você: ele tem um pedido.`, actions: withShop([]) });
     return;
   }
 
@@ -101,7 +98,7 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
 /** Mostra o pedido do dia do morador (ou o "volte amanhã") com o progresso e o botão de entregar. */
 function showRequest(context: NpcTalkContext, id: NpcId): void {
   const def = NPCS[id];
-  const base = { speaker: def.name, subtitle: def.title, portrait: { key: def.portrait.key, frame: def.portrait.frame } };
+  const base = { speaker: def.name, subtitle: def.title, portrait: getPortrait(id) };
   const request = getCurrentRequest(id);
   if (!request) {
     open(context.scene, { ...base, text: 'Por hoje já me ajudou o bastante, obrigado! Volte amanhã: sempre aparece alguma coisa.', actions: [] });
@@ -128,7 +125,7 @@ function deliverRequest(context: NpcTalkContext, id: NpcId): void {
   open(context.scene, {
     speaker: def.name,
     subtitle: def.title,
-    portrait: { key: def.portrait.key, frame: def.portrait.frame },
+    portrait: getPortrait(id, 'happy'),
     text: 'Muito obrigado! Foi uma grande ajuda. Volte amanhã: eu sempre tenho algum pedido.',
     details: [`Recompensa: ${describeReward(done.reward) || '—'}`],
     actions: [],
@@ -157,7 +154,7 @@ function deliver(context: NpcTalkContext, id: NpcId): void {
   open(scene, {
     speaker: def.name,
     subtitle: def.title,
-    portrait: { key: def.portrait.key, frame: def.portrait.frame },
+    portrait: getPortrait(id, 'happy'),
     text: done.outro,
     details,
     actions,
@@ -173,7 +170,7 @@ function confirmFinalNight(context: NpcTalkContext, id: NpcId): void {
   open(context.scene, {
     speaker: def.name,
     subtitle: def.title,
-    portrait: { key: def.portrait.key, frame: def.portrait.frame },
+    portrait: getPortrait(id),
     text: `Então está combinado. A Noite Final será ${when}, às ${HORDE_START_HOUR}:00. Volte pra Fazenda, reforce as cercas, leve a melhor espada e a melhor armadura. Sobreviva até o amanhecer!`,
     details: ['Dormir fica bloqueado até a Noite Final acontecer.', `Onde você estiver às ${HORDE_START_HOUR}:00, será levado de volta à Fazenda.`],
     actions: [],

@@ -5,6 +5,7 @@ import { GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '../data/tiles
 import { hash2D } from './groundVariation';
 import { DirtZone } from './dirtPaths';
 import { DISPLAY_SCALE } from './mapBuilder';
+import { pushPlant, registerSway } from './foliageSway';
 
 /**
  * Detalhes soltos de grama (tufo, cogumelo, pedrinha, florzinha) — melhoria
@@ -144,6 +145,7 @@ export function placeGrassDetail(
     image.setOrigin(0.5, 1);
     image.setDepth(y);
     rustling.set(cellKey(col, row), image);
+    registerSway(image, 'grass');
   } else {
     image.setOrigin(0.5, 0.5);
     image.setDepth(DETAIL_DEPTH);
@@ -198,22 +200,12 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
 
 /**
  * Balanço do tufo de grama ao jogador pisar em cima (pedido explícito do
- * usuário) — tween IDÊNTICO ao de `FarmlandRenderer.rustleCrop` (mesmo
- * ângulo/duração/easing), só que lendo de `GrassTuftMap` em vez do mapa de
- * plantações. Chamado direto do listener de `'player-stepped'` (ver
+ * usuário) — o mesmo empurrão de `FarmlandRenderer.rustleCrop` (`pushPlant`:
+ * pende pro lado do passo, `direction`), só que lendo de `GrassTuftMap` em
+ * vez do mapa de plantações. Chamado direto do listener de `'player-stepped'` (ver
  * `MainScene`) — `Map.get` é O(1), então não pesa checar a cada passo.
  */
-export function rustleGrassTuft(scene: Phaser.Scene, tufts: GrassTuftMap, col: number, row: number): void {
+export function rustleGrassTuft(_scene: Phaser.Scene, tufts: GrassTuftMap, col: number, row: number, direction = 1): void {
   const image = tufts.get(cellKey(col, row));
-  if (!image || scene.tweens.isTweening(image)) return;
-
-  scene.tweens.add({
-    targets: image,
-    angle: { from: 0, to: 8 },
-    duration: 120,
-    yoyo: true,
-    repeat: 1,
-    ease: 'Sine.easeInOut',
-    onComplete: () => image.setAngle(0),
-  });
+  if (image) pushPlant(image, direction); // Pende pro lado em que o personagem anda (`systems/foliageSway.ts`).
 }

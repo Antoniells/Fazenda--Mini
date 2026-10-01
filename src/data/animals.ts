@@ -6,7 +6,8 @@ import { qualityId } from './quality';
  *
  * Regras: a galinha só existe DENTRO de um galinheiro (uma construção comprada na Loja e posicionada na Fazenda, `CHICKEN_COOP` em
  * `data/decorations.ts`); cada galinheiro abriga `COOP_CAPACITY`. Cada galinha põe `EGGS_PER_CHICKEN_PER_DAY` ovo por dia, que fica no galinheiro
- * até o jogador clicar nele (`COOP_MAX_EGGS` no máximo guardados).
+ * até o jogador clicar nele (`COOP_MAX_EGGS` no máximo guardados). A qualidade do ovo vem do carinho acumulado e do cuidado do dia (carinho + Capim no
+ * comedouro — `eggTierForCare`).
  */
 
 /** Id do galinheiro (`DECORATIONS`) — o mesmo usado no registro de construções posicionadas. */
@@ -36,6 +37,8 @@ export interface CoopState {
   birds?: ChickenRecord[];
   /** Ovos guardados por qualidade (`EGG_TIERS`): a soma é `eggs`. */
   eggTiers?: number[];
+  /** Capim no comedouro (até `FEEDER_CAPACITY`); cada galinha come 1 na virada do dia. Saves antigos não têm: comedouro vazio. */
+  feed?: number;
 }
 
 export interface AnimalsState {
@@ -104,4 +107,18 @@ export function eggTierForAffection(affection: number): number {
   });
   return tier;
 }
+
+/**
+ * FELICIDADE DO DIA: o carinho acumulado diz a melhor qualidade que a galinha alcança, mas o ovo só sai nela se ela foi CUIDADA no dia
+ * que passou — cada descuido (sem carinho, sem Capim no comedouro) derruba um degrau (nunca abaixo do comum). Ela põe o ovo mesmo
+ * assim: o descuido pesa na qualidade, não na produção.
+ */
+export function eggTierForCare(affection: number, fed: boolean, petted: boolean): number {
+  return Math.max(0, eggTierForAffection(affection) - (fed ? 0 : 1) - (petted ? 0 : 1));
+}
+
+/** A ração das galinhas é o Capim (`WILD_GRASS` em `data/resources.ts`, colhido com a Foice): 1 por galinha, na virada do dia. */
+export const CHICKEN_FEED_ID = 'grass';
+/** Quanto Capim cabe no comedouro de cada galinheiro (clicar no galinheiro enche com o Capim da Bolsa). */
+export const FEEDER_CAPACITY = 24;
 

@@ -67,6 +67,29 @@ interface LightSource {
   offTint?: number;
 }
 
+/**
+ * Os anéis de um brilho (a mancha de `Shadow.png` em ADD, `GLOW_RINGS`) centrados em (x, y), de raio `radiusPx` e cor `color` — nascem
+ * escondidos; quem usa liga e ajusta o alfa (`alpha * GLOW_RING_ALPHAS[i]`). Usado pelos postes/tochas e pela luz das Cavernas.
+ */
+export function addGlowRings(scene: Phaser.Scene, x: number, y: number, radiusPx: number, color: number): { images: Phaser.GameObjects.Image[]; scales: number[] } {
+  const glowTexture = scene.textures.get(GLOW_KEY);
+  glowTexture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  if (!glowTexture.has(SHADOW_FRAME_NAME)) glowTexture.add(SHADOW_FRAME_NAME, 0, SHADOW_FRAME.x, SHADOW_FRAME.y, SHADOW_FRAME.width, SHADOW_FRAME.height);
+  const images: Phaser.GameObjects.Image[] = [];
+  const scales: number[] = [];
+  for (const [radiusFraction] of GLOW_RINGS) {
+    const glow = scene.add.image(x, y, GLOW_KEY, SHADOW_FRAME_NAME);
+    const baseScale = (radiusPx * 2 * radiusFraction) / SHADOW_FRAME.width;
+    glow.setScale(baseScale).setTint(color).setTintMode(Phaser.TintModes.FILL).setBlendMode(Phaser.BlendModes.ADD).setDepth(LIGHT_GLOW_DEPTH).setVisible(false);
+    images.push(glow);
+    scales.push(baseScale);
+  }
+  return { images, scales };
+}
+
+/** Opacidade relativa de cada anel do brilho (o mesmo índice de `addGlowRings`). */
+export const GLOW_RING_ALPHAS: readonly number[] = GLOW_RINGS.map(([, alpha]) => alpha);
+
 function ensureSpritesheet(scene: Phaser.Scene, key: string, path: string, frameWidth: number, frameHeight: number): void {
   if (!scene.textures.exists(key)) scene.load.spritesheet(key, encodeURI(`/${path}`), { frameWidth, frameHeight });
 }
@@ -127,17 +150,9 @@ export class LightSourceSystem {
     emissive.setOrigin(lit.originX, lit.originY).setScale(DISPLAY_SCALE).setBlendMode(Phaser.BlendModes.ADD).setDepth(LIGHT_GLOW_DEPTH).setVisible(false);
     const source: LightSource = { col: placement.col, row: placement.row, definition, phase, glow: [], glowScales: [], lit, emissive, ...extras };
 
-    const glowTexture = scene.textures.get(GLOW_KEY);
-    if (!glowTexture.has(SHADOW_FRAME_NAME)) glowTexture.add(SHADOW_FRAME_NAME, 0, SHADOW_FRAME.x, SHADOW_FRAME.y, SHADOW_FRAME.width, SHADOW_FRAME.height);
-    const radiusPx = definition.glowRadiusCells * tilePx;
-    for (const [radiusFraction] of GLOW_RINGS) {
-      const glow = scene.add.image(x, y + definition.glowOffsetY * DISPLAY_SCALE, GLOW_KEY, SHADOW_FRAME_NAME);
-      const baseScale = (radiusPx * 2 * radiusFraction) / SHADOW_FRAME.width;
-      glow.setScale(baseScale);
-      source.glowScales.push(baseScale);
-      glow.setTint(definition.glowColor).setTintMode(Phaser.TintModes.FILL).setBlendMode(Phaser.BlendModes.ADD).setDepth(LIGHT_GLOW_DEPTH).setVisible(false);
-      source.glow.push(glow);
-    }
+    const rings = addGlowRings(scene, x, y + definition.glowOffsetY * DISPLAY_SCALE, definition.glowRadiusCells * tilePx, definition.glowColor);
+    source.glow.push(...rings.images);
+    source.glowScales.push(...rings.scales);
 
     this.sources.push(source);
   }

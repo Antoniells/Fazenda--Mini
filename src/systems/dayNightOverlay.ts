@@ -70,7 +70,12 @@ export class DayNightOverlay {
 
   /** Aplica a luz do sol da hora dada (0-24, `GameClock.getHours`) — chamado a cada quadro pela cena. */
   setHours(hours: number): void {
-    this.lastColor = mixColors(WHITE, ambientColorAt(hours), this.intensity);
+    this.setColor(ambientColorAt(hours));
+  }
+
+  /** Aplica uma cor de luz qualquer (as Cavernas usam a penumbra do andar — `systems/caveLighting.ts`), com a mesma fração `intensity`. */
+  setColor(color: number): void {
+    this.lastColor = mixColors(WHITE, color, this.intensity);
     const scrolled = Math.abs(this.camera.scrollX - this.lastScrollX) + Math.abs(this.camera.scrollY - this.lastScrollY);
     if (scrolled > RECREATE_AFTER_SCROLL_PX) {
       this.rect.destroy();

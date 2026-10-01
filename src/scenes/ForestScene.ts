@@ -10,6 +10,8 @@ import { GrassTuftMap, rustleGrassTuft } from '../systems/grassDetails';
 import { resourceNodeRegistry } from '../systems/resourceNodeRegistry';
 import { TreeInteractable, RockInteractable } from '../systems/resourceInteraction';
 import { updateTreeOverlap } from '../systems/treeOverlap';
+import { updateTreeSway } from '../systems/treeSway';
+import { stepDirection } from '../systems/foliageSway';
 import { SlimeSpawner } from '../systems/slimeSpawner';
 import { WalkableGrid } from '../systems/grid';
 import { InteractionRegistry } from '../systems/interaction';
@@ -195,7 +197,7 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // Regra padrão (pedido explícito do usuário): tufo/cogumelo balançam ao
     // jogador pisar em cima em QUALQUER cena, não só a Fazenda — mesmo
     // evento/técnica de `MainScene.ts`.
-    onPlayerStepped(this, (col, row) => rustleGrassTuft(this, this.wildFoliage, col, row));
+    onPlayerStepped(this, (col, row) => rustleGrassTuft(this, this.wildFoliage, col, row, stepDirection(this, col)));
   }
 
   /**
@@ -230,6 +232,7 @@ for (const node of resourceNodeRegistry.getNodes(FOREST_SCENE_KEY)) {
     // `MainScene.update`) — o personagem fica parcialmente visível ao
     // passar atrás de uma bétula/pinheiro, em vez de sumir de repente.
     updateTreeOverlap(this.player, this.treeVisuals);
+    updateTreeSway(this.player, this.treeVisuals);
     // Pausa com o Inventário aberto (mesmo critério do movimento do
     // jogador, ver `ExternalMapScene.update`) — sem isso, um Slime podia
     // continuar perseguindo/encostando no jogador com o menu na tela.

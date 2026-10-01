@@ -93,3 +93,35 @@ export const BUTTERFLY_SPECIES = [
   { key: 'fx-butterfly-orange-tip', animKey: 'fx-butterfly-orange-tip-flap', path: `${BUTTERFLY_DIR}/Orange Tip.png` },
   { key: 'fx-butterfly-sulphur', animKey: 'fx-butterfly-sulphur-flap', path: `${BUTTERFLY_DIR}/Cloudless Sulphur.png` },
 ];
+
+/**
+ * Brilho dos veios das Cavernas (`systems/oreSparkle.ts`, ideia do Terraria): as estrelinhas de `Character/Character/Others/Shine.png`
+ * (32x16 — recortes da cruz 3x3 e do ponto de 1px). Cada tipo de veio cintila num ritmo (vezes por segundo, perto da luz do personagem
+ * ainda mais) e numa cor — os raros (Ouro, Azurita) chamam mais atenção.
+ */
+export const SPARKLE_KEY = 'fx-sparkle';
+export const SPARKLE_PATH = 'Character/Character/Others/Shine.png';
+export const SPARKLE_CROSS_FRAME = { name: 'fx-sparkle-cross', rect: { x: 7, y: 3, width: 3, height: 3 } };
+export const SPARKLE_DOT_FRAME = { name: 'fx-sparkle-dot', rect: { x: 24, y: 4, width: 1, height: 1 } };
+export const ORE_SPARKLE: Record<'copper' | 'coal' | 'iron' | 'gold' | 'azurite', { perSecond: number; color: number }> = {
+  coal: { perSecond: 0.04, color: 0xd6d6e6 },
+  copper: { perSecond: 0.09, color: 0xffc89a },
+  iron: { perSecond: 0.1, color: 0xeef2fa },
+  gold: { perSecond: 0.2, color: 0xffe27a },
+  azurite: { perSecond: 0.32, color: 0x9ef0ff },
+};
+
+/**
+ * Folhas que caem das árvores (`systems/fallingLeaves.ts`, ideia do Terraria — mais folhas quanto mais vento): pétalas soltas de
+ * `Crops/Fruits Tree/Old/Fruits/Spring/Leafs.png` (48x32, a "chuva" de pétalas da cerejeira), tingidas de VERDE em preenchimento sólido
+ * (pedido explícito: folhas verdes — com 3x4 px o sombreado nem aparece, e o tom multiplicado sobre o rosa ficaria barrento).
+ */
+export const LEAF_KEY = 'fx-leaf';
+export const LEAF_PATH = 'Crops/Fruits Tree/Old/Fruits/Spring/Leafs.png';
+export const LEAF_FRAMES = [
+  { name: 'fx-leaf-1', rect: { x: 6, y: 16, width: 3, height: 4 } },
+  { name: 'fx-leaf-2', rect: { x: 10, y: 22, width: 3, height: 4 } },
+  { name: 'fx-leaf-3', rect: { x: 32, y: 24, width: 3, height: 4 } },
+];
+// Verdes claros e amarelados: destacam da grama e da copa (verdes escuros somem no chão).
+export const LEAF_GREENS = [0xa6d86a, 0xbfe27c, 0x8fcb5c, 0xd2e889];

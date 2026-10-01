@@ -9,6 +9,7 @@ import { resourceNodeRegistry } from './resourceNodeRegistry';
 import { registerGrassDetailFrames } from './grassDetails';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
+import { registerSway } from './foliageSway';
 import { spawnLoot } from './lootDrops';
 import { rollDoubleDrop } from './skills';
 import { popText } from './floatingText';
@@ -92,6 +93,7 @@ export function buildWeed(
   shadow.setDepth(y - 0.1);
   const sprite = scene.add.image(x, y, GRASS_DETAILS_KEY, WILD_GRASS_DETAIL.frameName);
   sprite.setOrigin(0.5, 1).setScale(DISPLAY_SCALE).setDepth(y);
+  registerSway(sprite, 'grass');
 
   let ownInteraction: WeedVisual['ownInteraction'] = null;
   if (!inFarmland) {

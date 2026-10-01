@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BUTTERFLY_SPECIES, BUTTERFLY_FRAME_SIZE, BUTTERFLY_FRAMES, BUTTERFLY_FLAP_FPS } from '../data/effects';
 import { GameClock } from './gameClock';
 import { DISPLAY_SCALE } from './mapBuilder';
+import { getWind } from './wind';
 
 /** Quantas podem existir ao mesmo tempo e de quanto em quanto tempo (ms) tenta nascer uma nova — pequenas e esparsas, só um toque de vida. */
 const MAX_ALIVE = 6;
@@ -12,6 +13,8 @@ const FADE_MS = 1400;
 const VISIBLE_MS = { min: 6000, max: 12000 };
 /** Velocidade média de deriva (px/s) + oscilação (batida irregular, sem voar em linha reta). */
 const DRIFT_SPEED = { min: 8, max: 22 };
+/** O vento global (`systems/wind.ts`, -1 a 1) empurra todas pro mesmo lado: px/s com vento máximo. */
+const WIND_PUSH_PX_PER_S = 18;
 const WOBBLE_PX_PER_S = 16;
 /** Acima de todo o mundo ordenado por Y (árvores, personagem) e abaixo do véu da noite (999) — voa por cima da copa das árvores. */
 const DEPTH = 990;
@@ -91,7 +94,7 @@ export class ButterflyField {
     butterfly.elapsedMs += deltaMs;
     const wobbleX = Math.cos(butterfly.elapsedMs * 0.004 + butterfly.phase) * WOBBLE_PX_PER_S;
     const wobbleY = Math.sin(butterfly.elapsedMs * 0.006 + butterfly.phase) * WOBBLE_PX_PER_S;
-    butterfly.sprite.x += (butterfly.vx + wobbleX) * dt;
+    butterfly.sprite.x += (butterfly.vx + wobbleX + getWind() * WIND_PUSH_PX_PER_S) * dt;
     butterfly.sprite.y += (butterfly.vy + wobbleY) * dt;
   }
 

@@ -24,6 +24,7 @@ import { createGroundShadow } from './shadow';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { TreeStage, TreeSpecies } from './resourceNodeRegistry';
 import { WalkableGrid } from './grid';
+import { registerSway } from './foliageSway';
 import { hash2D } from './groundVariation';
 import { GRASS_DETAILS } from '../data/grassDetails';
 import { registerGrassDetailFrames, placeGrassDetail, GrassTuftMap } from './grassDetails';
@@ -76,6 +77,7 @@ let tree: Phaser.GameObjects.Image;
   tree.setOrigin(0.5, 1);
   tree.setScale(DISPLAY_SCALE);
   tree.setDepth(tree.y);
+  registerSway(tree, 'tree');
 
   return tree;
 }
@@ -117,6 +119,7 @@ if (stage === 'mature') {
   sprite.setOrigin(0.5, 1);
   sprite.setScale(DISPLAY_SCALE);
   sprite.setDepth(sprite.y);
+  registerSway(sprite, stage === 'mature' || species === 'birch' ? 'tree' : 'crop'); // Broto e muda balançam como planta baixa.
 
   return { sprite, shadow };
 }

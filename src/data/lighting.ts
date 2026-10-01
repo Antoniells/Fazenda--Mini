@@ -118,3 +118,14 @@ export const VILLAGE_LIGHT_SOURCES: LightSourcePlacement[] = [
   { type: 'lampPost', col: 13, row: 9 },
   { type: 'lampPost', col: 16, row: 9 },
 ];
+
+/**
+ * CAVERNAS EM PENUMBRA (`systems/caveLighting.ts`, pedido explícito: escuras, mas não breu): o véu (MULTIPLY) vai do tom do 1º andar ao
+ * do último, e o personagem leva um halo quente que abre a escuridão em volta. As escadas brilham de leve: a de subida com a luz que
+ * vem de cima, a de descida num azul frio — dá pra achá-las de longe. O santuário não tem véu.
+ */
+export const CAVE_PENUMBRA_TOP = 0xa8a4b8;
+export const CAVE_PENUMBRA_BOTTOM = 0x67637f;
+export const CAVE_PLAYER_LIGHT = { radiusCells: 3.5, color: 0xffcf8f, alpha: 0.13, flicker: 0.08, offsetY: -16 };
+export const CAVE_STAIRS_UP_LIGHT = { radiusCells: 1.6, color: 0xfff0c4, alpha: 0.32 };
+export const CAVE_STAIRS_DOWN_LIGHT = { radiusCells: 1.4, color: 0x9cc0ff, alpha: 0.24 };

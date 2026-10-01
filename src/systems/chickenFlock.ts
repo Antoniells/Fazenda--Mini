@@ -29,7 +29,8 @@ interface EggIndicator {
  * A cor de cada uma vem do registro dela (`ChickenRecord.variant`, sorteada na compra): recriar a cena não a muda.
  *
  * Carinho (pedido explícito): clicar numa galinha leva o jogador até ela e, ao chegar perto, ela ganha 1 carinho (só um por dia, no máximo
- * `MAX_AFFECTION`) — o carinho define a qualidade dos ovos que ela põe (`systems/animals.ts`, `EGG_TIERS`).
+ * `MAX_AFFECTION`) — o carinho acumulado define a melhor qualidade dos ovos que ela põe (`systems/animals.ts`, `EGG_TIERS`), e o carinho
+ * de CADA DIA (junto do Capim no comedouro) decide se o ovo de amanhã sai nela (`eggTierForCare`).
  * Criado pela `MainScene`; a cena chama `update`. As galinhas andam só onde `canStand` deixa: andável e fora da lavoura.
  */
 export class ChickenFlock {
@@ -159,12 +160,12 @@ export class ChickenFlock {
       popText(this.scene, x, y, 'Já ganhou carinho hoje', { color: '#fff2a8', fontSize: 12 });
       return;
     }
+    chicken.reactToPet(time);
     if (result === 'max') {
-      popText(this.scene, x, y, `Carinho no máximo (${MAX_AFFECTION}/${MAX_AFFECTION})`, { color: '#ffb0d8', fontSize: 12 });
+      // Carinho no máximo: não sobe mais, mas o de hoje conta pra felicidade (a qualidade do ovo de amanhã).
+      popText(this.scene, x, y, `Feliz! Carinho no máximo (${MAX_AFFECTION}/${MAX_AFFECTION})`, { color: '#ffb0d8', fontSize: 12 });
       return;
     }
-
-    chicken.reactToPet(time);
     popText(this.scene, x, y, `+1 carinho (${affection}/${MAX_AFFECTION})`, { color: '#ffb0d8', fontSize: 13 });
     const tier = eggTierForAffection(affection);
     if (tier > eggTierForAffection(affection - 1)) {

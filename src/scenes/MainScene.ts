@@ -107,6 +107,8 @@ import { WEAPONS } from '../data/weapons';
 import { ARMORS } from '../data/armors';
 import { SlotRef } from '../data/items';
 import { updateTreeOverlap } from '../systems/treeOverlap';
+import { updateTreeSway } from '../systems/treeSway';
+import { stepDirection } from '../systems/foliageSway';
 import { FarmResources, initFarmResourceRegistry, ensureTutorialWeed } from '../systems/farmResources';
 import { GameClock, DAY_LENGTH_MS } from '../systems/gameClock';
 import { DayNightOverlay } from '../systems/dayNightOverlay';
@@ -835,9 +837,10 @@ export class MainScene extends Phaser.Scene {
 
     onPlayerStepped(this, (col, row) => {
       tutorial.notify({ kind: 'move' });
-      this.farmlandRenderer.rustleCrop(col, row);
-      rustleGrassTuft(this, this.grassTufts, col, row);
-      this.farmResources.rustle(col, row); // <-- Faz os brotos e mudas balançarem
+      const direction = stepDirection(this, col); // As plantas pendem pro lado em que o personagem anda.
+      this.farmlandRenderer.rustleCrop(col, row, direction);
+      rustleGrassTuft(this, this.grassTufts, col, row, direction);
+      this.farmResources.rustle(col, row, direction); // <-- Faz os brotos e mudas balançarem
     });
 
     this.gameClock = gameState.gameClock;
@@ -1019,7 +1022,9 @@ export class MainScene extends Phaser.Scene {
     // não ficavam semitransparentes ao personagem passar atrás delas,
     // porque só as árvores ESTÁTICAS do mapa (`this.trees`) entravam nessa
     // checagem — combina as duas fontes.
-    updateTreeOverlap(this.player, this.farmResources.getTreeSprites());
+    const treeSprites = this.farmResources.getTreeSprites();
+    updateTreeOverlap(this.player, treeSprites);
+    updateTreeSway(this.player, treeSprites);
     this.decorationPlacement.updateOcclusion();
     if (!isPauseMenuOpen()) this.chickenFlock.update(time, delta);
     if (!isPauseMenuOpen()) this.builderCrew.update(time, delta);

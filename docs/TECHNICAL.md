@@ -1539,7 +1539,7 @@ O fim do jogo é a história dos Três Pilares do Equilíbrio (ver [ROADMAP.md](
 - A campanha não trava: "Hordas vencidas" conta como cumprida e a Noite Final vira uma entrega direta ao Alberto (`FINAL_NIGHT_PEACE_TEXT`), que completa a campanha. `prepareWorldAfterEnding` também limpa qualquer horda ou Noite Final pendente.
 
 ## Testes automáticos
-- **Lógica (Vitest)** — `npm test`: `tests/unit/*.test.ts`, no Node. `tests/unit/setup.ts` troca o Phaser por um substituto vazio (os módulos testados só o importam de passagem); `tests/unit/helpers.ts` põe o save num armazenamento em memória e cria uma partida nova por teste. Cobrem a história e a paz, hordas e a campanha depois do fim, pesca, encantamentos e a Fornalha, os andares e os veios da Caverna (nenhum veio fecha passagem, tipos por profundidade, Azurita do 45) e o save dos campos novos (inclusive save antigo sem eles).
+- **Lógica (Vitest)** — `npm test`: `tests/unit/*.test.ts`, no Node. `tests/unit/setup.ts` troca o Phaser por um substituto vazio (os módulos testados só o importam de passagem); `tests/unit/helpers.ts` põe o save num armazenamento em memória e cria uma partida nova por teste. Cobrem a história e a paz, hordas e a campanha depois do fim, pesca, encantamentos e a Fornalha, os andares e os veios da Caverna (nenhum veio fecha passagem, tipos por profundidade, Azurita do 45) e o save dos campos novos (inclusive save antigo sem eles), a fila de avisos, as falas por marco e a felicidade das galinhas.
 - **Ponta a ponta (Playwright)** — `npm run test:e2e` (sobe o Vite sozinho, ou reaproveita o que estiver rodando; na 1ª vez, `npx playwright install chromium`): `tests/e2e/smoke.spec.ts` abre o jogo, cria a partida de teste pelo menu de hack (`#hack-menu`, `#hack-menu-log`) e (1) roda o tour por todas as cenas, (2) percorre a Floresta Oculta, o andar 50, o santuário e a cinemática final — falha com qualquer erro de execução da página.
 - **Menu de hack só em desenvolvimento**: `HACK_MENU_ENABLED = import.meta.env.DEV` — aparece com `npm run dev`/`dev:electron` e nos testes; o instalador sai sem ele.
 
@@ -1554,3 +1554,44 @@ O fim do jogo é a história dos Três Pilares do Equilíbrio (ver [ROADMAP.md](
 - Datilógrafo: as linhas são quebradas antes (nada "pula" de linha) e as letras se espalham pela duração da narração (`INTRO_TIMING.audioSpread`). A voz (`assets/audio/cutscene/intro_slide_N.mp3`, volume dos efeitos) toca ao começar o slide; sem o arquivo, a cena segue sem voz. Se o navegador segurar o áudio, a voz conta como terminada pela duração (a cena nunca trava).
 - F/Espaço: frase incompleta → completa; completa → corta a voz e passa. Sozinho: texto completo + voz terminada → espera `holdMs` e passa. Fade entre slides e no fim. "Pular Intro [ESC]" (botão ou ESC) vai direto pra Fazenda. O HUD fica desligado durante a intro.
 - **Narração (ElevenLabs)**: `tools/generate_intro_voices.py` (instruções no topo do arquivo: `pip install elevenlabs` e a variável `ELEVENLABS_API_KEY` — a chave nunca vai pro código). Textos iguais aos de `data/intro.ts`; voz padrão "Brian" (`nPczCjzI2devNBz1zQrb`, grave, disponível no plano gratuito) com `eleven_multilingual_v2`; `--voz <ID>` troca (vozes brasileiras da biblioteca, como a "Nassif", exigem plano pago), `--forcar` regera, `--slide N` gera só um.
+
+## Ideias do Stardew aplicadas (fila de avisos, falas por marco, vento nas árvores, felicidade das galinhas)
+Só ideias de design (nada de código ou dados do jogo original).
+
+### Fila de avisos (`ui/lockedMessage.ts`)
+- Um aviso novo não apaga mais o que está na tela: entra numa fila (até 4). Com fila, cada aviso fica ao menos 1,6 s e há um respiro curto entre eles; o mesmo aviso repetido não se acumula. O aviso da barreira do andar 50 usa a fila direto (sem o atraso manual de antes).
+
+### Falas dos moradores pela história (`data/npcStoryLines.ts`, `systems/npcLines.ts`)
+- Cada morador tem blocos de falas presos a um marco da história; vale o bloco do marco mais avançado já alcançado. Nos 2 dias depois do marco a fala da história é garantida; depois, metade das vezes (o resto é o `chatter` de sempre, ou as falas de agradecimento com a campanha concluída).
+- **Expressões nos retratos**: `NpcDefinition.portrait.expressions` diz a célula de cada expressão na mesma folha (o Ferreiro tem 11, o Padeiro 4; quem não tem cai no quadro neutro). `getPortrait(id, expressão)` monta o retrato; o painel de diálogo registra um quadro por célula (`<key>-face-x-y`). Entregas e agradecimentos saem com a cara feliz.
+
+### Vento nas árvores (`systems/treeSway.ts`)
+- Chamado junto de `updateTreeOverlap` nas 4 cenas com árvores. Ao entrar na copa (os pés do personagem dentro do meio da árvore), ela gira em torno da base do tronco pro lado oposto, num vai-e-vem que morre em 0,9 s, e farfalha (os passos na grama, mais baixos — `TREE_RUSTLE_SOUNDS`). Cada árvore espera 0,7 s pra balançar de novo; broto e muda ficam de fora (já balançam ao pisar).
+
+### Felicidade das galinhas (`data/animals.ts`, `systems/animals.ts`)
+- O carinho acumulado (0-10) continua dando a MELHOR qualidade possível do ovo; o cuidado do dia que passou decide se o ovo sai nela: sem carinho nesse dia, -1 degrau; sem comida, -1 degrau (nunca abaixo do comum — `eggTierForCare`). Ela põe o ovo mesmo assim.
+- Comida = **Capim** (colhido com a Foice no mato): clicar no galinheiro enche o comedouro com o Capim da Bolsa (até 24, `CoopState.feed`); na virada do dia cada galinha come 1. O carinho no máximo continua valendo como o carinho do dia.
+
+## Ideias do Terraria aplicadas à arte (vento, Cavernas em penumbra, veios cintilando, folhas)
+Só ideias de design (nada de código, dados ou arte do jogo original). Tudo é transformação de arte que já existe (ângulo, tingimento, mistura).
+
+### Vento global (`systems/wind.ts`)
+- Uma força só (-1 a 1, positivo = pra direita). De 20 a 60 s sorteia-se um vento alvo (brisa, às vezes ventania) e o atual anda até ele a 0,06/s. Na chuva o alvo é forte e pra ESQUERDA (o lado em que a chuva do `weatherOverlay` cai); começar/parar de chover muda o alvo na hora.
+- `windLean(col, row)`: o vai-e-vem de cada planta numa ONDA que atravessa o mapa (a fase anda com a coluna) somado à inclinação do vento. O relógio da onda é acumulado (acelera com o vento sem dar saltos).
+- Também empurra as borboletas pro lado do vento.
+
+### Vegetação no vento (`systems/foliageSway.ts`)
+- Tufos/cogumelos e mato (`grass`), plantações e brotos/mudas (`crop`) e árvores adultas (`tree`) se registram ao nascer (`registerSway`, nos construtores de cada um). A cena se liga sozinha no evento `update` e só o que está na tela é atualizado. Todos têm a origem no pé, então giram pela base.
+- Velocidades bem lentas (pedido explícito): mato e plantação 0,12 ciclo/s, árvores 0,22; inclinação até ~7° no mato, ~1,4° nas árvores.
+- Empurrões somam com o vento (`setSwayOffset`) em vez de brigar pelo ângulo: o da árvore quando o personagem passa pela copa (`treeSway.ts`) e o de pisar (`pushPlant`): a planta pende PRIMEIRO pro lado em que o personagem anda (`stepDirection`) e volta num vai-e-vem que morre.
+
+### Folhas caindo (`systems/fallingLeaves.ts`)
+- As árvores adultas com a copa na tela soltam folhas: quase nada sem vento, até ~1 a cada 3 s por árvore com vento máximo (teto de 40 por cena). Caem devagar, levadas pelo vento, em zigue-zague girando; pousam perto do pé da árvore, ficam um instante e somem. Saiu da tela, é recolhida.
+- Arte: pétalas soltas de `Crops/Fruits Tree/Old/Fruits/Spring/Leafs.png`, pintadas de verdes claros (pedido explícito: folhas verdes) em preenchimento sólido. A textura é carregada sob demanda pelo `foliageSway`. As folhas são reaproveitadas (pool).
+
+### Cavernas em penumbra (`systems/caveLighting.ts`)
+- O véu da noite (`DayNightOverlay.setColor`) com a cor do andar: de `CAVE_PENUMBRA_TOP` (andar 1) a `CAVE_PENUMBRA_BOTTOM` (andar 100) — penumbra, não breu (pedido explícito). O santuário não tem véu.
+- O personagem leva um halo quente fraco (`CAVE_PLAYER_LIGHT`, pedido: brilho suave) que tremula de leve; as escadas brilham (subida em luz de dia, descida em azul frio). Brilhos = os anéis dos postes (`addGlowRings`, a mancha de `Shadow.png` em ADD acima do véu). Nenhum bloco barra a luz.
+
+### Veios que cintilam (`systems/oreSparkle.ts`)
+- Cada veio na tela acende de vez em quando uma estrelinha de `Character/Character/Others/Shine.png` (a cruz 3x3 ou o ponto), na cor do minério, acima do véu (ADD). O ritmo é por tipo (`ORE_SPARKLE`: Azurita e Ouro mais) e 4x maior perto do personagem. Estrelinhas reaproveitadas (pool).

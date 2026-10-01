@@ -17,6 +17,9 @@ export type NpcId = 'blacksmith' | 'banker' | 'pirate' | 'mermaid' | 'supplier' 
 
 export type NpcFacing = 'down' | 'up' | 'left' | 'right';
 
+/** Expressões de retrato que as falas podem pedir. */
+export type PortraitExpression = 'neutral' | 'happy' | 'content' | 'surprised' | 'thoughtful' | 'sad' | 'crying' | 'angry';
+
 export type NpcPlace =
   | { kind: 'inside' }
   | { kind: 'post' }
@@ -59,8 +62,16 @@ export interface NpcDefinition {
   name: string;
   title: string;
   sprite: NpcSpriteSheet;
-  /** Retrato (quadro 64x64 no canto superior-esquerdo da folha). */
-  portrait: { key: string; path: string; frame: { x: number; y: number; width: number; height: number } };
+  /**
+   * Retrato: `frame` é o quadro neutro; `expressions`, onde fica cada expressão na MESMA folha (mesmo tamanho de quadro). Expressão
+   * que a folha não tem cai no neutro (`systems/npcLines.ts`).
+   */
+  portrait: {
+    key: string;
+    path: string;
+    frame: { x: number; y: number; width: number; height: number };
+    expressions?: Partial<Record<PortraitExpression, { x: number; y: number }>>;
+  };
   /** É vendedor: conversar oferece "Ver a loja" durante o expediente (`working` na rotina) — as lojas em si estão em `systems/vendorShops.ts`. */
   sells?: boolean;
   /** Casa (com porta) de quem anda pelo Vilarejo. Ausente = morador PARADO (`stationary`). */
@@ -90,7 +101,21 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       idleFrames: 4,
       walkFrames: 6,
     },
-    portrait: { key: 'npc-blacksmith-portrait', path: `${NPC_DIR}/Blacksmith/Portrait.png`, frame: { x: 0, y: 0, width: 64, height: 64 } },
+    // Folha 256x192 com 11 expressões (4 por linha).
+    portrait: {
+      key: 'npc-blacksmith-portrait',
+      path: `${NPC_DIR}/Blacksmith/Portrait.png`,
+      frame: { x: 0, y: 0, width: 64, height: 64 },
+      expressions: {
+        happy: { x: 64, y: 0 },
+        surprised: { x: 128, y: 0 },
+        thoughtful: { x: 192, y: 0 },
+        sad: { x: 0, y: 64 },
+        content: { x: 64, y: 64 },
+        crying: { x: 192, y: 64 },
+        angry: { x: 128, y: 128 },
+      },
+    },
     home: VILLAGE_SHOP_HOUSE,
     sells: true,
     schedule: [
@@ -121,7 +146,13 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       idleFrames: 4,
       walkFrames: 6,
     },
-    portrait: { key: 'npc-banker-portrait', path: `${NPC_DIR}/Banker/Portrait.png`, frame: { x: 0, y: 0, width: 64, height: 64 } },
+    // Folha 256x128: 4 expressões na 1ª linha (a 2ª é a mesma com contorno).
+    portrait: {
+      key: 'npc-banker-portrait',
+      path: `${NPC_DIR}/Banker/Portrait.png`,
+      frame: { x: 0, y: 0, width: 64, height: 64 },
+      expressions: { surprised: { x: 64, y: 0 }, angry: { x: 64, y: 0 }, happy: { x: 128, y: 0 }, content: { x: 192, y: 0 } },
+    },
     home: VILLAGE_BANKER_HOUSE,
     schedule: [
       { fromHour: 0, place: { kind: 'inside' } },
