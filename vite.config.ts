@@ -10,5 +10,7 @@ export default defineConfig({
     // `strictPort`: se estiver ocupada, falha em vez de subir em outra porta silenciosamente.
     port: 5173,
     strictPort: true,
+    // A biblioteca de referência (milhares de arquivos de terceiros) não é do jogo: fora do observador de arquivos.
+    watch: { ignored: ['**/reference-projects/**'] },
   },
 });

@@ -14,3 +14,6 @@ release-*
 # Resultados dos testes de ponta a ponta (Playwright)
 /test-results/
 /playwright-report/
+
+# Biblioteca de referência (repositórios de terceiros, só pra estudo — ver docs/REFERENCE_GUIDE.md): não vai pro git
+/reference-projects/
