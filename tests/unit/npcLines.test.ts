@@ -48,7 +48,8 @@ describe('falas dos moradores pela história', () => {
 
   it('retrato: a expressão que a folha não tem cai no quadro neutro', () => {
     expect(getPortrait('blacksmith', 'surprised').frame).toMatchObject({ x: 128, y: 0, width: 64, height: 64 });
-    expect(getPortrait('pirate', 'surprised').frame).toEqual(NPCS.pirate.portrait.frame);
+    expect(getPortrait('supplier', 'surprised').frame).toEqual(NPCS.supplier.portrait.frame);
+    expect(getPortrait('pirate', 'surprised').frame).toMatchObject({ x: 128, y: 64 }); // Retrato montado das camadas: tem as 8 expressões.
     expect(getPortrait('banker').frame).toEqual(NPCS.banker.portrait.frame);
   });
 

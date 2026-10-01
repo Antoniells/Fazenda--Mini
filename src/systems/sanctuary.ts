@@ -19,6 +19,7 @@ import { OPEN_DIALOGUE_EVENT, DialogueAction, DialoguePayload } from '../ui/dial
 import { isDialogueOpen } from '../scenes/UIScene';
 import { TILE_SIZE, WATER_KEY, WATER_PATH } from '../data/tiles';
 import { CARROT, CROPS } from '../data/crops';
+import { ensureGolden } from './paletteSwap';
 import { GOLDEN_CARROT, GOLDEN_CARROT_SEED } from '../data/resources';
 import { GOLDEN_FISH_ID } from '../data/fishing';
 import { UNLOCK_SOUND } from '../data/audio';
@@ -221,10 +222,12 @@ export class Sanctuary {
     const frame = frames[Math.min(frames.length - 1, Math.floor(growth * (frames.length - 1)))];
     if (!this.carrot) {
       // Em cima da laje (a arte do altar é 48px; o tampo fica ~2/3 da altura acima da base).
-      this.carrot = this.ctx.scene.add.image(this.altar.x, this.altar.y - 40, CARROT.textureKey, frame).setOrigin(0.5, 1).setScale(DISPLAY_SCALE).setTint(GOLDEN_TINT);
+      // A cenoura do pacote com o laranja trocado por ouro (`systems/paletteSwap.ts`): uma textura dourada por estágio.
+      this.carrot = this.ctx.scene.add.image(this.altar.x, this.altar.y - 40, goldenCarrotFrame(this.ctx.scene, frame)).setOrigin(0.5, 1).setScale(DISPLAY_SCALE);
       this.carrot.setDepth(this.altar.depth + 1);
-    } else if (this.carrot.frame.name !== String(frame)) {
-      this.carrot.setFrame(frame);
+      this.carrot.setData('stage', frame);
+    } else if (this.carrot.getData('stage') !== frame) {
+      this.carrot.setTexture(goldenCarrotFrame(this.ctx.scene, frame)).setData('stage', frame);
     }
   }
 
@@ -324,4 +327,9 @@ export class Sanctuary {
       }
     }
   }
+}
+
+/** O estágio `frame` da cenoura (folha `CARROT.textureKey`) em versão dourada; se a folha ainda não carregou, a original. */
+function goldenCarrotFrame(scene: Phaser.Scene, frame: number): string {
+  return ensureGolden(scene, CARROT.textureKey, frame) ?? CARROT.textureKey;
 }

@@ -12,6 +12,7 @@ import { isDialogueOpen } from '../scenes/UIScene';
 import { talkToNpc, NpcTalkContext } from './npcDialogue';
 import { playEffect } from './soundEffects';
 import { DOOR_SOUND } from '../data/audio';
+import { preloadLayerStack } from './layeredArt';
 
 /** Carrega as folhas de sprite (repouso e, se andam, caminhada) e os retratos dos moradores da cena — chamado no `preload` dela. */
 export function preloadNpcs(scene: Phaser.Scene, ids: NpcId[]): void {
@@ -19,7 +20,8 @@ export function preloadNpcs(scene: Phaser.Scene, ids: NpcId[]): void {
     const { sprite, portrait } = NPCS[id];
     scene.load.spritesheet(sprite.idleKey, encodeURI(`/${sprite.idlePath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize });
     if (sprite.walkKey && sprite.walkPath) scene.load.spritesheet(sprite.walkKey, encodeURI(`/${sprite.walkPath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize });
-    scene.load.image(portrait.key, encodeURI(`/${portrait.path}`));
+    if (portrait.layers) preloadLayerStack(scene, { key: portrait.key, width: portrait.layers.width, height: portrait.layers.height, layers: portrait.layers.paths });
+    else if (portrait.path) scene.load.image(portrait.key, encodeURI(`/${portrait.path}`));
   }
 }
 

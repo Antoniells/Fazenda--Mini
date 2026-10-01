@@ -6,7 +6,6 @@ import { GRASS_DETAILS_KEY, WILD_GRASS_DETAIL } from './grassDetails';
 import { FISH_RESOURCES } from './fishing';
 import { STORY_ITEMS_KEY, MAP_ICON_FRAME } from './caveLandmarks';
 import { ALL_CROPS_ICONS_KEY, CARROT } from './crops';
-import { GOLDEN_TINT } from './sanctuary';
 
 /**
  * Materiais coletáveis (Fase 7 — Coleta de Recursos): loot de árvores/
@@ -34,7 +33,7 @@ export interface ResourceDefinition {
   sellPrice?: number;
   /** Pode ter qualidade (estrelas Prata/Ouro/Irídio, `data/quality.ts`) — só o ovo por enquanto. */
   hasQuality?: boolean;
-  /** Tom aplicado ao ícone (uma arte real existente, tingida — a Cenoura Dourada é a cenoura do pacote em dourado). */
+  /** Tom aplicado ao ícone (uma arte real existente, tingida). */
   tint?: number;
 }
 
@@ -103,8 +102,10 @@ export const GOLD_BAR: ResourceDefinition = { id: 'gold-bar', name: 'Barra de Ou
 export const AZURITE_ORE: ResourceDefinition = { id: 'azurite-ore', name: 'Azurita Bruta', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.azuriteOre.name, sellPrice: 12 };
 export const AZURITE_BAR: ResourceDefinition = { id: 'azurite-bar', name: 'Barra de Azurita', textureKey: IRON_KEY, frameName: METAL_ICON_FRAMES.azuriteBar.name, sellPrice: 60 };
 /** Os pilares da terra (Fase 11, `data/sanctuary.ts`): a semente que o santuário entrega e a Cenoura colhida no altar — a arte da cenoura do pacote em dourado. Não se vendem. */
-export const GOLDEN_CARROT_SEED: ResourceDefinition = { id: 'golden-carrot-seed', name: 'Semente da Cenoura Dourada', textureKey: ALL_CROPS_ICONS_KEY, frameName: CARROT.seedFrameName, tint: GOLDEN_TINT };
-export const GOLDEN_CARROT: ResourceDefinition = { id: 'golden-carrot', name: 'Cenoura Dourada', textureKey: ALL_CROPS_ICONS_KEY, frameName: CARROT.cropFrameName, tint: GOLDEN_TINT };
+// O ícone é a versão dourada (troca de paleta) do recorte da cenoura, criada pela `MainScene` (`ensureGolden`): a chave segue
+// `recoloredKey('golden', textura, quadro)` de `systems/paletteSwap.ts`, e a textura nova tem um quadro só (`__BASE`).
+export const GOLDEN_CARROT_SEED: ResourceDefinition = { id: 'golden-carrot-seed', name: 'Semente da Cenoura Dourada', textureKey: `golden:${ALL_CROPS_ICONS_KEY}:${CARROT.seedFrameName}`, frameName: '__BASE' };
+export const GOLDEN_CARROT: ResourceDefinition = { id: 'golden-carrot', name: 'Cenoura Dourada', textureKey: `golden:${ALL_CROPS_ICONS_KEY}:${CARROT.cropFrameName}`, frameName: '__BASE' };
 /** O mapa do baú esquecido do andar 50 (`data/caveLandmarks.ts`): item da história, não se vende. */
 export const MYSTERIOUS_MAP: ResourceDefinition = { id: 'mysterious-map', name: 'Mapa Misterioso', textureKey: STORY_ITEMS_KEY, frameName: MAP_ICON_FRAME.name };
 

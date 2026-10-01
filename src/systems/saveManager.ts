@@ -1,4 +1,4 @@
-import { isCharacterId } from '../data/player';
+import { isCharacterId, type CharacterId } from '../data/player';
 import { isPetId } from '../data/pets';
 import { gameState, PlacedDecorationRecord, PlayerProfile, SlimeRespawnRecord, WeatherState, DEFAULT_PROFILE } from './gameState';
 import { Inventory, InventorySaveData } from './inventory';
@@ -124,6 +124,8 @@ export interface SaveSlotSummary {
   savedAt?: string;
   playerName?: string;
   farmName?: string;
+  /** O personagem do save (o retrato do cartão, `data/playerPortrait.ts`). */
+  characterId?: CharacterId;
 }
 
 /**
@@ -173,6 +175,7 @@ export function getSlotSummary(slot: number): SaveSlotSummary {
       savedAt: data.savedAt,
       playerName: data.playerName ?? DEFAULT_PROFILE.playerName,
       farmName: data.farmName ?? DEFAULT_PROFILE.farmName,
+      characterId: isCharacterId(data.characterId) ? data.characterId : DEFAULT_PROFILE.characterId,
     };
   } catch (error) {
     console.error(`SaveManager: save do slot ${slot} corrompido — tratado como vazio.`, error);

@@ -104,41 +104,41 @@ export const NPC_STORY_LINES: Record<NpcId, NpcStoryBlock[]> = {
   pirate: [
     {
       after: 'prophecy',
-      lines: [{ text: 'Profecias, arr! Já naveguei por sete delas e só uma era verdade. Tomara que a sua seja a boa.' }],
+      lines: [{ text: 'Profecias, arr! Já naveguei por sete delas e só uma era verdade. Tomara que a sua seja a boa.', expression: 'thoughtful' }],
     },
     {
       after: 'map',
-      lines: [{ text: 'Um mapa num baú esquecido? Isso eu entendo, marujo! Siga o X e nunca o caminho fácil.' }],
+      lines: [{ text: 'Um mapa num baú esquecido? Isso eu entendo, marujo! Siga o X e nunca o caminho fácil.', expression: 'content' }],
     },
     {
       after: 'goldenFish',
-      lines: [{ text: 'O Peixe Dourado?! Quarenta anos de mar e nunca vi nem a sombra dele. Você é um pescador de lenda!' }],
+      lines: [{ text: 'O Peixe Dourado?! Quarenta anos de mar e nunca vi nem a sombra dele. Você é um pescador de lenda!', expression: 'surprised' }],
     },
     {
       after: 'awakening',
-      lines: [{ text: 'No mar a gente diz: quem parte por amor vira vento a favor. Seu companheiro sopra suas velas agora.' }],
+      lines: [{ text: 'No mar a gente diz: quem parte por amor vira vento a favor. Seu companheiro sopra suas velas agora.', expression: 'sad' }],
     },
     {
       after: 'newPet',
-      lines: [{ text: 'Todo capitão precisa de um imediato. Esse filhote vai ser um grande marujo, arr!' }],
+      lines: [{ text: 'Todo capitão precisa de um imediato. Esse filhote vai ser um grande marujo, arr!', expression: 'happy' }],
     },
   ],
   mermaid: [
     {
       after: 'prophecy',
-      lines: [{ text: 'As ondas andam agitadas... O mar sente quando a terra perde o equilíbrio.' }],
+      lines: [{ text: 'As ondas andam agitadas... O mar sente quando a terra perde o equilíbrio.', expression: 'thoughtful' }],
     },
     {
       after: 'wizardTrust',
-      lines: [{ text: 'O Mago pediu peixes? Ele sempre teve bom gosto. Cuide bem da sua linha: a paciência é metade da pescaria.' }],
+      lines: [{ text: 'O Mago pediu peixes? Ele sempre teve bom gosto. Cuide bem da sua linha: a paciência é metade da pescaria.', expression: 'content' }],
     },
     {
       after: 'goldenFish',
-      lines: [{ text: 'O Peixe Dourado escolheu você. Ele só se deixa pescar por quem tem o coração em paz.' }],
+      lines: [{ text: 'O Peixe Dourado escolheu você. Ele só se deixa pescar por quem tem o coração em paz.', expression: 'happy' }],
     },
     {
       after: 'awakening',
-      lines: [{ text: 'O mar ficou calmo como nunca. Acho que ele também está de luto... e grato.' }],
+      lines: [{ text: 'O mar ficou calmo como nunca. Acho que ele também está de luto... e grato.', expression: 'sad' }],
     },
   ],
   supplier: [

@@ -15,7 +15,8 @@ import {
   MENU_BACKGROUND_PATH,
 } from '../data/ui';
 import { CAVE_TILES } from '../data/caveTiles';
-import { ALTAR_ART, BRAZIER_ART, GOLDEN_TINT, SAGE_RABBIT, SANCTUARY_TINT } from '../data/sanctuary';
+import { ALTAR_ART, BRAZIER_ART, SAGE_RABBIT, SANCTUARY_TINT } from '../data/sanctuary';
+import { ensureGolden } from '../systems/paletteSwap';
 import { FISH_BY_ID, GOLDEN_FISH_ID, fishTextureKey } from '../data/fishing';
 import { CARROT } from '../data/crops';
 import { SLIME_COLORS, slimeSheet } from '../data/caveEnemies';
@@ -280,12 +281,9 @@ export class IntroScene extends Phaser.Scene {
       for (const side of [-1, 1]) {
         layer.add(this.add.sprite(cx + side * 250, stageY + 130, BRAZIER_ART.key, BRAZIER_ART.flameFrames[0]).setOrigin(0.5, 1).setScale(3).play(flame));
       }
-      // A Cenoura Dourada: a cenoura do pacote em preenchimento dourado, com a original meio transparente por cima (o tom multiplicado
-      // sozinho deixaria o laranja quase igual).
-      const carrot = this.add.container(cx - 60, stageY - 90, [
-        this.add.image(0, 0, CARROT.textureKey, CARROT_ICON_FRAME).setScale(4).setTint(GOLDEN_TINT).setTintMode(Phaser.TintModes.FILL),
-        this.add.image(0, 0, CARROT.textureKey, CARROT_ICON_FRAME).setScale(4).setAlpha(0.4),
-      ]);
+      // A Cenoura Dourada: a cenoura do pacote com o laranja trocado por ouro (`systems/paletteSwap.ts` — o sombreado fica).
+      const goldenCarrot = ensureGolden(this, CARROT.textureKey, CARROT_ICON_FRAME);
+      const carrot = goldenCarrot ? this.add.image(cx - 60, stageY - 90, goldenCarrot).setScale(4) : this.add.image(cx - 60, stageY - 90, CARROT.textureKey, CARROT_ICON_FRAME).setScale(4);
       const fish = this.add.image(cx + 60, stageY - 90, fishTextureKey(FISH_BY_ID[GOLDEN_FISH_ID]), 0).setScale(4);
       for (const [index, icon] of [carrot, fish].entries()) {
         this.tweens.add({ targets: icon, y: icon.y - 12, duration: 1300, delay: index * 400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });

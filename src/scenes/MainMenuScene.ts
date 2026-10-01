@@ -20,6 +20,9 @@ import { preloadSoundEffects, playClick } from '../systems/soundEffects';
 import { installGameCursor } from '../systems/gameCursor';
 import { SettingsPanel } from '../ui/settingsPanel';
 import { SAVE_SLOT_COUNT, getAllSlotSummaries, startNewGame, load as loadSave, deleteSave, SaveSlotSummary } from '../systems/saveManager';
+import { ensureLayerFrame, preloadLayerStack } from '../systems/layeredArt';
+import { PLAYER_PORTRAIT_FACE, playerPortraitKey, playerPortraitStack } from '../data/playerPortrait';
+import { CHARACTER_IDS, DEFAULT_CHARACTER_ID } from '../data/player';
 
 export const MAIN_MENU_SCENE_KEY = 'MainMenuScene';
 const MAIN_SCENE_KEY = 'MainScene';
@@ -61,7 +64,11 @@ interface MenuButton {
 }
 
 const SLOT_WIDTH = 420;
-const SLOT_HEIGHT = 60;
+const SLOT_HEIGHT = 72;
+/** O retrato do personagem no cartão do save (`data/playerPortrait.ts`): à esquerda, no tamanho natural (64px). */
+const SLOT_PORTRAIT_INSET_X = 40;
+/** O texto do cartão anda um pouco pra direita, pra não encostar no retrato. */
+const SLOT_LABEL_SHIFT_X = 28;
 const SLOT_GAP = 14;
 
 /** Lixeira no canto superior direito do slot: escala do ícone 12x14 e distância do CENTRO dela até as bordas direita/superior do painel. */
@@ -106,6 +113,8 @@ export class MainMenuScene extends Phaser.Scene {
   private slotLabels: Phaser.GameObjects.Text[] = [];
   /** Lixeira de cada slot (índice = número do slot) — fora de `slotsObjects` de propósito: só aparece em slot COM save, e `setGroupVisible` reativaria todas. */
   private deleteButtons: Phaser.GameObjects.Image[] = [];
+  /** Retrato do personagem de cada slot (só aparece em slot com save). */
+  private slotPortraits: Phaser.GameObjects.Image[] = [];
   /** Objetos do diálogo de confirmação aberto (vazio = nenhum aberto). */
   private dialogObjects: Phaser.GameObjects.GameObject[] = [];
   private menuButtons: MenuButton[] = [];
@@ -131,6 +140,8 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.image(CLOSE_BUTTON_SHEET_KEY, encodeURI(`/${CLOSE_BUTTON_SHEET_PATH}`));
     // Efeitos sonoros (poucos KB): o cache de áudio é global, então basta carregar aqui uma vez pro jogo todo.
     preloadSoundEffects(this);
+    // Os retratos dos 5 personagens, montados das camadas (`systems/layeredArt.ts`) — pros cartões de save.
+    for (const id of CHARACTER_IDS) preloadLayerStack(this, playerPortraitStack(id));
   }
 
   create(): void {
@@ -140,6 +151,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.slotsObjects = [];
     this.slotLabels = [];
     this.deleteButtons = [];
+    this.slotPortraits = [];
     this.dialogObjects = [];
     this.menuButtons = [];
     this.transitioning = false;
@@ -329,11 +341,19 @@ export class MainMenuScene extends Phaser.Scene {
       const [panel, label] = this.createSlotButton(centerX, y, slot);
       this.slotsObjects.push(panel, label);
       this.slotLabels[slot] = label as Phaser.GameObjects.Text;
+      this.slotPortraits[slot] = this.createSlotPortrait(centerX - SLOT_WIDTH / 2 + SLOT_PORTRAIT_INSET_X, y);
       this.deleteButtons[slot] = this.createDeleteButton(centerX + SLOT_WIDTH / 2 - DELETE_ICON_INSET_X, y - SLOT_HEIGHT / 2 + DELETE_ICON_INSET_Y, slot);
     }
 
     const backY = firstY + SAVE_SLOT_COUNT * (SLOT_HEIGHT + SLOT_GAP) + 10;
     this.slotsObjects.push(...this.createButton(centerX, backY, 'VOLTAR', () => this.transitionTo(() => this.showRoot()), SLOT_WIDTH, BUTTON_HEIGHT));
+  }
+
+  /** O retrato (rosto neutro) do personagem do slot — a textura certa entra em `updateSlotPortraits`. */
+  private createSlotPortrait(x: number, y: number): Phaser.GameObjects.Image {
+    const portrait = this.add.image(x, y, playerPortraitKey(DEFAULT_CHARACTER_ID));
+    portrait.setDepth(2).setVisible(false);
+    return portrait;
   }
 
   private createSlotButton(x: number, y: number, slot: number): Phaser.GameObjects.GameObject[] {
@@ -353,7 +373,7 @@ export class MainMenuScene extends Phaser.Scene {
     panel.setDepth(1);
     panel.setInteractive({ useHandCursor: true });
 
-    const label = this.add.text(x, y, '', {
+    const label = this.add.text(x + SLOT_LABEL_SHIFT_X, y, '', {
       fontFamily: TEXT_FONT,
       fontSize: '13px',
       fontStyle: 'bold',
@@ -409,6 +429,20 @@ export class MainMenuScene extends Phaser.Scene {
       icon.setVisible(show);
       if (show) icon.setInteractive();
       else icon.disableInteractive();
+    });
+    this.updateSlotPortraits(slotsVisible ? summaries : []);
+  }
+
+  /** Mostra o retrato do personagem nos slots com save (e esconde nos vazios / com os slots fechados). */
+  private updateSlotPortraits(summaries: SaveSlotSummary[]): void {
+    this.slotPortraits.forEach((portrait, slot) => {
+      const summary = summaries[slot];
+      const key = summary && !summary.empty ? playerPortraitKey(summary.characterId ?? DEFAULT_CHARACTER_ID) : null;
+      if (!key || !ensureLayerFrame(this, key, PLAYER_PORTRAIT_FACE)) {
+        portrait.setVisible(false);
+        return;
+      }
+      portrait.setTexture(key, PLAYER_PORTRAIT_FACE.name).setVisible(true);
     });
   }
 

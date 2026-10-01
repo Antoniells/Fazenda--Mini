@@ -52,7 +52,8 @@ import { preloadPlayerSprites } from '../systems/playerSprites';
 import { preloadPet } from '../systems/petSprites';
 import { PetCompanion } from '../systems/petCompanion';
 import { PET_ROAM } from '../data/pets';
-import { CROPS, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
+import { CROPS, CARROT, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
+import { ensureGolden } from '../systems/paletteSwap';
 import { DECORATIONS, WELL, DecorationDefinition, MORNING_ANIMATION_HOURS } from '../data/decorations';
 import { HOE, SICKLE, AXE, PICKAXE, HAMMER, COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
 import {
@@ -516,6 +517,11 @@ export class MainScene extends Phaser.Scene {
     
 
     const cropIconsTexture = this.textures.get(ALL_CROPS_ICONS_KEY);
+    // A Cenoura Dourada e a semente dela (os ícones de `GOLDEN_CARROT`/`GOLDEN_CARROT_SEED`): a cenoura com o laranja trocado por ouro.
+    this.events.once(Phaser.Scenes.Events.CREATE, () => {
+      ensureGolden(this, ALL_CROPS_ICONS_KEY, CARROT.cropFrameName);
+      ensureGolden(this, ALL_CROPS_ICONS_KEY, CARROT.seedFrameName);
+    });
     for (const crop of Object.values(CROPS)) {
       // Fruto colhido E saquinho de semente (pedido explícito, item 4) — dois frames por cultura agora, não um só.
       if (!cropIconsTexture.has(crop.cropFrameName)) {

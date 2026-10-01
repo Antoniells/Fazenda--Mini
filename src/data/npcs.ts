@@ -68,7 +68,10 @@ export interface NpcDefinition {
    */
   portrait: {
     key: string;
-    path: string;
+    /** Retrato pronto (um PNG). Ausente = montado de `layers`. */
+    path?: string;
+    /** Retrato montado de camadas do pacote (`systems/layeredArt.ts`): os caminhos de baixo pra cima, na ordem do Aseprite que vem com elas. */
+    layers?: { width: number; height: number; paths: string[] };
     frame: { x: number; y: number; width: number; height: number };
     expressions?: Partial<Record<PortraitExpression, { x: number; y: number }>>;
   };
@@ -86,6 +89,23 @@ export interface NpcDefinition {
 }
 
 const NPC_DIR = "Character/Character/Others/NPC'S";
+/** As folhas de retrato EM CAMADAS do pacote (256x128: 8 expressões de 64x64, 4 por linha). */
+const LAYERED_PORTRAIT_DIR = "Character/NPC'S";
+/** Onde fica cada expressão numa folha em camadas (a mesma ordem pra todas): neutro, feliz, contente, pensativo / bravo, triste, surpreso, assustado. */
+const LAYERED_EXPRESSIONS: Partial<Record<PortraitExpression, { x: number; y: number }>> = {
+  happy: { x: 64, y: 0 },
+  content: { x: 128, y: 0 },
+  thoughtful: { x: 192, y: 0 },
+  angry: { x: 0, y: 64 },
+  sad: { x: 64, y: 64 },
+  crying: { x: 64, y: 64 },
+  surprised: { x: 128, y: 64 },
+};
+const layeredPortrait = (npc: string, layers: string[]): { width: number; height: number; paths: string[] } => ({
+  width: 256,
+  height: 128,
+  paths: layers.map((layer) => `${LAYERED_PORTRAIT_DIR}/${npc}/Portrait - PNG and Aseprite/${layer}.png`),
+});
 
 export const NPCS: Record<NpcId, NpcDefinition> = {
   blacksmith: {
@@ -182,7 +202,13 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       idleFrames: 4,
       walkFrames: 6,
     },
-    portrait: { key: 'npc-pirate-portrait', path: `${NPC_DIR}/Pirate/Portrait.png`, frame: { x: 0, y: 0, width: 64, height: 64 } },
+    // Montado das camadas (8 expressões). O tapa-olho é o da arte: o olho de baixo dele é uma cicatriz.
+    portrait: {
+      key: 'npc-pirate-portrait-layered',
+      layers: layeredPortrait('Pirate', ['Skins/1', 'Eyes/Blue', 'Hair/Brown', 'Clothers/Shirt/Black', 'Clothers/Coat/Red', 'Acc/Beard/Brown', 'Acc/Eyepatch', 'Acc/Earring', 'Acc/Hat', 'Arm/1', 'Fx']),
+      frame: { x: 0, y: 0, width: 64, height: 64 },
+      expressions: LAYERED_EXPRESSIONS,
+    },
     home: VILLAGE_PIRATE_HOUSE,
     schedule: [
       { fromHour: 0, place: { kind: 'inside' } },
@@ -276,7 +302,13 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       frameSize: 32,
       idleFrames: 4,
     },
-    portrait: { key: 'npc-mermaid-portrait', path: `${NPC_DIR}/Beach/Mermaid Portrait.png`, frame: { x: 0, y: 0, width: 64, height: 64 } },
+    // Montado das camadas (8 expressões), no visual da sereia da Praia: ruiva, pele morena, conchas verdes.
+    portrait: {
+      key: 'npc-mermaid-portrait-layered',
+      layers: layeredPortrait('Mermaid', ['Skins/3', 'Hair/Ginger', 'Clothers/Green', 'Eyes/Purple', 'Acc/Earring/Green', 'Arm/3', 'Fx']),
+      frame: { x: 0, y: 0, width: 64, height: 64 },
+      expressions: LAYERED_EXPRESSIONS,
+    },
     stationary: BEACH_MERMAID_CELL,
     staysInRain: true,
     // Aparece de dia (dorme no fundo do mar à noite).

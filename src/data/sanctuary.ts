@@ -9,7 +9,8 @@
  * os braseiros são `Mine and Dungeon/Fire light.png` (9 quadros de 16x48: apagado, 6 de chama, apagado, sombra); os pedestais de cristal
  * são `Deep Forest/Stone structures Water.png` (16x20, 4 quadros de brilho por cor); o Sábio Coelho é o coelho branco de
  * `Animals/Forest/Rabbit/Rabbit Full White.png` (16x16, a 2ª linha é ele sentado de frente). Não há arte de cenoura dourada: a Cenoura
- * e a semente são a arte da cenoura do pacote em tom dourado (`GOLDEN_TINT`).
+ * e a semente são a arte da cenoura do pacote com o laranja TROCADO por ouro (`systems/paletteSwap.ts`, o sombreado fica); `GOLDEN_TINT`
+ * é o tom dourado dos efeitos (a subida do pet).
  */
 
 export const GOLDEN_TINT = 0xffd65a;

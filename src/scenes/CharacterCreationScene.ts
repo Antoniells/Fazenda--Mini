@@ -16,6 +16,8 @@ import {
 } from '../data/ui';
 import { PROFILE_NAME_MAX_LENGTH } from '../systems/gameState';
 import { CHARACTER_IDS, DEFAULT_CHARACTER_ID, getPlayerAssets } from '../data/player';
+import { PLAYER_PORTRAIT_FACE, playerPortraitKey, playerPortraitStack } from '../data/playerPortrait';
+import { ensureLayerFrame, preloadLayerStack } from '../systems/layeredArt';
 import { preloadCharacterPreviews, ensureCharacterPreviewAnimation } from '../systems/playerSprites';
 import { PET_IDS, DEFAULT_PET_ID, getPetDefinition, getPetTextureKey } from '../data/pets';
 import { preloadPetPreviews, ensurePetAnimations, petAnimKey } from '../systems/petSprites';
@@ -44,6 +46,9 @@ const ARROW_OFFSET_X = 110;
 /** Preview do pet (a arte dele é bem menor que a do personagem, então o zoom também). */
 const PET_PREVIEW_SCALE = 3;
 const ARROW_WIDTH = 46;
+/** O retrato do personagem (`data/playerPortrait.ts`), à esquerda da seta: posição (a partir do centro) e escala. */
+const PORTRAIT_OFFSET_X = 188;
+const PORTRAIT_SCALE = 1.5;
 const FIELD_WIDTH = 400;
 const FIELD_HEIGHT = 38;
 const FIELD_PADDING_X = 14;
@@ -95,6 +100,7 @@ export class CharacterCreationScene extends Phaser.Scene {
   private transitioning = false;
   private characterIndex = Math.max(0, CHARACTER_IDS.indexOf(DEFAULT_CHARACTER_ID));
   private previewSprite!: Phaser.GameObjects.Sprite;
+  private portrait!: Phaser.GameObjects.Image;
   private petIndex = Math.max(0, PET_IDS.indexOf(DEFAULT_PET_ID));
   private petSprite!: Phaser.GameObjects.Sprite;
   private petLabel!: Phaser.GameObjects.Text;
@@ -115,6 +121,8 @@ export class CharacterCreationScene extends Phaser.Scene {
     // Idle de cada personagem, pro preview (o resto das folhas só carrega na `MainScene`, do personagem escolhido).
     preloadCharacterPreviews(this);
     preloadPetPreviews(this);
+    // Os retratos dos 5 personagens, montados das camadas (`systems/layeredArt.ts`).
+    for (const id of CHARACTER_IDS) preloadLayerStack(this, playerPortraitStack(id));
   }
 
   create(): void {
@@ -156,6 +164,7 @@ export class CharacterCreationScene extends Phaser.Scene {
     this.previewSprite = this.add.sprite(centerX, previewY, getPlayerAssets(CHARACTER_IDS[this.characterIndex]).idleKey, 0);
     this.previewSprite.setScale(PREVIEW_SCALE);
     this.previewSprite.setDepth(3);
+    this.portrait = this.add.image(centerX - PORTRAIT_OFFSET_X, previewY, playerPortraitKey(CHARACTER_IDS[this.characterIndex])).setScale(PORTRAIT_SCALE).setDepth(3);
     this.addText(centerX, top + 198, '< >  ou  ← →: trocar de personagem', 11, INK_SOFT);
     this.createButton(centerX - ARROW_OFFSET_X, previewY, '<', () => this.selectCharacter(-1), ARROW_WIDTH);
     this.createButton(centerX + ARROW_OFFSET_X, previewY, '>', () => this.selectCharacter(1), ARROW_WIDTH);
@@ -211,6 +220,12 @@ export class CharacterCreationScene extends Phaser.Scene {
     const id = CHARACTER_IDS[this.characterIndex];
     this.previewSprite.setTexture(getPlayerAssets(id).idleKey);
     this.previewSprite.play(ensureCharacterPreviewAnimation(this, id));
+    const portraitKey = playerPortraitKey(id);
+    if (ensureLayerFrame(this, portraitKey, PLAYER_PORTRAIT_FACE)) {
+      this.portrait.setTexture(portraitKey, PLAYER_PORTRAIT_FACE.name).setVisible(true);
+    } else {
+      this.portrait.setVisible(false);
+    }
 
     if (pop) {
       this.tweens.killTweensOf(this.previewSprite);

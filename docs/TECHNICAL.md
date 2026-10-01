@@ -1595,3 +1595,16 @@ Só ideias de design (nada de código, dados ou arte do jogo original). Tudo é 
 
 ### Veios que cintilam (`systems/oreSparkle.ts`)
 - Cada veio na tela acende de vez em quando uma estrelinha de `Character/Character/Others/Shine.png` (a cruz 3x3 ou o ponto), na cor do minério, acima do véu (ADD). O ritmo é por tipo (`ORE_SPARKLE`: Azurita e Ouro mais) e 4x maior perto do personagem. Estrelinhas reaproveitadas (pool).
+
+## Ideias do stardew.me aplicadas à arte (troca de paleta e arte em camadas)
+Só ideias (o repositório não tem licença e traz arte do Stardew, que nunca entra aqui). As duas técnicas trabalham sobre a arte do pacote, uma vez, numa textura de canvas do Phaser guardada pro jogo todo — sem biblioteca nova e sem passo de build.
+
+### Troca de paleta (`systems/paletteSwap.ts`)
+- `recolorFrame` copia um quadro de uma textura já carregada e troca, pixel a pixel, uma família de cor por outra paleta, mantendo o sombreado. `toGold`: laranja (matiz 5°–50°, saturação HSV ≥ 0,4) → a rampa do ouro pela luminosidade; folha verde, contorno e papel ficam como estão.
+- A **Cenoura Dourada** e a semente dela: a `MainScene` cria as versões douradas dos ícones (chave `golden:<textura>:<quadro>`, usada por `GOLDEN_CARROT`/`GOLDEN_CARROT_SEED`); o santuário cria uma por estágio da cenoura no altar e a intro usa a do ícone. `GOLDEN_TINT` continua só nos efeitos (a subida do pet).
+
+### Arte em camadas (`systems/layeredArt.ts`)
+- `preloadLayerStack` carrega as camadas (PNGs do mesmo tamanho, de baixo pra cima na ordem do Aseprite do pacote) e, quando o carregamento termina, `composeLayerStack` as empilha na textura final e descarta as soltas. `ensureLayerFrame` registra um quadro nela.
+- **Pirata e Sereia** (`data/npcs.ts`, `portrait.layers`): retratos montados das folhas em camadas do pacote (256x128, 8 expressões — neutro, feliz, contente, pensativo / bravo, triste, surpreso, assustado), no visual mais próximo dos antigos. O Pirata usa o tapa-olho: na arte do pacote o olho debaixo dele é uma cicatriz. Com isso as falas por marco deles também mudam de expressão.
+- **Retrato do personagem** (`data/playerPortrait.ts`): os 5 personagens prontos não trazem retrato, então cada um é montado de `Character/Character/Portrait/PNG` com as peças mais parecidas (cabelo, olhos, roupa, pele; a Manu com o chapéu de vaca). Aparece nos cartões de save (`SaveSlotSummary.characterId`) e na criação de personagem, ao lado da animação.
+- Teste: `tests/unit/layeredArt.test.ts` confere que toda camada usada existe no pacote.

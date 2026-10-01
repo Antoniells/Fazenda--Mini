@@ -78,6 +78,8 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 - [x] Sons e Música (SFX de ferramentas, passos, combate e interface; música do dia; narração da cena introdutória) — os sons dos momentos da história ficam na Fase 11, Etapa 6
 - [x] Animações (água animada; vento global que balança a vegetação em onda, árvores e plantas empurradas por quem passa, folhas caindo)
 - [x] Atmosfera (Cavernas em penumbra com o halo do personagem e escadas iluminadas; veios que cintilam)
+- [x] Retratos (Pirata e Sereia com 8 expressões, montados das camadas do pacote; retrato do personagem nos cartões de save e na criação)
+- [ ] Personalização do personagem (pele, olhos, cabelo e cor, roupa e acessório, montados das camadas de todas as animações) — próxima etapa combinada
 - [ ] Balanceamento (ajuste de preços da loja e custo das pontes de expansão) — junto com a rodada de jogo da história (Fase 11, Etapa 6)
 - [x] Salvamento (3 slots; no executável, em `Documentos/Mini Fazenda`; campos novos sempre opcionais, pra saves antigos continuarem carregando)
 
@@ -100,8 +102,8 @@ A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à pa
 - [x] Etapa 4 — Descida 51-100: andares mais hostis e a Horda Final do andar 100 (3 ondas)
 - [x] Etapa 5 — Santuário e fim: o andar 100 vira santuário, semente e lago do Peixe Dourado, plantio no altar, sacrifício do pet, cinemática, créditos e a caixa com o filhote; depois do fim, o mundo em paz (sem hordas nem monstros)
 - [x] Cena introdutória narrada: 4 slides com texto datilografado, narração por slide (ElevenLabs, `tools/generate_intro_voices.py`), avançar com F/Espaço e pular com ESC — ver [TECHNICAL.md](TECHNICAL.md#cena-introdutória-scenesintroscenets-dataintrots)
-- [ ] Etapa 6 — Polimento: rodada de jogo da história inteira e balanceamento (Azurita, peixes do Mago, custo dos encantamentos, Horda Final, crescimento da Cenoura), falas e cartas dos moradores e do Mago sobre a profecia, sons do altar/sacrifício/onda de luz/pesca, música da cinemática e dos créditos, arte da Cenoura Dourada e a narração em inglês
+- [ ] Etapa 6 — Polimento: rodada de jogo da história inteira e balanceamento (Azurita, peixes do Mago, custo dos encantamentos, Horda Final, crescimento da Cenoura), falas e cartas dos moradores e do Mago sobre a profecia, sons do altar/sacrifício/onda de luz/pesca, música da cinemática e dos créditos e a narração em inglês (a arte da Cenoura Dourada já foi refeita com troca de paleta)
 
 ---
 
-**Status atual (versão 0.1.9):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.
+**Status atual (versão 0.1.10):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.
