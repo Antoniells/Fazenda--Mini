@@ -21,7 +21,8 @@ import { installGameCursor } from '../systems/gameCursor';
 import { SettingsPanel } from '../ui/settingsPanel';
 import { SAVE_SLOT_COUNT, getAllSlotSummaries, startNewGame, load as loadSave, deleteSave, SaveSlotSummary } from '../systems/saveManager';
 import { ensureLayerFrame, preloadLayerStack } from '../systems/layeredArt';
-import { PLAYER_PORTRAIT_FACE, playerPortraitKey, playerPortraitStack } from '../data/playerPortrait';
+import { PLAYER_PORTRAIT_FACE, playerPortraitKey, playerPortraitStack, portraitKeyFor } from '../data/playerPortrait';
+import { preloadCharacterLook } from '../systems/characterComposer';
 import { CHARACTER_IDS, DEFAULT_CHARACTER_ID } from '../data/player';
 
 export const MAIN_MENU_SCENE_KEY = 'MainMenuScene';
@@ -142,6 +143,8 @@ export class MainMenuScene extends Phaser.Scene {
     preloadSoundEffects(this);
     // Os retratos dos 5 personagens, montados das camadas (`systems/layeredArt.ts`) — pros cartões de save.
     for (const id of CHARACTER_IDS) preloadLayerStack(this, playerPortraitStack(id));
+    // E o retrato de quem personalizou o personagem (as peças escolhidas — `systems/characterComposer.ts`).
+    for (const summary of getAllSlotSummaries()) if (summary.appearance) preloadCharacterLook(this, summary.appearance, [], true);
   }
 
   create(): void {
@@ -437,7 +440,7 @@ export class MainMenuScene extends Phaser.Scene {
   private updateSlotPortraits(summaries: SaveSlotSummary[]): void {
     this.slotPortraits.forEach((portrait, slot) => {
       const summary = summaries[slot];
-      const key = summary && !summary.empty ? playerPortraitKey(summary.characterId ?? DEFAULT_CHARACTER_ID) : null;
+      const key = summary && !summary.empty ? portraitKeyFor(summary.characterId ?? DEFAULT_CHARACTER_ID, summary.appearance) : null;
       if (!key || !ensureLayerFrame(this, key, PLAYER_PORTRAIT_FACE)) {
         portrait.setVisible(false);
         return;

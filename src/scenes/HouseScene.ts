@@ -124,7 +124,7 @@ export class HouseScene extends Phaser.Scene {
     this.load.image(HOUSE_ART.floor.key, encodeURI(`/${HOUSE_ART.floor.path}`));
     this.load.image(HOUSE_ART.bed.key, encodeURI(`/${HOUSE_ART.bed.path}`));
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
-    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPlayerSprites(this, gameState.profile);
     preloadPet(this, gameState.profile.petId);
     preloadFurniture(this);
   }
@@ -134,7 +134,7 @@ export class HouseScene extends Phaser.Scene {
     const { cols, rows, exitPosition, spawnPosition, bedPosition, bedFootprint } = houseMap;
     const tilePx = TILE_SIZE * DISPLAY_SCALE;
 
-    Player.createAnimations(this, gameState.profile.characterId);
+    Player.createAnimations(this, gameState.profile);
 
     this.buildRoom(cols, rows, tilePx, exitPosition);
 

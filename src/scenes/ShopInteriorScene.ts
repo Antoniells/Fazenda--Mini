@@ -121,7 +121,7 @@ export class ShopInteriorScene extends Phaser.Scene {
       else this.load.image(art.key, encodeURI(`/${art.path}`));
     }
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
-    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPlayerSprites(this, gameState.profile);
     preloadNpcs(this, [this.layout.npc]);
     preloadVillageShop(this);
   }
@@ -131,7 +131,7 @@ export class ShopInteriorScene extends Phaser.Scene {
     const tilePx = TILE_SIZE * DISPLAY_SCALE;
     const def = NPCS[this.layout.npc];
 
-    Player.createAnimations(this, gameState.profile.characterId);
+    Player.createAnimations(this, gameState.profile);
     this.buildRoom(tilePx);
 
     // Colisão: parede do fundo, laterais, frente e as peças; a porta fura a parede da frente.

@@ -49,7 +49,7 @@ Nunca gerar elementos visuais via HTML, CSS, SVG, emojis ou formas desenhadas pr
 - TypeScript + Phaser + Vite para o desenvolvimento do jogo.
 - Electron foi integrado na Fase 10 (empacotamento desktop): processo principal e preload em `electron/`, detalhes em [docs/TECHNICAL.md](docs/TECHNICAL.md#integração-com-electron-fase-10).
 - Testes: Vitest (lógica, com o Phaser substituído) e Playwright (ponta a ponta, dirigindo o menu de hack).
-- Ferramentas fora do jogo ficam em `tools/` (ex.: `tools/generate_intro_voices.py`, narração da intro pelo ElevenLabs — a chave da API vem sempre da variável `ELEVENLABS_API_KEY`, nunca do código).
+- Ferramentas fora do jogo ficam em `tools/` (ex.: `tools/generate_intro_voices.py`, narração da intro pelo ElevenLabs — a chave da API vem sempre da variável `ELEVENLABS_API_KEY`, nunca do código; `tools/scan-character-layers.mjs`, que gera a tabela dos nomes reais das camadas do personagem — rodar de novo se o pacote de arte mudar).
 - A arquitetura do jogo continua independente da camada de empacotamento: nada em `src/` importa Electron. Tudo que é específico de desktop (arquivos de save, tela cheia) chega ao jogo por adaptadores (`systems/storageAdapter.ts`, `systems/displayMode.ts`) que caem no comportamento de navegador quando a ponte do Electron não existe.
 
 ## Escopo de design
@@ -58,7 +58,7 @@ Este é exclusivamente um jogo de fazenda, inspirado na experiência da Mini Faz
 
 ## Estado atual
 
-Versão **0.1.10**. O jogo está completo do começo ao fim: agricultura, economia, construções e melhorias, tempo e clima, recursos e mineração, Vilarejo com moradores e campanha, hordas, Cavernas de 100 andares, pesca e a história principal ("Os Três Pilares do Equilíbrio"), da cena introdutória narrada ao fim com cinemática e créditos. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para o que está pronto e o que falta — o próximo trabalho é a **Etapa 6 da Fase 11** (rodada de jogo, balanceamento e polimento de falas, sons e arte).
+Versão **0.1.11**. O jogo está completo do começo ao fim: agricultura, economia, construções e melhorias, tempo e clima, recursos e mineração, Vilarejo com moradores e campanha, hordas, Cavernas de 100 andares, pesca e a história principal ("Os Três Pilares do Equilíbrio"), da cena introdutória narrada ao fim com cinemática e créditos. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para o que está pronto e o que falta — o próximo trabalho é a **Etapa 6 da Fase 11** (rodada de jogo, balanceamento e polimento de falas, sons e arte).
 
 Convenções de trabalho que valem para todas as tarefas:
 - **Menu de hack (F9)**: ferramenta de teste (`src/debug/hackMenu.ts`), só no modo de desenvolvimento (`npm run dev`); leva a qualquer cena e a qualquer marco da história.

@@ -38,6 +38,17 @@ test('o tour passa por todas as cenas sem erros', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('o personagem personalizado (montado das camadas) passa pelo tour sem erros', async ({ page }) => {
+  const errors = await startTestGame(page);
+  await page.getByRole('button', { name: 'Personagem personalizado (sorteado)' }).click();
+  await expect(hackLog(page)).toContainText('Fazenda recarregada', { timeout: 60_000 });
+  await page.getByRole('button', { name: 'Ferramentas/armas/armaduras' }).click();
+  await page.getByRole('button', { name: /^Iniciar/ }).click();
+  await expect(hackLog(page)).toContainText('Tour terminado', { timeout: 180_000 });
+  await expect(hackLog(page)).toContainText('0 erro(s)');
+  expect(errors).toEqual([]);
+});
+
 test('a história: Floresta Oculta, andar 50, santuário e o fim', async ({ page }) => {
   const errors = await startTestGame(page);
   await page.getByRole('button', { name: 'Itens da história' }).click();

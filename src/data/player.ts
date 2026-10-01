@@ -28,6 +28,7 @@
  * 8 frames/direção) e `Sickle.png` (colher, 6 frames/direção).
  */
 import { farmMap } from './maps/farmMap';
+import { appearanceSignature, characterSheetKey, type CharacterSheetId, type PlayerAppearance } from './playerAppearance';
 
 export const PLAYER_FRAME_SIZE = 32;
 
@@ -35,6 +36,18 @@ export const PLAYER_FRAME_SIZE = 32;
 export const CHARACTER_IDS = ['Alex', 'Josh', 'Lyria', 'Manu', 'Tori'] as const;
 export type CharacterId = (typeof CHARACTER_IDS)[number];
 export const DEFAULT_CHARACTER_ID: CharacterId = 'Alex';
+
+/**
+ * O VISUAL do personagem: um dos prontos (`characterId`) ou, com `appearance`, o montado das camadas na Criação de Personagem
+ * (`data/playerAppearance.ts`). O `PlayerProfile` do save já tem esse formato. Saves de antes da personalização não têm `appearance`
+ * e continuam com o personagem pronto.
+ */
+export interface PlayerLook {
+  characterId: CharacterId;
+  appearance?: PlayerAppearance;
+}
+
+const lookOf = (look: PlayerLook | CharacterId): PlayerLook => (typeof look === 'string' ? { characterId: look } : look);
 
 export function isCharacterId(value: unknown): value is CharacterId {
   return typeof value === 'string' && (CHARACTER_IDS as readonly string[]).includes(value);
@@ -133,6 +146,8 @@ export interface ActionAnimSpec {
 /** Todas as chaves/caminhos do sprite de UM personagem — ver `getPlayerAssets`. */
 export interface PlayerAssets {
   characterId: CharacterId;
+  /** Personagem montado das camadas: as texturas (chaves abaixo) são criadas por `systems/characterComposer.ts`, não carregadas de `path`. */
+  composed?: PlayerAppearance;
   /** Prefixo das chaves de animação de idle/andar (`${animPrefix}-idle-down`, ...). */
   animPrefix: string;
   idleKey: string;
@@ -318,7 +333,16 @@ const FISHING_TIMING: Record<FishingPhase, { frames: number; frameRate: number; 
   miss: { frames: 4, frameRate: 7, repeat: 0 },
 };
 
-export function getFishingSheets(characterId: CharacterId): Record<FishingPhase, FishingSheetSpec> {
+export function getFishingSheets(lookOrId: PlayerLook | CharacterId): Record<FishingPhase, FishingSheetSpec> {
+  const { characterId, appearance } = lookOf(lookOrId);
+  if (appearance) {
+    // Montado: as mesmas fases e tempos, nas folhas montadas (já no formato de 3 linhas, sem recorte especial).
+    const sheets = {} as Record<FishingPhase, FishingSheetSpec>;
+    for (const phase of Object.keys(FISHING_TIMING) as FishingPhase[]) {
+      sheets[phase] = { key: characterSheetKey(appearance, `fish-${phase}` as CharacterSheetId), path: '', ...FISHING_TIMING[phase] };
+    }
+    return sheets;
+  }
   const dir = `${PRE_MADE_DIR}/${characterId}/Fishing`;
   const prefix = `player-${characterId.toLowerCase()}-fishing`;
   const files = FISHING_FILES[characterId];
@@ -330,12 +354,35 @@ export function getFishingSheets(characterId: CharacterId): Record<FishingPhase,
   return sheets;
 }
 
-const assetsCache = new Map<CharacterId, PlayerAssets>();
+const assetsCache = new Map<string, PlayerAssets>();
 
-/** Chaves/caminhos do sprite do personagem escolhido (memoizado). Cada personagem tem as PRÓPRIAS chaves de textura/animação, então trocar de personagem (outro slot) nunca reaproveita a arte do anterior. */
-export function getPlayerAssets(characterId: CharacterId): PlayerAssets {
-  const cached = assetsCache.get(characterId);
+/**
+ * Chaves/caminhos do sprite do personagem (memoizado). Cada visual tem as PRÓPRIAS chaves de textura/animação, então trocar de personagem
+ * (outro slot) nunca reaproveita a arte do anterior. Montado (`appearance`): as mesmas animações e quadros dos prontos, nas texturas montadas.
+ */
+export function getPlayerAssets(lookOrId: PlayerLook | CharacterId): PlayerAssets {
+  const { characterId, appearance } = lookOf(lookOrId);
+  const cacheKey = appearance ? `pc-${appearanceSignature(appearance)}` : characterId;
+  const cached = assetsCache.get(cacheKey);
   if (cached) return cached;
+  if (appearance) {
+    const base = buildActions(DEFAULT_CHARACTER_ID);
+    const actions = {} as Record<PlayerActionKey, ActionAnimSpec>;
+    // As chaves das ações batem com os ids das folhas montadas (`CHARACTER_SHEETS`).
+    for (const action of Object.keys(base) as PlayerActionKey[]) actions[action] = { ...base[action], key: characterSheetKey(appearance, action), path: '' };
+    const composed: PlayerAssets = {
+      characterId,
+      composed: appearance,
+      animPrefix: cacheKey,
+      idleKey: characterSheetKey(appearance, 'idle'),
+      idlePath: '',
+      walkKey: characterSheetKey(appearance, 'walk'),
+      walkPath: '',
+      actions,
+    };
+    assetsCache.set(cacheKey, composed);
+    return composed;
+  }
 
   const animPrefix = `player-${characterId.toLowerCase()}`;
   const assets: PlayerAssets = {
@@ -347,6 +394,6 @@ export function getPlayerAssets(characterId: CharacterId): PlayerAssets {
     walkPath: `${PRE_MADE_DIR}/${characterId}/Walk.png`,
     actions: buildActions(characterId),
   };
-  assetsCache.set(characterId, assets);
+  assetsCache.set(cacheKey, assets);
   return assets;
 }

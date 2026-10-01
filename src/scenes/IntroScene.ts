@@ -97,7 +97,7 @@ export class IntroScene extends Phaser.Scene {
     const goldenFish = FISH_BY_ID[GOLDEN_FISH_ID];
     sheet(fishTextureKey(goldenFish), goldenFish.iconPath, 16);
     preloadSheets(this, SLIME_COLORS.map((color) => slimeSheet(color)));
-    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPlayerSprites(this, gameState.profile);
     preloadPet(this, gameState.profile.petId);
     // A narração: um arquivo que falta não pode travar a cena (ela segue sem voz).
     for (const slide of INTRO_SLIDES) {
@@ -305,8 +305,8 @@ export class IntroScene extends Phaser.Scene {
         farm.setTint(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
       },
     });
-    const assets = getPlayerAssets(gameState.profile.characterId);
-    Player.createAnimations(this, gameState.profile.characterId);
+    const assets = getPlayerAssets(gameState.profile);
+    Player.createAnimations(this, gameState.profile);
     const groundY = height - PANEL_HEIGHT - 60;
     const player = this.add.sprite(cx - 40, groundY, assets.idleKey, 0).setOrigin(0.5, 1).setScale(5).play(`${assets.animPrefix}-idle-down`);
     ensurePetAnimations(this, gameState.profile.petId);

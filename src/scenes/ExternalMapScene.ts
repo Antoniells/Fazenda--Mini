@@ -229,7 +229,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // carregado aqui uma vez só, pras 4 cenas externas, em vez de repetir em
     // cada `loadMapAssets` (ver `systems/mapProps.ts`).
     this.load.image(PROPS_TILESET_KEY, encodeURI(`/${PROPS_TILESET_PATH}`));
-    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPlayerSprites(this, gameState.profile);
     preloadPet(this, gameState.profile.petId);
     if (this.config.fishing) preloadFishingAssets(this);
 

@@ -288,7 +288,7 @@ export class MainScene extends Phaser.Scene {
     this.load.image(PROPS_TILESET_KEY, encodeURI(`/${PROPS_TILESET_PATH}`));
 
     // Sprite do personagem escolhido no save (`profile.characterId` já foi definido por `load`/`startNewGame` antes desta cena começar).
-    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPlayerSprites(this, gameState.profile);
     preloadPet(this, gameState.profile.petId);
     preloadPetBox(this);
     preloadMailbox(this);
@@ -587,7 +587,7 @@ export class MainScene extends Phaser.Scene {
 
     const grid = buildWalkableGrid(farmMap);
     const tilePx = farmMap.tileSize * DISPLAY_SCALE;
-    Player.createAnimations(this, gameState.profile.characterId);
+    Player.createAnimations(this, gameState.profile);
 
     const spawn = this.spawnOverride ?? PLAYER_START;
     this.player = new Player(this, spawn.col, spawn.row, tilePx);

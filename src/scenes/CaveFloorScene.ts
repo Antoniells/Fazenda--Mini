@@ -111,7 +111,7 @@ export class CaveFloorScene extends Phaser.Scene {
     this.load.spritesheet(CAVE_TILES.key, encodeURI(`/${CAVE_TILES.path}`), { frameWidth: CAVE_TILES.size, frameHeight: CAVE_TILES.size });
     this.load.spritesheet(CAVE_STAIRS.key, encodeURI(`/${CAVE_STAIRS.path}`), { frameWidth: CAVE_STAIRS.size, frameHeight: CAVE_STAIRS.size });
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
-    preloadPlayerSprites(this, gameState.profile.characterId);
+    preloadPlayerSprites(this, gameState.profile);
     preloadPet(this, gameState.profile.petId);
     preloadSheets(this, enemySheetsFor(this.config));
     if (!this.textures.exists(ORE_KEY)) this.load.image(ORE_KEY, encodeURI(`/${ORE_PATH}`));
@@ -142,7 +142,7 @@ export class CaveFloorScene extends Phaser.Scene {
     const grid = buildExternalGrid(cols, rows, wallCells);
     const interactions = new InteractionRegistry();
 
-    Player.createAnimations(this, gameState.profile.characterId);
+    Player.createAnimations(this, gameState.profile);
     // Nasce junto da escada por onde chegou.
     const spawn = this.entry.from === 'below' ? { col: stairsDown.col, row: stairsDown.row + 1 } : playerSpawn;
     this.player = new Player(this, spawn.col, spawn.row, tilePx);

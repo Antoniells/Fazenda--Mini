@@ -659,7 +659,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     const rightCenterX = bookLeft + PAGE_RECT.right.x * BOOK_SCALE + rightPageWidth / 2;
     const rightCenterY = bookTop + PAGE_RECT.top * BOOK_SCALE + pageHeight / 2;
 
-    this.characterSprite = scene.add.image(rightCenterX, rightCenterY, getPlayerAssets(gameState.profile.characterId).idleKey, PLAYER_ANIM_FRAMES.idleDown.start);
+    this.characterSprite = scene.add.image(rightCenterX, rightCenterY, getPlayerAssets(gameState.profile).idleKey, PLAYER_ANIM_FRAMES.idleDown.start);
     this.characterSprite.setOrigin(0.5, 0.5);
     this.characterSprite.setScale(CHARACTER_SPRITE_SCALE);
     this.characterSprite.setScrollFactor(0);

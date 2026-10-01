@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { debugFlags } from './debugFlags';
 import { gameState } from '../systems/gameState';
 import { startNewGame, save as saveGame } from '../systems/saveManager';
+import { APPEARANCE_PARTS, appearanceSignature, sanitizeAppearance } from '../data/playerAppearance';
 import { advanceWorldTime } from '../systems/worldTime';
 import { startNextDay } from '../systems/dayCycle';
 import { DAY_LENGTH_MS } from '../systems/gameClock';
@@ -345,6 +346,19 @@ História: ${STORY_MILESTONES.filter((milestone) => hasMilestone(milestone.id)).
   button(player, 'Lojas sempre abertas: alternar', () => {
     debugFlags.shopsAlwaysOpen = !debugFlags.shopsAlwaysOpen;
     say(`Lojas sempre abertas: ${debugFlags.shopsAlwaysOpen ? 'sim' : 'não'}`);
+  });
+  // Personalização (`data/playerAppearance.ts`): sorteia uma aparência e recarrega a Fazenda com o personagem montado das camadas.
+  button(player, 'Personagem personalizado (sorteado)', () => {
+    const look = sanitizeAppearance(Object.fromEntries(APPEARANCE_PARTS.map(({ part, options }) => [part, options[Math.floor(Math.random() * options.length)].value])));
+    gameState.profile.appearance = look;
+    say(`Personagem personalizado: ${appearanceSignature(look)}`);
+    const farm = game.scene.getScene('MainScene');
+    if (!game.scene.isActive('MainScene')) {
+      say('Vá pra Fazenda pra ver (as outras cenas montam ao entrar).');
+      return;
+    }
+    farm.events.once(Phaser.Scenes.Events.CREATE, () => say('Fazenda recarregada.'));
+    farm.scene.restart();
   });
   button(player, 'Salvar (slot ativo)', () => {
     saveGame();

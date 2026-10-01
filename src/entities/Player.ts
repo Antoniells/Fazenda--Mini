@@ -5,6 +5,7 @@ import {
   PlayerActionKey,
   PlayerAssets,
   CharacterId,
+  PlayerLook,
   getPlayerAssets,
 } from '../data/player';
 import { gameState } from '../systems/gameState';
@@ -35,7 +36,7 @@ export class Player {
   row: number;
 
   private readonly tilePx: number;
-  /** Chaves de textura/animação do personagem escolhido (`gameState.profile.characterId`) — as texturas já foram carregadas no `preload` da cena (ver `systems/playerSprites.ts`). */
+  /** Chaves de textura/animação do personagem escolhido (`gameState.profile`: o pronto ou o montado das camadas) — as texturas já foram carregadas no `preload` da cena (ver `systems/playerSprites.ts`). */
   private readonly assets: PlayerAssets;
   private facing: Facing = 'down';
   /** Espelha o sprite de lado (o frame base de "side" olha para a esquerda). */
@@ -61,7 +62,7 @@ export class Player {
     this.col = col;
     this.row = row;
     this.tilePx = tilePx;
-    this.assets = getPlayerAssets(gameState.profile.characterId);
+    this.assets = getPlayerAssets(gameState.profile);
 
     const { x, y } = this.cellAnchor(col, row);
     this.sprite = scene.add.sprite(x, y, this.assets.idleKey, PLAYER_ANIM_FRAMES.idleDown.start);
@@ -437,8 +438,8 @@ if (t >= 1) {
   }
 
   /** Cria as animações de idle/caminhada/ações agrícolas nas 3 direções do rig (baixo/cima/lado). */
-  static createAnimations(scene: Phaser.Scene, characterId: CharacterId): void {
-    const assets = getPlayerAssets(characterId);
+  static createAnimations(scene: Phaser.Scene, look: PlayerLook | CharacterId): void {
+    const assets = getPlayerAssets(look);
     // O gerenciador de animações do Phaser é GLOBAL (por `Game`, não por
     // cena) — sem essa checagem, toda troca de cena/`MainScene.create()`
     // tentava recriar as mesmas chaves de novo, gerando warnings no console

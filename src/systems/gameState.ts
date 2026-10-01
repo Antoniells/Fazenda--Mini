@@ -19,6 +19,7 @@ import { EventsState, createEventsState } from '../data/events';
 import { SkillsState, createSkillsState } from '../data/skills';
 import { AnimalsState, createAnimalsState } from '../data/animals';
 import { ConstructionState, createConstructionState } from '../data/construction';
+import type { PlayerAppearance } from '../data/playerAppearance';
 
 /** Uma construção posicionada pelo jogador na Fazenda (Poço, Fornalha, etc.) — só o necessário pra reconstruir depois: a definição completa (`data/decorations.ts`) é buscada de novo pelo id na hora de restaurar, nunca duplicada aqui. */
 export interface PlacedDecorationRecord {
@@ -35,6 +36,8 @@ export interface PlayerProfile {
   characterId: CharacterId;
   /** Pet companheiro escolhido na Criação de Personagem (gato ou cachorro, `data/pets.ts`) — acompanha o jogador em todas as cenas. */
   petId: PetId;
+  /** Aparência montada na Criação de Personagem (`data/playerAppearance.ts`). Ausente = o personagem pronto `characterId` (saves antigos). */
+  appearance?: PlayerAppearance;
 }
 
 export const PROFILE_NAME_MAX_LENGTH = 16;

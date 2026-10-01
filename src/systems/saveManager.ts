@@ -1,4 +1,5 @@
 import { isCharacterId, type CharacterId } from '../data/player';
+import { sanitizeAppearance, type PlayerAppearance } from '../data/playerAppearance';
 import { isPetId } from '../data/pets';
 import { gameState, PlacedDecorationRecord, PlayerProfile, SlimeRespawnRecord, WeatherState, DEFAULT_PROFILE } from './gameState';
 import { Inventory, InventorySaveData } from './inventory';
@@ -56,6 +57,8 @@ export interface SaveData {
   characterId?: string;
   /** Opcional: saves anteriores ao pet companheiro não têm — carregam com o pet padrão. */
   petId?: string;
+  /** Opcional: aparência montada (personalização). Saves anteriores não têm — continuam com o personagem pronto `characterId`. */
+  appearance?: Partial<PlayerAppearance>;
   /** Opcional: saves anteriores aos recursos persistentes não têm — carregam com árvores/pedras nos lugares originais do mapa. Estado de árvores/pedras (cortadas, brotos, crescimento) por cena. */
   resourceNodes?: Record<string, ResourceNode[]>;
   /** Opcional: saves anteriores ao respawn diário dos Slimes não têm — carregam com todos vivos. */
@@ -126,6 +129,8 @@ export interface SaveSlotSummary {
   farmName?: string;
   /** O personagem do save (o retrato do cartão, `data/playerPortrait.ts`). */
   characterId?: CharacterId;
+  /** A aparência montada, se o personagem foi personalizado (o retrato do cartão sai dela). */
+  appearance?: PlayerAppearance;
 }
 
 /**
@@ -176,6 +181,7 @@ export function getSlotSummary(slot: number): SaveSlotSummary {
       playerName: data.playerName ?? DEFAULT_PROFILE.playerName,
       farmName: data.farmName ?? DEFAULT_PROFILE.farmName,
       characterId: isCharacterId(data.characterId) ? data.characterId : DEFAULT_PROFILE.characterId,
+      appearance: data.appearance ? sanitizeAppearance(data.appearance) : undefined,
     };
   } catch (error) {
     console.error(`SaveManager: save do slot ${slot} corrompido — tratado como vazio.`, error);
@@ -209,6 +215,7 @@ export function save(slot?: number): void {
     farmName: gameState.profile.farmName,
     characterId: gameState.profile.characterId,
     petId: gameState.profile.petId,
+    appearance: gameState.profile.appearance ? { ...gameState.profile.appearance } : undefined,
     slimeRespawn: { ...gameState.slimeRespawn },
     weather: { ...gameState.weather },
     resourceNodes: resourceNodeRegistry.serialize(),
@@ -270,6 +277,7 @@ export function load(slot: number): boolean {
       farmName: data.farmName ?? DEFAULT_PROFILE.farmName,
       characterId: isCharacterId(data.characterId) ? data.characterId : DEFAULT_PROFILE.characterId,
       petId: isPetId(data.petId) ? data.petId : DEFAULT_PROFILE.petId,
+      appearance: data.appearance ? sanitizeAppearance(data.appearance) : undefined,
     };
     const slimeRespawn = data.slimeRespawn ? { ...data.slimeRespawn } : { day: data.gameClock.day, killed: 0 };
     const weather = { raining: data.weather?.raining === true };

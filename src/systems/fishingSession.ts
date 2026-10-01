@@ -84,7 +84,7 @@ export class FishingSession {
     private readonly location: FishingLocation,
     private readonly tilePx: number,
   ) {
-    this.sheets = getFishingSheets(gameState.profile.characterId);
+    this.sheets = getFishingSheets(gameState.profile);
   }
 
   isDone(): boolean {
@@ -94,7 +94,7 @@ export class FishingSession {
   /** Começa a lançar. `false` se o jogador não pode agora (andando, ocupado, sentado). */
   start(): boolean {
     if (!this.player.beginScripted()) return false;
-    ensureFishingAnimations(this.scene, gameState.profile.characterId);
+    ensureFishingAnimations(this.scene, gameState.profile);
     registerFishingFrames(this.scene);
 
     this.scene.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPress);

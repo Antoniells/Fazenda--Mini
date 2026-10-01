@@ -15,10 +15,11 @@ import {
   MENU_BACKGROUND_PATH,
 } from '../data/ui';
 import { PROFILE_NAME_MAX_LENGTH } from '../systems/gameState';
-import { CHARACTER_IDS, DEFAULT_CHARACTER_ID, getPlayerAssets } from '../data/player';
-import { PLAYER_PORTRAIT_FACE, playerPortraitKey, playerPortraitStack } from '../data/playerPortrait';
-import { ensureLayerFrame, preloadLayerStack } from '../systems/layeredArt';
-import { preloadCharacterPreviews, ensureCharacterPreviewAnimation } from '../systems/playerSprites';
+import { CHARACTER_IDS, DEFAULT_CHARACTER_ID, PLAYER_ANIM_FRAMES } from '../data/player';
+import { PLAYER_PORTRAIT_FACE } from '../data/playerPortrait';
+import { APPEARANCE_PARTS, APPEARANCE_PRESETS, AppearancePart, PlayerAppearance } from '../data/playerAppearance';
+import { ensureLayerFrame } from '../systems/layeredArt';
+import { composeCharacterPortrait, composeCharacterSheet, creationLayerPaths, loadLayers } from '../systems/characterComposer';
 import { PET_IDS, DEFAULT_PET_ID, getPetDefinition, getPetTextureKey } from '../data/pets';
 import { preloadPetPreviews, ensurePetAnimations, petAnimKey } from '../systems/petSprites';
 import { startNewGame, save } from '../systems/saveManager';
@@ -38,18 +39,30 @@ const INK = '#3b2a14';
 const INK_SOFT = '#8a7654';
 const INK_ERROR = '#a8321f';
 
-const PANEL_WIDTH = 520;
-const PANEL_HEIGHT = 584;
-/** Preview do personagem (32x32 do sprite ampliado) + setas < > pra trocar. */
+const PANEL_WIDTH = 900;
+const PANEL_HEIGHT = 600;
+/** Coluna da APARÊNCIA (esquerda): uma linha por peça — nome, seta, escolha, seta (x a partir da borda esquerda da coluna). */
+const LOOK_COLUMN_OFFSET_X = -420;
+const LOOK_FIRST_ROW_Y = 96;
+const LOOK_ROW_HEIGHT = 41;
+const LOOK_ARROW_X = 170;
+const LOOK_VALUE_X = 282;
+const LOOK_ARROW2_X = 394;
+const LOOK_ARROW_WIDTH = 34;
+const LOOK_ARROW_HEIGHT = 28;
+/** Coluna da DIREITA (centro, a partir do centro do painel): o personagem e o retrato montados na hora, o pet e os nomes. */
+const RIGHT_COLUMN_OFFSET_X = 215;
 const PREVIEW_SCALE = 4;
-const ARROW_OFFSET_X = 110;
+const PORTRAIT_SCALE = 2;
 /** Preview do pet (a arte dele é bem menor que a do personagem, então o zoom também). */
 const PET_PREVIEW_SCALE = 3;
+const ARROW_OFFSET_X = 110;
 const ARROW_WIDTH = 46;
-/** O retrato do personagem (`data/playerPortrait.ts`), à esquerda da seta: posição (a partir do centro) e escala. */
-const PORTRAIT_OFFSET_X = 188;
-const PORTRAIT_SCALE = 1.5;
-const FIELD_WIDTH = 400;
+/** Texturas da prévia (redesenhadas a cada troca de peça) e a animação de repouso dela. */
+const PREVIEW_IDLE_KEY = 'creation-preview-idle';
+const PREVIEW_PORTRAIT_KEY = 'creation-preview-portrait';
+const PREVIEW_ANIM_KEY = 'creation-preview-idle-down';
+const FIELD_WIDTH = 380;
 const FIELD_HEIGHT = 38;
 const FIELD_PADDING_X = 14;
 const FIELD_UNFOCUSED_ALPHA = 0.7;
@@ -71,25 +84,19 @@ interface NameField {
 }
 
 /**
- * Criação de Personagem (Fase 10 — Parte 4, pedido explícito): cena
- * intermediária entre escolher um Slot Vazio no Menu Principal e a
- * `MainScene`. O jogador digita o Nome do personagem e o Nome da fazenda;
- * ao confirmar, a partida nova nasce com esse perfil (`startNewGame`) e já é
- * gravada no slot (`save`), pra os nomes não se perderem se a aba fechar
- * antes do primeiro sono.
+ * Criação de Personagem (Fase 10 — Parte 4; personalização na Fase 11): cena intermediária entre escolher um Slot Vazio no Menu Principal
+ * e a cena introdutória. Ao confirmar, a partida nova nasce com o perfil (`startNewGame`) e já é gravada no slot (`save`).
  *
- * Escolha de personagem: setas `<` `>` (ou ← →) trocam entre Alex, Josh,
- * Lyria, Manu e Tori, com o sprite de cada um (idle de frente) no centro; o
- * escolhido vai pro perfil (`characterId`) e pro save.
+ * APARÊNCIA (coluna da esquerda): o personagem é MONTADO das camadas do pacote (`data/playerAppearance.ts`) — pele, cabelo e cor, olhos,
+ * traço do rosto, roupa, barba, orelhas e acessório, cada um com setas `<` `>`. A linha "Modelo" (ou ← →) aplica as peças de um dos 5
+ * personagens prontos de uma vez, como ponto de partida. A prévia (o personagem parado, animado, e o retrato) é redesenhada na hora a cada
+ * troca (`systems/characterComposer.ts`); o retrato é o mesmo dos cartões de save.
  *
- * Escolha de pet: uma segunda linha `<` `>` (ou Shift + ← →) troca entre os
- * gatos e cachorros de `data/pets.ts`; o escolhido vai pro perfil (`petId`) e
- * pro save e acompanha o jogador em todas as cenas (`systems/petCompanion.ts`).
+ * Pet: `<` `>` (ou Shift + ← →) entre os gatos e cachorros de `data/pets.ts`.
  *
- * Sem `<input>` HTML (regra do projeto: nada de UI feita em HTML/CSS): o
- * teclado é lido direto do Phaser e o texto desenhado num `Phaser.Text` sobre
- * um campo de arte real (NineSlice de `UI/Inventory`). Enter avança de campo
- * (e confirma no último), Tab/setas alternam, Esc volta pros Slots.
+ * Sem `<input>` HTML (regra do projeto: nada de UI feita em HTML/CSS): o teclado é lido direto do Phaser e o texto desenhado num
+ * `Phaser.Text` sobre um campo de arte real (NineSlice de `UI/Inventory`). Enter avança de campo (e confirma no último), Tab/setas
+ * alternam, Esc volta pros Slots.
  */
 export class CharacterCreationScene extends Phaser.Scene {
   private slot = 0;
@@ -98,7 +105,11 @@ export class CharacterCreationScene extends Phaser.Scene {
   private caretVisible = true;
   private errorText!: Phaser.GameObjects.Text;
   private transitioning = false;
-  private characterIndex = Math.max(0, CHARACTER_IDS.indexOf(DEFAULT_CHARACTER_ID));
+  /** Modelo de partida (um dos personagens prontos): vai pro perfil como `characterId`. */
+  private presetIndex = Math.max(0, CHARACTER_IDS.indexOf(DEFAULT_CHARACTER_ID));
+  private look: PlayerAppearance = { ...APPEARANCE_PRESETS[DEFAULT_CHARACTER_ID] };
+  private presetLabel!: Phaser.GameObjects.Text;
+  private partLabels = new Map<AppearancePart, Phaser.GameObjects.Text>();
   private previewSprite!: Phaser.GameObjects.Sprite;
   private portrait!: Phaser.GameObjects.Image;
   private petIndex = Math.max(0, PET_IDS.indexOf(DEFAULT_PET_ID));
@@ -118,11 +129,9 @@ export class CharacterCreationScene extends Phaser.Scene {
     this.load.image(MENU_BACKGROUND_KEY, encodeURI(`/${MENU_BACKGROUND_PATH}`));
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
     this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
-    // Idle de cada personagem, pro preview (o resto das folhas só carrega na `MainScene`, do personagem escolhido).
-    preloadCharacterPreviews(this);
     preloadPetPreviews(this);
-    // Os retratos dos 5 personagens, montados das camadas (`systems/layeredArt.ts`).
-    for (const id of CHARACTER_IDS) preloadLayerStack(this, playerPortraitStack(id));
+    // Todas as camadas que as escolhas podem pedir (folha de repouso e retrato): trocar de peça é instantâneo.
+    loadLayers(this, creationLayerPaths());
   }
 
   create(): void {
@@ -131,7 +140,9 @@ export class CharacterCreationScene extends Phaser.Scene {
     this.focusedIndex = 0;
     this.caretVisible = true;
     this.transitioning = false;
-    this.characterIndex = Math.max(0, CHARACTER_IDS.indexOf(DEFAULT_CHARACTER_ID));
+    this.presetIndex = Math.max(0, CHARACTER_IDS.indexOf(DEFAULT_CHARACTER_ID));
+    this.look = { ...APPEARANCE_PRESETS[CHARACTER_IDS[this.presetIndex]] };
+    this.partLabels = new Map();
     this.petIndex = Math.max(0, PET_IDS.indexOf(DEFAULT_PET_ID));
 
     this.addFrame(INVENTORY_PANEL_KEY, INVENTORY_PANEL_FRAME_NAME, INVENTORY_PANEL_RECT);
@@ -159,36 +170,34 @@ export class CharacterCreationScene extends Phaser.Scene {
     const top = centerY - PANEL_HEIGHT / 2;
     this.addText(centerX, top + 40, `NOVA PARTIDA — SLOT ${this.slot + 1}`, 18, INK, 'bold');
 
-    // Seleção de personagem: preview no centro, setas dos lados, nome embaixo.
-    const previewY = top + 108;
-    this.previewSprite = this.add.sprite(centerX, previewY, getPlayerAssets(CHARACTER_IDS[this.characterIndex]).idleKey, 0);
-    this.previewSprite.setScale(PREVIEW_SCALE);
-    this.previewSprite.setDepth(3);
-    this.portrait = this.add.image(centerX - PORTRAIT_OFFSET_X, previewY, playerPortraitKey(CHARACTER_IDS[this.characterIndex])).setScale(PORTRAIT_SCALE).setDepth(3);
-    this.addText(centerX, top + 198, '< >  ou  ← →: trocar de personagem', 11, INK_SOFT);
-    this.createButton(centerX - ARROW_OFFSET_X, previewY, '<', () => this.selectCharacter(-1), ARROW_WIDTH);
-    this.createButton(centerX + ARROW_OFFSET_X, previewY, '>', () => this.selectCharacter(1), ARROW_WIDTH);
+    this.buildLookColumn(centerX + LOOK_COLUMN_OFFSET_X, top);
+
+    // Coluna da direita: o personagem (parado, animado) e o retrato, lado a lado.
+    const rightX = centerX + RIGHT_COLUMN_OFFSET_X;
+    const previewY = top + 150;
+    this.previewSprite = this.add.sprite(rightX - 80, previewY, '__DEFAULT').setScale(PREVIEW_SCALE).setDepth(3);
+    this.portrait = this.add.image(rightX + 80, previewY - 8, '__DEFAULT').setScale(PORTRAIT_SCALE).setDepth(3);
     this.refreshPreview(false);
 
-    // Seleção de pet: mesma ideia, uma linha abaixo (sprite no centro, setas dos lados, nome embaixo).
-    const petY = top + 254;
-    this.petSprite = this.add.sprite(centerX, petY, getPetTextureKey(PET_IDS[this.petIndex]), 0);
+    // Pet: sprite no centro, setas dos lados, nome embaixo.
+    const petY = top + 266;
+    this.petSprite = this.add.sprite(rightX, petY, getPetTextureKey(PET_IDS[this.petIndex]), 0);
     this.petSprite.setScale(PET_PREVIEW_SCALE);
     this.petSprite.setDepth(3);
-    this.petLabel = this.addText(centerX, top + 304, '', 14, INK, 'bold');
-    this.addText(centerX, top + 322, '< >  ou  Shift + ← →: trocar de pet', 11, INK_SOFT);
-    this.createButton(centerX - ARROW_OFFSET_X, petY, '<', () => this.selectPet(-1), ARROW_WIDTH);
-    this.createButton(centerX + ARROW_OFFSET_X, petY, '>', () => this.selectPet(1), ARROW_WIDTH);
+    this.petLabel = this.addText(rightX, top + 306, '', 14, INK, 'bold');
+    this.addText(rightX, top + 324, '< >  ou  Shift + ← →: trocar de pet', 11, INK_SOFT);
+    this.createButton(rightX - ARROW_OFFSET_X, petY, '<', () => this.selectPet(-1), ARROW_WIDTH);
+    this.createButton(rightX + ARROW_OFFSET_X, petY, '>', () => this.selectPet(1), ARROW_WIDTH);
     this.refreshPetPreview(false);
 
-    this.createField('playerName', 'Nome do personagem', 'Como você se chama?', centerX, top + 378);
-    this.createField('farmName', 'Nome da fazenda', 'Como se chama sua fazenda?', centerX, top + 450);
+    this.createField('playerName', 'Nome do personagem', 'Como você se chama?', rightX, top + 380);
+    this.createField('farmName', 'Nome da fazenda', 'Como se chama sua fazenda?', rightX, top + 450);
 
-    this.errorText = this.addText(centerX, top + 496, '', 12, INK_ERROR, 'bold');
-    this.addText(centerX, top + 516, 'ENTER: avançar / confirmar   TAB: trocar de campo', 11, INK_SOFT);
+    this.errorText = this.addText(rightX, top + 494, '', 12, INK_ERROR, 'bold');
+    this.addText(rightX, top + 514, 'ENTER: avançar / confirmar   TAB: trocar de campo', 11, INK_SOFT);
 
-    this.createButton(centerX - 90, top + PANEL_HEIGHT - 44, 'VOLTAR', () => this.leave(() => this.scene.start(MAIN_MENU_SCENE_KEY, { showSlots: true })));
-    this.createButton(centerX + 90, top + PANEL_HEIGHT - 44, 'COMEÇAR', () => this.confirm());
+    this.createButton(rightX - 90, top + PANEL_HEIGHT - 44, 'VOLTAR', () => this.leave(() => this.scene.start(MAIN_MENU_SCENE_KEY, { showSlots: true })));
+    this.createButton(rightX + 90, top + PANEL_HEIGHT - 44, 'COMEÇAR', () => this.confirm());
 
     this.focusField(0);
 
@@ -207,32 +216,75 @@ export class CharacterCreationScene extends Phaser.Scene {
     this.cameras.main.fadeIn(FADE_MS, 0, 0, 0);
   }
 
-  /** Passa pro personagem anterior/seguinte (circular) e atualiza o preview. */
-  private selectCharacter(delta: number): void {
+  // --- Aparência -----------------------------------------------------------
+
+  /** A coluna das peças: "Modelo" (os personagens prontos) e uma linha por peça, cada uma com `<` escolha `>`. */
+  private buildLookColumn(left: number, top: number): void {
+    this.addText(left + LOOK_VALUE_X - 60, top + 70, 'APARÊNCIA', 14, INK, 'bold');
+    const rows: Array<{ label: string; onStep: (delta: number) => void; setText: (text: Phaser.GameObjects.Text) => void }> = [
+      { label: 'Modelo', onStep: (delta) => this.selectPreset(delta), setText: (text) => (this.presetLabel = text) },
+      ...APPEARANCE_PARTS.map(({ part, label }) => ({ label, onStep: (delta: number) => this.stepPart(part, delta), setText: (text: Phaser.GameObjects.Text) => this.partLabels.set(part, text) })),
+    ];
+    rows.forEach((row, index) => {
+      const y = top + LOOK_FIRST_ROW_Y + 26 + index * LOOK_ROW_HEIGHT;
+      this.addText(left, y, row.label, 13, INK, 'bold').setOrigin(0, 0.5);
+      this.createButton(left + LOOK_ARROW_X, y, '<', () => row.onStep(-1), LOOK_ARROW_WIDTH, LOOK_ARROW_HEIGHT);
+      row.setText(this.addText(left + LOOK_VALUE_X, y, '', 13, INK));
+      this.createButton(left + LOOK_ARROW2_X, y, '>', () => row.onStep(1), LOOK_ARROW_WIDTH, LOOK_ARROW_HEIGHT);
+    });
+    this.addText(left + LOOK_VALUE_X - 60, top + LOOK_FIRST_ROW_Y + 26 + rows.length * LOOK_ROW_HEIGHT - 6, '← →: trocar de modelo', 11, INK_SOFT);
+    this.refreshLookLabels();
+  }
+
+  /** Modelo anterior/seguinte (circular): aplica as peças daquele personagem pronto. */
+  private selectPreset(delta: number): void {
     const count = CHARACTER_IDS.length;
-    this.characterIndex = (this.characterIndex + delta + count) % count;
+    this.presetIndex = (this.presetIndex + delta + count) % count;
+    this.look = { ...APPEARANCE_PRESETS[CHARACTER_IDS[this.presetIndex]] };
     playClick(this);
+    this.refreshLookLabels();
     this.refreshPreview(true);
   }
 
-  /** Mostra o sprite do personagem escolhido (idle de frente, animado); `pop` dá um pulinho de escala ao trocar. */
+  /** Escolha anterior/seguinte (circular) de uma peça. */
+  private stepPart(part: AppearancePart, delta: number): void {
+    const { options } = APPEARANCE_PARTS.find((entry) => entry.part === part)!;
+    const index = options.findIndex((option) => option.value === this.look[part]);
+    const next = options[(index + delta + options.length) % options.length];
+    this.look = { ...this.look, [part]: next.value } as PlayerAppearance;
+    playClick(this);
+    this.refreshLookLabels();
+    this.refreshPreview(true);
+  }
+
+  private refreshLookLabels(): void {
+    this.presetLabel?.setText(CHARACTER_IDS[this.presetIndex]);
+    for (const { part, options } of APPEARANCE_PARTS) {
+      this.partLabels.get(part)?.setText(options.find((option) => option.value === this.look[part])?.name ?? '');
+    }
+  }
+
+  /** Redesenha a prévia com a aparência atual: a folha de repouso (animada, de frente) e o retrato; `pop` dá um pulinho de escala. */
   private refreshPreview(pop: boolean): void {
-    const id = CHARACTER_IDS[this.characterIndex];
-    this.previewSprite.setTexture(getPlayerAssets(id).idleKey);
-    this.previewSprite.play(ensureCharacterPreviewAnimation(this, id));
-    const portraitKey = playerPortraitKey(id);
-    if (ensureLayerFrame(this, portraitKey, PLAYER_PORTRAIT_FACE)) {
-      this.portrait.setTexture(portraitKey, PLAYER_PORTRAIT_FACE.name).setVisible(true);
-    } else {
-      this.portrait.setVisible(false);
+    if (composeCharacterSheet(this, this.look, 'idle', PREVIEW_IDLE_KEY)) {
+      if (!this.anims.exists(PREVIEW_ANIM_KEY)) {
+        this.anims.create({ key: PREVIEW_ANIM_KEY, frames: this.anims.generateFrameNumbers(PREVIEW_IDLE_KEY, PLAYER_ANIM_FRAMES.idleDown), frameRate: 4, repeat: -1 });
+      }
+      if (this.previewSprite.texture.key !== PREVIEW_IDLE_KEY) this.previewSprite.setTexture(PREVIEW_IDLE_KEY, 0);
+      if (!this.previewSprite.anims.isPlaying) this.previewSprite.play(PREVIEW_ANIM_KEY);
+    }
+    if (composeCharacterPortrait(this, this.look, PREVIEW_PORTRAIT_KEY) && ensureLayerFrame(this, PREVIEW_PORTRAIT_KEY, PLAYER_PORTRAIT_FACE)) {
+      this.portrait.setTexture(PREVIEW_PORTRAIT_KEY, PLAYER_PORTRAIT_FACE.name);
     }
 
     if (pop) {
       this.tweens.killTweensOf(this.previewSprite);
-      this.previewSprite.setScale(PREVIEW_SCALE * 1.18);
+      this.previewSprite.setScale(PREVIEW_SCALE * 1.12);
       this.tweens.add({ targets: this.previewSprite, scale: PREVIEW_SCALE, duration: 200, ease: 'Back.easeOut' });
     }
   }
+
+  // --- Pet -----------------------------------------------------------------
 
   /** Passa pro pet anterior/seguinte (circular) e atualiza o preview. */
   private selectPet(delta: number): void {
@@ -355,11 +407,11 @@ export class CharacterCreationScene extends Phaser.Scene {
         return;
       case 'ArrowLeft':
         if (event.shiftKey) this.selectPet(-1);
-        else this.selectCharacter(-1);
+        else this.selectPreset(-1);
         return;
       case 'ArrowRight':
         if (event.shiftKey) this.selectPet(1);
-        else this.selectCharacter(1);
+        else this.selectPreset(1);
         return;
       case 'Enter':
         event.preventDefault();
@@ -395,14 +447,14 @@ export class CharacterCreationScene extends Phaser.Scene {
 
   // --- Botões e saída ------------------------------------------------------
 
-  private createButton(x: number, y: number, label: string, onClick: () => void, width = BUTTON_WIDTH): void {
+  private createButton(x: number, y: number, label: string, onClick: () => void, width = BUTTON_WIDTH, height = BUTTON_HEIGHT): void {
     const panel = this.add.nineslice(
       x,
       y,
       INVENTORY_PANEL_KEY,
       INVENTORY_PANEL_FRAME_NAME,
       width,
-      BUTTON_HEIGHT,
+      height,
       INVENTORY_PANEL_BORDER,
       INVENTORY_PANEL_BORDER,
       INVENTORY_PANEL_BORDER,
@@ -440,11 +492,13 @@ export class CharacterCreationScene extends Phaser.Scene {
     }
 
     const [playerName, farmName] = names;
-    const characterId = CHARACTER_IDS[this.characterIndex];
+    const characterId = CHARACTER_IDS[this.presetIndex];
     const petId = PET_IDS[this.petIndex];
+    const appearance = { ...this.look };
     this.leave(() => {
-      // Perfil (nomes + personagem + pet) vira o `gameState` da partida nova e é gravado já no slot — a `MainScene` carrega o sprite do personagem e do pet no preload.
-      startNewGame(this.slot, { playerName, farmName, characterId, petId });
+      // Perfil (nomes + aparência montada + pet) vira o `gameState` da partida nova e é gravado já no slot — as cenas montam o sprite
+      // do personagem (`systems/characterComposer.ts`) e carregam o pet no preload.
+      startNewGame(this.slot, { playerName, farmName, characterId, petId, appearance });
       save(this.slot);
       // A cena introdutória (a profecia) abre a partida nova; ela leva à Fazenda no Dia 1.
       this.scene.start(INTRO_SCENE_KEY);
