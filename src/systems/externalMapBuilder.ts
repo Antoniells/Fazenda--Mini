@@ -185,6 +185,34 @@ export function buildCaveRock(scene: Phaser.Scene, tileSize: number, col: number
   return rock;
 }
 
+/**
+ * Pedra da FAZENDA (pedido explícito: as mesmas pedras das Cavernas, `CAVE_ROCK_FRAMES` da folha dos veios): a pequena alterna as três
+ * pedras, na escala dos veios; a grande é a pedra maior, 25% maior (4 px de tela por pixel da arte). Com a sombra no chão, como as
+ * pedras de antes — devolve o mesmo `WorldResourceVisual` que `RockInteractable` usa. Floresta e Pedreira continuam com `buildRock`.
+ */
+export function buildFarmRock(scene: Phaser.Scene, tileSize: number, col: number, row: number, variant: number, big = false): WorldResourceVisual {
+  const frame = big ? CAVE_ROCK_FRAMES[0] : CAVE_ROCK_FRAMES[variant % CAVE_ROCK_FRAMES.length];
+  registerFrame(scene, ORE_KEY, frame);
+
+  const tile = tileSize * DISPLAY_SCALE;
+  const x = col * tile + tile / 2;
+  const y = (row + 1) * tile;
+  const scale = DISPLAY_SCALE * ORE_DISPLAY_SCALE_MULT * (big ? FARM_BIG_ROCK_SCALE_MULT : 1);
+
+  const shadow = createGroundShadow(scene, x, y - 2, scale * 0.45 * (frame.rect.width / 12), scale * 0.25);
+  shadow.setDepth(STATIC_SHADOW_DEPTH);
+
+  const sprite = scene.add.image(x, y, ORE_KEY, frame.name);
+  sprite.setOrigin(0.5, 1);
+  sprite.setScale(scale);
+  sprite.setDepth(sprite.y);
+
+  return { sprite, shadow };
+}
+
+/** A pedra grande da Fazenda: a maior das pedras das Cavernas, 25% maior. */
+const FARM_BIG_ROCK_SCALE_MULT = 1.25;
+
 /** Entrada de caverna/mina (Caverna) — estrutura única e maior, ancorada pela base como os demais objetos estáticos. */
 export function buildCaveEntrance(scene: Phaser.Scene, tileSize: number, col: number, row: number): Phaser.GameObjects.Image {
   registerFrame(scene, CAVE_ENTRANCE_KEY, CAVE_ENTRANCE_FRAME);

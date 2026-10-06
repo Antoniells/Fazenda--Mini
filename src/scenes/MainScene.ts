@@ -18,6 +18,8 @@ import {
   PINE_YOUNG_FRAME_NAME,
   PINE_YOUNG_FRAME,
   ROCK_KEY,
+  ORE_KEY,
+  ORE_PATH,
   ROCK_PATH,
   ROCK_FRAME_2,
   WOOD_KEY,
@@ -269,6 +271,8 @@ export class MainScene extends Phaser.Scene {
 
   preload(): void {
     preloadOreSparkles(this); // A estrelinha da plantação pronta pra colher.
+    // As pedras da Fazenda são as das Cavernas (`buildFarmRock`), recortadas da folha dos veios.
+    if (!this.textures.exists(ORE_KEY)) this.load.image(ORE_KEY, encodeURI(`/${ORE_PATH}`));
     this.load.image(GRASS_TILESET_KEY, encodeURI(`/${GRASS_TILESET_PATH}`));
     this.load.spritesheet(FENCE_TILESET_KEY, encodeURI(`/${FENCE_TILESET_PATH}`), {
       frameWidth: TILE_SIZE,

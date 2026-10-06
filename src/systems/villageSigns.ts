@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { SHOP_SIGNS, SHOP_SIGN_BOARD, SHOP_SIGN_ICON_OFFSET, ShopSignDefinition } from '../data/villageSigns';
-import { VILLAGE_BANKER_HOUSE, VILLAGE_CARPENTER_HOUSE, VILLAGE_PIRATE_HOUSE, VILLAGE_SHOP_HOUSE, VILLAGE_SUPPLIER_HOUSE, VillageStructure, structureDoorCell } from '../data/maps/villageMap';
+import { SHOP_AWNING_SHEET, SHOP_SIGNS, SHOP_SIGN_BOARD, SHOP_SIGN_ICON_OFFSET, ShopSignDefinition, shopAwningFrame } from '../data/villageSigns';
+import { VILLAGE_ASSETS, VILLAGE_BANKER_HOUSE, VILLAGE_CARPENTER_HOUSE, VILLAGE_PIRATE_HOUSE, VILLAGE_SHOP_HOUSE, VILLAGE_SUPPLIER_HOUSE, VillageAsset, VillageStructure, structureBaseRow, structureDoorCell } from '../data/maps/villageMap';
 import type { VillageStructureRole } from '../data/maps/villageLayout';
 import { TILE_SIZE } from '../data/tiles';
 import { DISPLAY_SCALE } from './mapBuilder';
@@ -32,9 +32,24 @@ export function shopSignBlockedCells(): Array<[number, number]> {
   return SHOP_SIGNS.flatMap((sign) => shopSignBaseCells(sign) ?? []);
 }
 
+/** O toldo sobre a porta da loja (`VillageAsset.awningAt`), colado na parede: logo acima da casa na ordem de desenho. */
+function buildShopAwning(scene: Phaser.Scene, sign: ShopSignDefinition): void {
+  const house = HOUSE_BY_ROLE[sign.role];
+  const at = (VILLAGE_ASSETS[house.asset] as VillageAsset).awningAt;
+  if (!at) return;
+  const tile = TILE_SIZE * DISPLAY_SCALE;
+  const frame = shopAwningFrame(sign.awning);
+  registerFrame(scene, SHOP_AWNING_SHEET.key, frame);
+  scene.add
+    .image(house.col * tile + at.x * DISPLAY_SCALE, house.row * tile + at.y * DISPLAY_SCALE, SHOP_AWNING_SHEET.key, frame.name)
+    .setOrigin(0, 0)
+    .setScale(DISPLAY_SCALE)
+    .setDepth((structureBaseRow(house) + 1) * tile + 0.01); // A casa desenha na base das paredes (`buildVillage`).
+}
+
 /** Carrega o quadro e os ícones que ainda não estão na memória (o da cenoura e o da madeira normalmente já vêm da Fazenda). */
 export function preloadShopSigns(scene: Phaser.Scene): void {
-  for (const asset of [SHOP_SIGN_BOARD, ...SHOP_SIGNS.map((sign) => sign.icon)]) {
+  for (const asset of [SHOP_SIGN_BOARD, SHOP_AWNING_SHEET, ...SHOP_SIGNS.map((sign) => sign.icon)]) {
     if (!scene.textures.exists(asset.key)) scene.load.image(asset.key, encodeURI(`/${asset.path}`));
   }
 }
@@ -47,6 +62,7 @@ export function buildShopSigns(scene: Phaser.Scene): void {
   const tile = TILE_SIZE * DISPLAY_SCALE;
   registerFrame(scene, SHOP_SIGN_BOARD.key, SHOP_SIGN_BOARD.frame);
   for (const sign of SHOP_SIGNS) {
+    buildShopAwning(scene, sign);
     const cells = shopSignBaseCells(sign);
     if (!cells) continue;
     const [col, row] = cells[0];

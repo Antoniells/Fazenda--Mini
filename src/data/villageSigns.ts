@@ -25,6 +25,17 @@ export const SHOP_SIGN_BOARD: SignIcon = {
 /** Canto superior-esquerdo do ícone (16x16) dentro do quadro: centrado no painel liso (x 3..28, y 12..25). */
 export const SHOP_SIGN_ICON_OFFSET = { x: 8, y: 11 };
 
+/**
+ * TOLDOS das lojas (`Objects/Exterior/Houses/Door, windows, and chimney/Door awning.png`, 288x32: 9 toldos listrados lado a lado, um
+ * por quadro de 32x32, o desenho em x 6-25 e y 5-11 de cada um): só as portas das LOJAS têm toldo — a casa do jogador não (pedido
+ * explícito). Onde ele fica em cada arte de casa: `VillageAsset.awningAt` (`data/maps/villageMap.ts`).
+ */
+export const SHOP_AWNING_SHEET = { key: 'shop-awnings', path: 'Objects/Exterior/Houses/Door, windows, and chimney/Door awning.png' };
+/** Recorte do toldo `index` (0 vermelho, 1 rosa, 2 magenta, 3 roxo, 4 turquesa, 5 azul-claro, 6 azul, 7 verde, 8 laranja). */
+export function shopAwningFrame(index: number): { name: string; rect: { x: number; y: number; width: number; height: number } } {
+  return { name: `shop-awning-${index}`, rect: { x: index * 32 + 6, y: 5, width: 20, height: 7 } };
+}
+
 export interface ShopSignDefinition {
   /** De quem é a loja (a casa com esse `role` no layout do Vilarejo — a placa acompanha a casa se ela mudar de lugar no editor). */
   role: VillageStructureRole;
@@ -34,6 +45,8 @@ export interface ShopSignDefinition {
    * e só a fileira de baixo (as pernas) bloqueia.
    */
   offset: { dx: number; dy: number };
+  /** A cor do toldo sobre a porta (`shopAwningFrame`). */
+  awning: number;
 }
 
 export const SHOP_SIGNS: ShopSignDefinition[] = [
@@ -42,17 +55,20 @@ export const SHOP_SIGNS: ShopSignDefinition[] = [
     role: 'supplier',
     icon: { key: ALL_CROPS_ICONS_KEY, path: ALL_CROPS_ICONS_PATH, frame: { name: 'shop-sign-carrot', rect: { x: 32, y: 96, width: 16, height: 16 } } },
     offset: { dx: 2, dy: 0 },
+    awning: 7, // Verde, da horta.
   },
   // Tomás (marceneiro: materiais e construções): a pilha de toras de `Icons/RPG icons/Extras/Wood.png`.
   {
     role: 'carpenter',
     icon: { key: WOOD_KEY, path: WOOD_PATH, frame: { name: 'shop-sign-wood', rect: { x: 0, y: 0, width: 16, height: 16 } } },
     offset: { dx: 2, dy: 0 },
+    awning: 8, // Laranja, da madeira.
   },
   // Alberto (padeiro): o pão de `Icons/Food Icons/Bread .png` (o primeiro quadro).
   {
     role: 'banker',
     icon: { key: 'shop-sign-bread', path: 'Icons/Food Icons/Bread .png', frame: { name: 'shop-sign-bread', rect: { x: 0, y: 0, width: 16, height: 16 } } },
     offset: { dx: 2, dy: 0 },
+    awning: 0, // Vermelho, de padaria.
   },
 ];

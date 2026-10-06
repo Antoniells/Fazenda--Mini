@@ -4,6 +4,12 @@ import { enableWorldLighting } from './sceneLighting';
 
 const WHITE = 0xffffff;
 
+/** Cor `base` multiplicada pela luz `light` (canal a canal, como o Phaser faz com os objetos iluminados). */
+export function multiplyColor(base: number, light: number): number {
+  const channel = (shift: number): number => Math.round((((base >> shift) & 0xff) * ((light >> shift) & 0xff)) / 255);
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
 /**
  * Luz do SOL na superfície (Fase 7 — ciclo de cores do sol; Fase 11 — iluminação nativa do Phaser 4): a cor do sol da hora atual
  * (`systems/ambientLight.ts`, chaves em `data/lighting.ts`: manhã dourada, tarde neutra, entardecer alaranjado, noite escura) é a LUZ
@@ -14,6 +20,13 @@ const WHITE = 0xffffff;
  * Mantém o nome e a interface de antes (`new DayNightOverlay(cena, intensidade)` + `setHours` a cada quadro), usados pelas cenas.
  */
 export class DayNightOverlay {
+  /**
+   * A cor de fundo da câmera da cena (lida na 1ª vez, já com a que a cena escolheu): o fundo não é um objeto, então a luz não o atinge
+   * sozinha — sem isto ele ficava sempre na cor do meio-dia e aparecia nas frestas das peças (a borda de terra da Fazenda clara de
+   * dia, uma linha verde acesa ao lado do alpendre do Vilarejo à noite). `null` = ainda não lida; `-1` = fundo transparente (não mexe).
+   */
+  private baseBackground: number | null = null;
+
   /** `intensity` (0-1): fração do efeito aplicada nesta cena — 1 ao ar livre; menos dentro de casa (lá tem luz de dentro). */
   constructor(
     private readonly scene: Phaser.Scene,
@@ -29,6 +42,12 @@ export class DayNightOverlay {
 
   /** Aplica uma cor de luz qualquer como ambiente, com a mesma fração `intensity`. */
   setColor(color: number): void {
-    this.scene.lights.setAmbientColor(mixColors(WHITE, color, this.intensity));
+    const ambient = mixColors(WHITE, color, this.intensity);
+    this.scene.lights.setAmbientColor(ambient);
+
+    // O fundo da câmera recebe a mesma luz do sol que o resto do mundo.
+    const camera = this.scene.cameras.main;
+    if (this.baseBackground === null) this.baseBackground = camera.backgroundColor.alpha > 0 ? camera.backgroundColor.color : -1;
+    if (this.baseBackground >= 0) camera.setBackgroundColor(multiplyColor(this.baseBackground, ambient));
   }
 }

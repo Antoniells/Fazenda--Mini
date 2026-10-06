@@ -32,7 +32,32 @@ export interface HouseLevel {
   solid: string[];
   /** O cômodo por dentro, com as paredes (`cols` x `rows`). A saída fica na parede de baixo, no meio. */
   interior: { cols: number; rows: number };
+  /**
+   * Remendos da arte: recortes da PRÓPRIA textura (`from`, px da arte) desenhados por cima dela em `to` (px da arte, a partir do canto
+   * da casa), opcionalmente espelhados na vertical — pra tirar um detalhe que a arte traz e não cabe aqui sem desenhar nada novo.
+   */
+  patches?: HousePatch[];
 }
+
+export interface HousePatch {
+  from: { x: number; y: number; width: number; height: number };
+  to: { x: number; y: number };
+  flipY?: boolean;
+}
+
+/**
+ * A casinha laranja (`Houses/10.png`) vem com um TOLDO listrado sobre a porta — coisa de loja (pedido explícito: toldo só nas portas das
+ * lojas). Sem uma versão sem toldo no pacote, ele é coberto com pixels da própria casa: a faixa do toldo (x 41-60, y 72-78) recebe a
+ * parede laranja lisa de baixo da janela, e o topo da moldura da porta (que ficava escondido) é a base da própria porta espelhada, com uma
+ * linha do contorno escuro por cima.
+ */
+const STARTER_HOUSE_AWNING_PATCHES: HousePatch[] = [
+  { from: { x: 17, y: 86, width: 20, height: 6 }, to: { x: 41, y: 72 } },
+  { from: { x: 17, y: 86, width: 20, height: 1 }, to: { x: 41, y: 78 } },
+  { from: { x: 43, y: 92, width: 16, height: 3 }, to: { x: 43, y: 76 }, flipY: true },
+  { from: { x: 46, y: 94, width: 10, height: 1 }, to: { x: 43, y: 75 } },
+  { from: { x: 46, y: 94, width: 6, height: 1 }, to: { x: 53, y: 75 } },
+];
 
 export const HOUSE_LEVELS: HouseLevel[] = [
   {
@@ -46,6 +71,7 @@ export const HOUSE_LEVELS: HouseLevel[] = [
     offset: { x: 0, y: 0 },
     solid: ['.....', '.....', '.....', '.....', '#####', '#####', '.....'],
     interior: { cols: 8, rows: 8 },
+    patches: STARTER_HOUSE_AWNING_PATCHES,
   },
   {
     name: 'Casa',

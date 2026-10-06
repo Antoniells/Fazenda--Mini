@@ -604,6 +604,16 @@ export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.
   const lastSolidRow = level.solid.reduce((last, line, index) => (line.includes('#') ? index : last), 0);
   house.setDepth((row0 + lastSolidRow) * tile);
 
+  // Remendos da arte (`HouseLevel.patches`: recortes da própria textura por cima dela — ex.: sem o toldo de loja da casinha).
+  const base = level.frame?.rect ?? { x: 0, y: 0 };
+  (level.patches ?? []).forEach((patch, index) => {
+    const frameName = `${level.textureKey}-patch-${index}`;
+    const texture = scene.textures.get(level.textureKey);
+    if (!texture.has(frameName)) texture.add(frameName, 0, base.x + patch.from.x, base.y + patch.from.y, patch.from.width, patch.from.height);
+    const piece = scene.add.image(house.x + patch.to.x * DISPLAY_SCALE, house.y + patch.to.y * DISPLAY_SCALE, level.textureKey, frameName);
+    piece.setOrigin(0, 0).setScale(DISPLAY_SCALE).setFlipY(patch.flipY === true).setDepth(house.depth + 0.01);
+  });
+
   // Sombras retas coladas na base da parede (a arte tem a ala do fundo mais recuada: uma faixa por trecho de base).
   addBuildingShadows(scene, house);
 

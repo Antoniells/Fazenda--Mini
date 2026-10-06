@@ -38,13 +38,18 @@ export interface VillageAsset {
    * arte: a porta fica na fileira de baixo das paredes e a célula da frente é a seguinte. Ausente = sem porta (casa decorativa).
    */
   door?: { dx: number; dy: number };
+  /**
+   * Onde vai o TOLDO quando a casa é loja (`systems/villageSigns.ts`): o canto superior-esquerdo do toldo (20x7 px de `Door awning.png`),
+   * em px da arte — centrado sobre a porta, com a borda de baixo no topo da moldura dela (medido na arte).
+   */
+  awningAt?: { x: number; y: number };
 }
 
 export const VILLAGE_ASSETS = {
   /** A casa tomada pela vegetação, com a porta lacrada: decorativa (sem morador). */
   house2: { key: 'village-house-2', path: 'Objects/Exterior/Houses/2.png', solid: ['.....', '.....', '.....', '#####', '#####', '.###.', '.....'] },
-  house3: { key: 'village-house-3', path: 'Objects/Exterior/Houses/3.png', solid: ['........', '........', '........', '########', '########', '########', '........'], door: { dx: 3, dy: 6 } },
-  house7: { key: 'village-house-7', path: 'Objects/Exterior/Houses/7.png', solid: ['........', '........', '........', '########', '########', '.###....'], door: { dx: 1, dy: 6 } },
+  house3: { key: 'village-house-3', path: 'Objects/Exterior/Houses/3.png', solid: ['........', '........', '........', '########', '########', '########', '........'], door: { dx: 3, dy: 6 }, awningAt: { x: 40, y: 71 } },
+  house7: { key: 'village-house-7', path: 'Objects/Exterior/Houses/7.png', solid: ['........', '........', '........', '########', '########', '.###....'], door: { dx: 1, dy: 6 }, awningAt: { x: 19, y: 60 } },
   house8: { key: 'village-house-8', path: 'Objects/Exterior/Houses/8.png', solid: ['........', '........', '........', '........', '########', '########', '########', '........'], door: { dx: 1, dy: 7 } },
   /**
    * A casa do Ferreiro (`Houses/NPCS houses/Blacksmith/Blacksmith house.png`, 144x96 = 9x6 células): a casa principal com a placa da bigorna e a porta, e um alpendre aberto com a forja à direita. Máscara medida

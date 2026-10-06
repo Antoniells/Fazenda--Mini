@@ -4,7 +4,7 @@ import { TILE_SIZE, GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '..
 import { PLAYER_START } from '../data/player';
 import { DECORATIONS } from '../data/decorations';
 import { Player } from '../entities/Player';
-import { buildGrowingTree, buildRock, WorldResourceVisual } from './externalMapBuilder';
+import { buildFarmRock, buildGrowingTree, WorldResourceVisual } from './externalMapBuilder';
 import { resourceNodeRegistry, ResourceNode, ResourceCaps } from './resourceNodeRegistry';
 import { TreeInteractable, RockInteractable } from './resourceInteraction';
 import { InteractionRegistry } from './interaction';
@@ -203,7 +203,7 @@ export class FarmResources {
       }
 
       const big = node.kind === 'bigRock';
-      const visual = buildRock(this.scene, TILE_SIZE, node.col, node.row, rockVariant, big);
+      const visual = buildFarmRock(this.scene, TILE_SIZE, node.col, node.row, rockVariant, big); // As pedras das Cavernas (pedido explícito).
       rockVariant = ((rockVariant + 1) % 3) as 0 | 1 | 2;
       this.visuals.set(key, { visual, kind: node.kind, stage: node.stage });
       this.grid.block(node.col, node.row);
