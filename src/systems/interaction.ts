@@ -29,6 +29,11 @@ export interface Interactable {
    * não a aciona) — ex.: a água da margem, que só é ponto de pesca com a Vara na mão (`systems/fishingSpots.ts`). Ausente = sempre.
    */
   isAvailable?(): boolean;
+  /**
+   * O clique nesta célula vale mais que um bicho/morador que esteja por cima dela (`PlayerController.addWorldClickHandler`) — os
+   * canteiros da lavoura: o pet anda atrás do jogador e roubava o clique de plantar/regar/colher (o playtest pedia 2 cliques).
+   */
+  overridesCreatureClick?: boolean;
 }
 
 export class InteractionRegistry {

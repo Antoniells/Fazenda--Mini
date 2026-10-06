@@ -1,19 +1,13 @@
-import { GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '../data/tiles';
+import { GRASS_FLAT_TILE_INDEX } from '../data/tiles';
+import { PATCH_NOISE, PATCH_TILE_BY_MASK } from '../data/groundPatches';
 
 /**
- * Variação visual sutil do chão (Fase 9, melhoria de QoL visual): mistura,
- * de forma determinística (mesma célula do mapa = sempre a mesma variante,
- * mesmo recarregando a cena), as duas tonalidades planas de grama já
- * existentes no tileset (`GRASS_FLAT_TILE_INDEX`/`GRASS_FLAT_DARK_TILE_INDEX`).
- * Não introduz nenhum asset novo nem muda a área cultivável/colisão — só
- * decide qual variante desenhar em cada célula do chão já renderizado por
- * `systems/mapBuilder.ts`. As manchas de terra propriamente ditas (com
- * borda orgânica de verdade) vêm de `systems/dirtPaths.ts`, aplicado depois
- * como uma sobreposição nas células que formam caminho/mancha.
+ * Variação visual do chão. Antes (Fase 9) cada célula sorteava o tom claro ou o escuro da grama plana — e o escuro, sozinho no meio do
+ * claro, virava um quadrado de borda reta. Agora o chão-base é sempre a grama clara e o tom escuro vem em MANCHAS orgânicas
+ * (`systems/groundPatches.ts`): um campo de ruído suave decide onde há mancha e cada célula dela usa a peça do autotile da grama escura
+ * que casa com os vizinhos (borda recortada, cantos internos). Tudo determinístico (mesma célula do mundo = mesmo resultado, sem guardar
+ * nada) e só visual: grid, colisão e área cultivável não mudam. As manchas de terra vêm de `systems/dirtPaths.ts`.
  */
-
-/** Fração de células com a variante escura (tom ligeiramente diferente, não uma cor nova). */
-const DARK_VARIANT_CHANCE = 0.22;
 
 /**
  * Hash 2D simples e determinístico (mesmos x/y sempre produzem o mesmo
@@ -29,13 +23,80 @@ export function hash2D(x: number, y: number): number {
 }
 
 /**
- * Decide a variante visual do chão (tom claro ou escuro de grama) numa
- * célula, a partir de coordenadas ABSOLUTAS do mundo (não relativas a um
- * trecho/expansão) — assim o padrão continua coerente nas emendas entre o
- * núcleo e as expansões da propriedade (Fase 6), não importa quando cada
- * trecho é desenhado.
+ * O tile-base da grama numa célula (coordenadas ABSOLUTAS do mundo). É sempre a grama clara: o tom escuro vem das manchas
+ * (`isPatchCell`/`pickPatchTile`), desenhadas numa camada por cima. Usado pelo chão procedural e pelo pincel de grama do editor.
  */
-export function pickGroundTileVariant(worldCol: number, worldRow: number): number {
-  const n = hash2D(worldCol, worldRow);
-  return n < DARK_VARIANT_CHANCE ? GRASS_FLAT_DARK_TILE_INDEX : GRASS_FLAT_TILE_INDEX;
+export function pickGroundTileVariant(_worldCol: number, _worldRow: number): number {
+  return GRASS_FLAT_TILE_INDEX;
+}
+
+/**
+ * Ruído de valor suave (0-1) numa grade de `cells` células girada em `angle` (sem girar, as formas saem alinhadas aos eixos):
+ * `hash2D` nos nós, interpolado com curva suave entre eles.
+ */
+function valueNoise(worldCol: number, worldRow: number, cells: number, angle: number, seed: number): number {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const x = (worldCol * cos - worldRow * sin) / cells;
+  const y = (worldCol * sin + worldRow * cos) / cells;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const smooth = (t: number): number => t * t * (3 - 2 * t);
+  const tx = smooth(x - x0);
+  const ty = smooth(y - y0);
+  const node = (nx: number, ny: number): number => hash2D(nx * 7 + seed, ny * 13 - seed);
+  const top = node(x0, y0) * (1 - tx) + node(x0 + 1, y0) * tx;
+  const bottom = node(x0, y0 + 1) * (1 - tx) + node(x0 + 1, y0 + 1) * tx;
+  return top * (1 - ty) + bottom * ty;
+}
+
+/** Campo das manchas (0-1) numa célula do mundo: o formato largo mais um ruído fino que recorta a borda. */
+export function patchField(worldCol: number, worldRow: number): number {
+  const { coarseCells, coarseAngle, fineCells, fineAngle, fineWeight } = PATCH_NOISE;
+  const coarse = valueNoise(worldCol, worldRow, coarseCells, coarseAngle, 101);
+  const fine = valueNoise(worldCol, worldRow, fineCells, fineAngle, 577);
+  return (coarse + fine * fineWeight) / (1 + fineWeight);
+}
+
+/**
+ * A célula é mancha? Só se o campo passar do limiar E ela e as 8 vizinhas forem grama de verdade (`isGrass`): assim a mancha nunca
+ * encosta em terra, água, ponte ou piso — sobra sempre uma beirada de grama clara, e as transições que já existem ficam intactas.
+ */
+export function isPatchCell(worldCol: number, worldRow: number, isGrass: (worldCol: number, worldRow: number) => boolean): boolean {
+  if (!passesField(worldCol, worldRow)) return false;
+  for (let dRow = -1; dRow <= 1; dRow++) {
+    for (let dCol = -1; dCol <= 1; dCol++) {
+      if (!isGrass(worldCol + dCol, worldRow + dRow)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * O campo passa do limiar nesta célula? Na BEIRA da mancha (alguma vizinha dos 4 lados fora do limiar), uma fração das células é
+ * "mordida" (sorteio fixo por célula): quebra as bordas retas compridas e os retângulos pequenos que a grade de células deixaria.
+ */
+function passesField(worldCol: number, worldRow: number): boolean {
+  const { threshold, edgeBiteChance } = PATCH_NOISE;
+  if (patchField(worldCol, worldRow) < threshold) return false;
+  const onEdge =
+    patchField(worldCol, worldRow - 1) < threshold ||
+    patchField(worldCol + 1, worldRow) < threshold ||
+    patchField(worldCol, worldRow + 1) < threshold ||
+    patchField(worldCol - 1, worldRow) < threshold;
+  return !onEdge || hash2D(worldCol * 31 + 7, worldRow * 17 + 3) >= edgeBiteChance;
+}
+
+/** Peça do autotile da mancha (índice do tileset de grama) pela vizinhança: quais das 8 vizinhas também são mancha. */
+export function pickPatchTile(worldCol: number, worldRow: number, isPatch: (worldCol: number, worldRow: number) => boolean): number {
+  const n = isPatch(worldCol, worldRow - 1);
+  const e = isPatch(worldCol + 1, worldRow);
+  const s = isPatch(worldCol, worldRow + 1);
+  const w = isPatch(worldCol - 1, worldRow);
+  let mask = (n ? 1 : 0) | (e ? 2 : 0) | (s ? 4 : 0) | (w ? 8 : 0);
+  if (n && w && isPatch(worldCol - 1, worldRow - 1)) mask |= 16;
+  if (n && e && isPatch(worldCol + 1, worldRow - 1)) mask |= 32;
+  if (s && w && isPatch(worldCol - 1, worldRow + 1)) mask |= 64;
+  if (s && e && isPatch(worldCol + 1, worldRow + 1)) mask |= 128;
+  return PATCH_TILE_BY_MASK[mask];
 }

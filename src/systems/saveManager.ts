@@ -28,6 +28,7 @@ import { STARTER_BROKEN_FENCES } from '../data/farmStart';
 import { SmeltState, createSmeltState } from '../data/smelting';
 import { REMOVED_DECORATIONS } from '../data/decorations';
 import { resourceNodeRegistry, ResourceNode } from './resourceNodeRegistry';
+import { NPCS, NpcId } from '../data/npcs';
 
 /** Fase 10 — Estrutura Base e Persistência: 3 slots fixos, pedido explícito ("3 Slots de Save"). */
 export const SAVE_SLOT_COUNT = 3;
@@ -96,6 +97,10 @@ export interface SaveData {
   requests?: RequestsState;
   /** Caixa de Correio (cartas lidas + agendadas por código) — ausente em saves anteriores a ela (nenhuma lida; as fixas chegam nos dias delas). */
   mail?: MailState;
+  /** Sementes encomendadas pela Caixa de Correio, ainda não entregues. Ausente em saves antigos = nenhuma. */
+  seedOrders?: Record<string, number>;
+  /** Moradores já conhecidos. Ausente em saves antigos = todos (quem já jogava já ouviu as apresentações). */
+  metNpcs?: NpcId[];
   /** Eventos do mundo já realizados — ausente em saves anteriores a eles (nenhum). */
   events?: EventsState;
   /** Progressão (XP e habilidades compradas) — ausente em saves anteriores a ela: começa do zero. */
@@ -106,6 +111,8 @@ export interface SaveData {
   construction?: ConstructionState;
   /** Andar mais fundo alcançado na Caverna — ausente em saves antigos (0). */
   caveDeepest?: number;
+  /** Andares explorados hoje (`systems/caveVisits.ts`). Ausente em saves antigos = nenhum. */
+  caveExplored?: { day: number; floors: number[] };
   /** Nível das melhorias do Marceneiro (casa, plantio, cerca) — ausente em saves anteriores a elas: a casa já era a final. */
   upgrades?: UpgradesState;
   /** Fundições em andamento na Fornalha — ausente em saves anteriores a elas (nenhuma). */
@@ -116,6 +123,8 @@ export interface SaveData {
   tutorialCompleted?: boolean;
   /** A dica do regador vazio já foi mostrada? Ausente em saves antigos = já (não recebem a dica). */
   waterHintSeen?: boolean;
+  /** Já visitou o Vilarejo? Ausente em saves antigos = já (não recebem o objetivo de conhecê-lo). */
+  villageVisited?: boolean;
 }
 
 /** O que o Menu Principal precisa pra desenhar um slot — sem ler/parsear o `SaveData` inteiro fora deste módulo. */
@@ -238,18 +247,22 @@ export function save(slot?: number): void {
     enchants: [...gameState.enchants],
     wizardDelivered: [...gameState.wizardDelivered],
     sanctuary: { ...gameState.sanctuary },
-    requests: { completed: { ...gameState.requests.completed }, availableFromDay: { ...gameState.requests.availableFromDay } },
+    requests: { completed: { ...gameState.requests.completed }, availableFromDay: { ...gameState.requests.availableFromDay }, next: { ...(gameState.requests.next ?? {}) } },
     mail: { readIds: [...gameState.mail.readIds], custom: gameState.mail.custom.map((message) => ({ ...message })) },
+    seedOrders: { ...gameState.seedOrders },
+    metNpcs: [...gameState.metNpcs],
     events: { completed: [...gameState.events.completed] },
     animals: { coops: JSON.parse(JSON.stringify(gameState.animals.coops)) as AnimalsState['coops'] },
     skills: { xp: gameState.skills.xp, totalXp: gameState.skills.totalXp, ranks: { ...gameState.skills.ranks } },
     construction: { orders: gameState.construction.orders.map((order) => ({ ...order })), nextId: gameState.construction.nextId },
     caveDeepest: gameState.cave.deepest,
+    caveExplored: { day: gameState.caveExplored.day, floors: [...gameState.caveExplored.floors] },
     destroyedFences: [...gameState.destroyedFences],
     upgrades: { ...gameState.upgrades },
     smelting: { jobs: gameState.smelting.jobs.map((job) => ({ ...job })) },
     tutorialCompleted: gameState.tutorialCompleted,
     waterHintSeen: gameState.waterHintSeen,
+    villageVisited: gameState.villageVisited,
   };
   storage.write(saveKey(targetSlot), JSON.stringify(data));
 }
@@ -310,7 +323,8 @@ export function load(slot: number): boolean {
     const horde = data.horde ? { ...createHordeState(), ...data.horde, drops: { ...(data.horde.drops ?? {}) } } : createHordeState();
     // Save de antes da campanha: recomeça as missões, mas as hordas que ele já tinha passado (a última já terminada) contam como vencidas.
     const legacyHordesWon = horde.lastHordeDay > 0 ? hordeNumberForDay(horde.lastHordeDay) - (horde.active ? 1 : 0) : 0;
-    const requests: RequestsState = { completed: { ...(data.requests?.completed ?? {}) }, availableFromDay: { ...(data.requests?.availableFromDay ?? {}) } };
+    // `next` ausente (save antigo): a fila continua de onde `completed` aponta, como antes.
+    const requests: RequestsState = { completed: { ...(data.requests?.completed ?? {}) }, availableFromDay: { ...(data.requests?.availableFromDay ?? {}) }, next: { ...(data.requests?.next ?? {}) } };
     const campaign: CampaignState = { ...createCampaignState(), hordesWon: Math.max(0, legacyHordesWon), ...(data.campaign ?? {}) };
     const mail: MailState = { readIds: [...(data.mail?.readIds ?? [])], custom: (data.mail?.custom ?? []).map((message) => ({ ...message })) };
     const events: EventsState = { completed: [...(data.events?.completed ?? [])] };
@@ -355,17 +369,21 @@ export function load(slot: number): boolean {
     gameState.wizardDelivered = Array.isArray(data.wizardDelivered) ? data.wizardDelivered.filter((id) => typeof id === 'string') : [];
     gameState.requests = requests;
     gameState.mail = mail;
+    gameState.seedOrders = { ...(data.seedOrders ?? {}) };
+    gameState.metNpcs = data.metNpcs ? [...data.metNpcs] : (Object.keys(NPCS) as NpcId[]);
     gameState.events = events;
     gameState.skills = skills;
     gameState.animals = animals;
     gameState.construction = construction;
     gameState.cave = { deepest: data.caveDeepest ?? 0 };
+    gameState.caveExplored = { day: data.caveExplored?.day ?? 0, floors: [...(data.caveExplored?.floors ?? [])] };
     gameState.destroyedFences = new Set(data.destroyedFences ?? []);
     gameState.smelting = { jobs: (data.smelting?.jobs ?? []).map((job) => ({ ...job })) };
     gameState.upgrades = data.upgrades ? { ...createUpgradesState(), ...data.upgrades } : createLegacyUpgradesState();
     applyUpgrades(); // A casa, a lavoura e a cerca do save (a lavoura ampliada ganha as parcelas que faltarem).
     gameState.tutorialCompleted = data.tutorialCompleted ?? true;
     gameState.waterHintSeen = data.waterHintSeen ?? true;
+    gameState.villageVisited = data.villageVisited ?? true;
     gameState.waterObjective = false;
     gameState.tutorialStep = 0;
     gameState.tutorialProgress = 0;
@@ -414,11 +432,14 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.sanctuary = createSanctuaryState();
   gameState.requests = createRequestsState();
   gameState.mail = createMailState();
+  gameState.seedOrders = {};
+  gameState.metNpcs = [];
   gameState.events = createEventsState();
   gameState.skills = createSkillsState();
   gameState.animals = createAnimalsState();
   gameState.construction = createConstructionState();
   gameState.cave = { deepest: 0 };
+  gameState.caveExplored = { day: 0, floors: [] };
   gameState.destroyedFences = new Set(STARTER_BROKEN_FENCES); // Partida nova: algumas cercas já quebradas (`data/farmStart.ts`).
   gameState.smelting = createSmeltState();
   gameState.sprinklerAnimDay = 0;
@@ -426,6 +447,7 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.tutorialCompleted = false; // Partida nova: o tutorial roda uma vez (`systems/tutorial.ts`).
   gameState.waterHintSeen = false; // ...e a dica do primeiro regador vazio também.
   gameState.waterObjective = false;
+  gameState.villageVisited = false; // ...e o objetivo de conhecer o Vilarejo, até o primeiro passo nele.
   gameState.tutorialStep = 0;
   gameState.tutorialProgress = 0;
   activeSlot = slot;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { freshGame } from './helpers';
 import { gameState } from '../../src/systems/gameState';
 import { countPillars, describeStoryObjective, hasMilestone, isWorldAtPeace, reachMilestone, sanitizeStoryState } from '../../src/systems/story';
-import { markMailRead } from '../../src/systems/mail';
+import { checkProphecyMail, getUnreadMail, markMailRead } from '../../src/systems/mail';
 import { PROPHECY_MAIL_ID } from '../../src/data/story';
 
 describe('história dos Três Pilares', () => {
@@ -13,7 +13,22 @@ describe('história dos Três Pilares', () => {
     expect(describeStoryObjective()).toBeNull();
   });
 
+  it('a carta da profecia só chega ao alcançar o andar 30 das Cavernas (uma vez)', () => {
+    gameState.gameClock.advanceToNextMorning();
+    gameState.gameClock.advanceToNextMorning();
+    gameState.gameClock.advanceToNextMorning(); // Dia 4: antes ela chegava no dia 3.
+    gameState.cave.deepest = 29;
+    expect(checkProphecyMail()).toBe(false);
+    expect(getUnreadMail().some((mail) => mail.id === PROPHECY_MAIL_ID)).toBe(false);
+    gameState.cave.deepest = 30;
+    expect(checkProphecyMail()).toBe(true);
+    expect(checkProphecyMail()).toBe(false);
+    expect(getUnreadMail().some((mail) => mail.id === PROPHECY_MAIL_ID)).toBe(true);
+  });
+
   it('a carta da profecia inicia a história e mostra o próximo passo', () => {
+    gameState.cave.deepest = 30;
+    checkProphecyMail();
     markMailRead(PROPHECY_MAIL_ID);
     expect(hasMilestone('prophecy')).toBe(true);
     expect(describeStoryObjective()).toContain('Os Três Pilares (0/3)');

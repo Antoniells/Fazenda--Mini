@@ -3,6 +3,7 @@ import { hasMilestone, reachMilestone } from './story';
 import { ENCHANTS, ENCHANT_BAR_ID, ENCHANT_TARGETS, EnchantTarget } from '../data/enchanting';
 import { getToolTierInfo } from '../data/toolProgression';
 import { WEAPONS } from '../data/weapons';
+import { getSkillDefense } from './skills';
 
 /**
  * ENCANTAMENTOS (Fase 11): o que já foi encantado (`gameState.enchants`, vai pro save), encantar na Mesa do Mago e os bônus que os
@@ -51,7 +52,7 @@ export function enchantMultiplier(target: EnchantTarget): number {
 
 /** Defesa do jogador: a da armadura vestida, com o encantamento da Armadura. */
 export function getPlayerDefense(): number {
-  return gameState.inventory.getDefense() * enchantMultiplier('armor');
+  return gameState.inventory.getDefense() * enchantMultiplier('armor') + getSkillDefense(); // + a do Fôlego (habilidade).
 }
 
 /** Dano de uma espada, com o encantamento da Espada. */

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ALL_SOUND_EFFECTS, SoundEffectDef, STEP_GRASS_SOUNDS, STEP_BRIDGE_SOUND, CLICK_SOUND } from '../data/audio';
+import { ALL_SOUND_EFFECTS, SoundEffectDef, STEP_GRASS_SOUNDS, STEP_BRIDGE_SOUND, STEP_STONE_SOUNDS, CLICK_SOUND } from '../data/audio';
 import { getEffectsVolume } from './audioSettings';
 
 /**
@@ -33,29 +33,31 @@ export function playClick(scene: Phaser.Scene): void {
   playEffect(scene, CLICK_SOUND);
 }
 
-export type StepSurface = 'grass' | 'bridge';
+export type StepSurface = 'grass' | 'bridge' | 'stone';
 
 /**
  * Passos: toca um som a cada célula que o jogador pisa, escutando o mesmo
  * `player-stepped` que já anima mato/plantação (`PlayerController` emite ao
  * COMEÇAR cada passo — vale igual pra teclado e pra rota do clique). A cena
- * diz qual chão é aquele (`surfaceAt`): hoje só grama e a célula da ponte de
- * transição. Na grama sorteia uma das variações, nunca a mesma duas vezes
- * seguidas (senão o "tá-tá-tá" fica robótico). O listener sai junto com a
+ * diz qual chão é aquele (`surfaceAt`): grama, madeira (a ponte de transição,
+ * casa e lojas) ou pedra (as Cavernas). Na grama e na pedra sorteia uma das
+ * variações, nunca a mesma duas vezes seguidas (senão o "tá-tá-tá" fica robótico). O listener sai junto com a
  * cena (`shutdown`), pra não acumular a cada `scene.start`.
  */
 export function attachFootstepSounds(scene: Phaser.Scene, surfaceAt: (col: number, row: number) => StepSurface): void {
-  let lastGrassIndex = -1;
+  let lastIndex = -1;
 
   const onStep = (col: number, row: number): void => {
-    if (surfaceAt(col, row) === 'bridge') {
+    const surface = surfaceAt(col, row);
+    if (surface === 'bridge') {
       playEffect(scene, STEP_BRIDGE_SOUND);
       return;
     }
-    let index = Phaser.Math.Between(0, STEP_GRASS_SOUNDS.length - 1);
-    if (index === lastGrassIndex) index = (index + 1) % STEP_GRASS_SOUNDS.length;
-    lastGrassIndex = index;
-    playEffect(scene, STEP_GRASS_SOUNDS[index]);
+    const sounds = surface === 'stone' ? STEP_STONE_SOUNDS : STEP_GRASS_SOUNDS;
+    let index = Phaser.Math.Between(0, sounds.length - 1);
+    if (index === lastIndex) index = (index + 1) % sounds.length;
+    lastIndex = index;
+    playEffect(scene, sounds[index]);
   };
   scene.events.on('player-stepped', onStep);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off('player-stepped', onStep));

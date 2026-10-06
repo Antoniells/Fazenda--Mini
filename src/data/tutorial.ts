@@ -47,7 +47,7 @@ export const TUTORIAL_START_SLOT = 7;
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: 'Bem-vindo à fazenda!',
+    title: 'Boas-vindas à fazenda!',
     text: 'Vamos aprender o básico em poucos passos. Alguns comandos ficam travados até você fazer o que o painel pede.',
     goal: { kind: 'info', buttonLabel: 'Começar' },
   },
@@ -130,3 +130,6 @@ export const WATER_EMPTY_HINT: TutorialStep = {
 
 /** O objetivo que aparece no marcador do HUD depois da dica, enquanto o regador está vazio (`gameState.waterObjective`). */
 export const WATER_OBJECTIVE_TEXT = 'Encher o regador no poço do Vilarejo (ponte a leste)';
+
+/** Depois do tutorial, até o primeiro passo no Vilarejo (`gameState.villageVisited`): é lá que ficam as lojas e os moradores. */
+export const VILLAGE_OBJECTIVE_TEXT = 'Conhecer o Vilarejo e as lojas (ponte a leste)';

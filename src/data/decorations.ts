@@ -150,7 +150,8 @@ export const FURNACE: DecorationDefinition = {
  * golpe de Picareta (qualquer tier), que os derruba como item no chão (ver `PlacedDecorationInteractable`).
  *
  * O de madeira mantém o id `'sprinkler'` (o único que já existia) pra não quebrar saves com um já posicionado no mundo.
- * Preço do ferro/ouro é um ponto de partida — fácil de ajustar aqui embaixo.
+ * O alcance (4/8/24 terras) é pedido explícito; o PREÇO foi rebalanceado depois do playtest (o de Cobre custava 300 + 5 barras pra regar 4
+ * terras e ninguém comprava): Cobre 100 + 2 barras, Ferro 400 + 3 barras, Ouro 1500 + 3 barras — vários de Cobre já cobrem uma fileira.
  */
 const SPRINKLER_ICON = { width: 25, height: 23 };
 const SPRINKLER_DISPLAY_SCALE_MULTIPLIER = 16 / SPRINKLER_ICON.width;
@@ -162,8 +163,8 @@ export const SPRINKLER_WOOD: DecorationDefinition = {
   texturePath: 'Objects/Props/Sprinkler Tiers.png',
   frameName: 'decor-sprinkler-wood-icon',
   frameRect: { x: 4, y: 4, ...SPRINKLER_ICON },
-  price: 300,
-  materials: [{ resourceId: COPPER_BAR.id, amount: 5 }, { resourceId: STONE.id, amount: 10 }],
+  price: 100,
+  materials: [{ resourceId: COPPER_BAR.id, amount: 2 }, { resourceId: STONE.id, amount: 5 }],
   description: 'Rega as 4 terras coladas nele (em cruz) toda manhã. Só em terra não arada.',
   footprint: { width: 1, height: 1 },
   waterReach: { radius: 1, shape: 'cross' },
@@ -179,8 +180,8 @@ export const SPRINKLER_IRON: DecorationDefinition = {
   texturePath: 'Objects/Props/Sprinkler Tiers.png',
   frameName: 'decor-sprinkler-iron-icon',
   frameRect: { x: 37, y: 4, ...SPRINKLER_ICON },
-  price: 900,
-  materials: [{ resourceId: IRON.id, amount: 5 }, { resourceId: STONE.id, amount: 10 }],
+  price: 400,
+  materials: [{ resourceId: IRON.id, amount: 3 }, { resourceId: STONE.id, amount: 10 }],
   description: 'Rega as 8 terras em volta (3x3) toda manhã. Só em terra não arada.',
   footprint: { width: 1, height: 1 },
   waterReach: { radius: 1, shape: 'square' },
@@ -196,8 +197,8 @@ export const SPRINKLER_GOLD: DecorationDefinition = {
   texturePath: 'Objects/Props/Sprinkler Tiers.png',
   frameName: 'decor-sprinkler-gold-icon',
   frameRect: { x: 70, y: 4, ...SPRINKLER_ICON },
-  price: 4000,
-  materials: [{ resourceId: GOLD_BAR.id, amount: 5 }, { resourceId: IRON.id, amount: 5 }],
+  price: 1500,
+  materials: [{ resourceId: GOLD_BAR.id, amount: 3 }, { resourceId: IRON.id, amount: 3 }],
   description: 'Rega as 24 terras em volta (5x5) toda manhã. Só em terra não arada.',
   footprint: { width: 1, height: 1 },
   waterReach: { radius: 2, shape: 'square' },

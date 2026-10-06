@@ -6,9 +6,13 @@ import { CaveEnemies, enemySheetsFor } from '../systems/caveEnemies';
 import { preloadSheets } from '../entities/cave/caveAnims';
 import { CAVE_TILES, CAVE_STAIRS } from '../data/caveTiles';
 import { TILE_SIZE, ORE_KEY, ORE_PATH } from '../data/tiles';
-import { buildOreDeposit } from '../systems/externalMapBuilder';
+import { buildCaveRock, buildOreDeposit } from '../systems/externalMapBuilder';
 import { OreInteractable } from '../systems/oreInteraction';
 import { placeCaveOres } from '../systems/caveOres';
+import { planCaveRocks } from '../systems/caveRocks';
+import { RockInteractable } from '../systems/resourceInteraction';
+import { popText } from '../systems/floatingText';
+import type { Cell } from '../systems/caveGenerator';
 import { buildCaveLandmarks, forgottenChestCell, isBarrierActive, preloadCaveLandmarks } from '../systems/caveLandmarks';
 import { BARRIER_FLOOR, FINAL_FLOOR, FINAL_HORDE_WAVES, FINAL_HORDE_WAVE_DELAY_MS } from '../data/caveLandmarks';
 import { SANCTUARY_LINES, SANCTUARY_TINT } from '../data/sanctuary';
@@ -35,10 +39,11 @@ import { shouldRecallToFarm, recallToFarm } from '../systems/hordeRecall';
 import { LockedMessage } from '../ui/lockedMessage';
 import { WorldBlur } from '../systems/worldBlur';
 import { CaveLighting } from '../systems/caveLighting';
-import { preloadLightSources } from '../systems/lightSources';
+import { checkProphecyMail } from '../systems/mail';
 import { OreSparkles, preloadOreSparkles } from '../systems/oreSparkle';
 import { UNLOCK_SOUND } from '../data/audio';
 import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
+import { isFloorExploredToday, markFloorExplored } from '../systems/caveVisits';
 
 export const CAVE_FLOOR_SCENE_KEY = 'CaveFloorScene';
 
@@ -78,10 +83,13 @@ export class CaveFloorScene extends Phaser.Scene {
   private isLeaving = false;
   /** Andar 100 depois da Horda Final (`systems/sanctuary.ts`): sem inimigos, o altar, o lago e o ritual. */
   private sanctuary: Sanctuary | null = null;
-  /** Penumbra + halo do personagem (`systems/caveLighting.ts`); o santuário não tem. */
+  /** Iluminação nativa do Phaser 4 (`systems/caveLighting.ts`): ambiente do andar + luz do personagem e das escadas; o santuário não tem. */
   private lighting: CaveLighting | null = null;
   /** As estrelinhas sobre os veios (`systems/oreSparkle.ts`). */
   private sparkles: OreSparkles | null = null;
+  /** Onde está a escada de descida (a do desenho do andar, ou a pedra sorteada que a esconde — `systems/caveRocks.ts`) e se já está à vista. */
+  private stairsDown!: Cell;
+  private stairsFound = true;
   /** Andar 100 antes dele: quantas ondas extras da Horda Final já vieram (`FINAL_HORDE_WAVES`). */
   private wavesSpawned = 0;
   private waveIncoming = false;
@@ -97,12 +105,17 @@ export class CaveFloorScene extends Phaser.Scene {
     if (this.isSanctuaryFloor()) this.config = { ...this.config, enemyCount: 0, guardian: false, tint: SANCTUARY_TINT };
     // Depois do fim da história a luz do Sábio Coelho limpou as Cavernas: nenhum andar tem monstros.
     else if (isWorldAtPeace()) this.config = { ...this.config, enemyCount: 0, guardian: false };
+    // Já explorado hoje (`systems/caveVisits.ts`): volta vazio — sem inimigos, veios nem pedras — até amanhã.
+    this.exploredToday = isFloorExploredToday(data.floor);
+    if (this.exploredToday) this.config = { ...this.config, enemyCount: 0, guardian: false };
     this.layout = this.isSanctuaryFloor() ? generateSanctuaryFloor(this.config) : generateCaveFloor(this.config);
     // A instância da cena é reaproveitada entre `scene.start()`.
     this.isLeaving = false;
     this.sanctuary = null;
     this.lighting = null;
     this.sparkles = null;
+    this.stairsDown = this.layout.stairsDown;
+    this.stairsFound = true;
     this.wavesSpawned = 0;
     this.waveIncoming = false;
   }
@@ -116,10 +129,12 @@ export class CaveFloorScene extends Phaser.Scene {
     preloadSheets(this, enemySheetsFor(this.config));
     if (!this.textures.exists(ORE_KEY)) this.load.image(ORE_KEY, encodeURI(`/${ORE_PATH}`));
     preloadCaveLandmarks(this);
-    preloadLightSources(this); // A mancha de brilho do halo e das escadas.
     preloadOreSparkles(this);
     if (this.config.floor === FINAL_FLOOR) preloadSanctuary(this);
   }
+
+  /** Este andar já tinha sido explorado hoje (`systems/caveVisits.ts`): veio vazio. */
+  private exploredToday = false;
 
   private isSanctuaryFloor(): boolean {
     return this.config.floor === FINAL_FLOOR && hasMilestone('sanctuary');
@@ -133,9 +148,10 @@ export class CaveFloorScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(VOID_COLOR);
     this.buildTiles(tilePx);
 
-    // Escadas: a de subida onde o jogador chega e a de descida (o último andar não tem — é o fundo).
+    // Escadas: a de subida onde o jogador chega e a de descida (o último andar não tem — é o fundo). A de descida pode estar escondida
+    // debaixo de uma pedra (`buildRocks`): aí só aparece quando a pedra quebra.
     this.addStairs(stairsUp, CAVE_STAIRS.upFrame, tilePx);
-    if (!isBottom) this.addStairs(stairsDown, CAVE_STAIRS.downFrame, tilePx);
+    const hideStairs = !isBottom && !this.isSanctuaryFloor() && !this.exploredToday && this.config.floor !== BARRIER_FLOOR && this.entry.from === 'above';
 
     const wallCells: Array<[number, number]> = [];
     for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) if (walls[row][col]) wallCells.push([col, row]);
@@ -158,8 +174,11 @@ export class CaveFloorScene extends Phaser.Scene {
     this.enemies = new CaveEnemies(this, this.config, this.layout, grid, tilePx, this.player);
     this.controller.setEnemyProvider(() => this.enemies.getAliveEnemies());
 
-    if (!this.isSanctuaryFloor()) this.buildOres(grid, interactions);
+    if (!this.isSanctuaryFloor() && !this.exploredToday) this.buildRocks(grid, interactions, this.buildOres(grid, interactions), hideStairs, tilePx);
+    markFloorExplored(this.config.floor);
+    if (!isBottom && this.stairsFound) this.addStairs(stairsDown, CAVE_STAIRS.downFrame, tilePx);
     this.lockedMessage = new LockedMessage(this);
+    if (this.exploredToday && !isWorldAtPeace()) this.time.delayedCall(300, () => this.lockedMessage.show('ANDAR JÁ EXPLORADO', 'Você já passou por aqui hoje. Veios, pedras e criaturas voltam amanhã.'));
     if (chestCell) {
       buildCaveLandmarks({
         scene: this,
@@ -177,10 +196,10 @@ export class CaveFloorScene extends Phaser.Scene {
     }
 
     setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
-    if (!this.isSanctuaryFloor()) this.lighting = new CaveLighting(this, this.config.floor, this.player.sprite, tilePx, { up: stairsUp, down: isBottom ? null : stairsDown });
+    if (!this.isSanctuaryFloor()) this.lighting = new CaveLighting(this, this.config.floor, this.player.sprite, tilePx, { up: stairsUp, down: isBottom || !this.stairsFound ? null : stairsDown });
     this.worldBlur = new WorldBlur(this.cameras.main);
     ensureUIScene(this);
-    attachFootstepSounds(this, () => 'bridge');
+    attachFootstepSounds(this, () => 'stone');
 
     if (gameState.petUnlocked) this.petCompanion = new PetCompanion(this, this.player, this.controller, grid, tilePx, PET_ROAM.area, (col, row) => col > 0 && row > 0 && col < cols - 1 && row < rows - 1);
 
@@ -193,7 +212,7 @@ export class CaveFloorScene extends Phaser.Scene {
     onPlayerStepped(this, (col, row) => {
       if (this.isLeaving) return;
       if (col === stairsUp.col && row === stairsUp.row) this.travel(this.config.floor - 1, 'below');
-      else if (!isBottom && col === stairsDown.col && row === stairsDown.row) this.travel(this.config.floor + 1, 'above');
+      else if (!isBottom && this.stairsFound && col === this.stairsDown.col && row === this.stairsDown.row) this.travel(this.config.floor + 1, 'above');
     });
 
     this.input.keyboard!.on('keydown-E', () => {
@@ -210,7 +229,7 @@ export class CaveFloorScene extends Phaser.Scene {
     this.buildHud(isBottom);
     this.enemies.onCleared = () => {
       if (this.config.floor === FINAL_FLOOR && !this.isSanctuaryFloor()) this.nextFinalWave();
-      else this.lockedMessage.show('ANDAR LIMPO', 'A escada de descida está livre.');
+      else this.lockedMessage.show('ANDAR LIMPO', this.stairsFound ? 'A escada de descida está livre.' : 'A escada está escondida debaixo de uma das pedras.');
     };
     if (this.config.floor === FINAL_FLOOR && !this.isSanctuaryFloor() && !isWorldAtPeace()) this.time.delayedCall(400, () => this.lockedMessage.show('A HORDA FINAL', `Derrote cada criatura: ${FINAL_HORDE_WAVES.length + 1} ondas.`));
 
@@ -223,6 +242,11 @@ export class CaveFloorScene extends Phaser.Scene {
         this.lockedMessage.show('ATALHO DESBLOQUEADO', `Você pode começar direto no andar ${this.config.floor}.`);
         saveGame();
       }
+      // Andar 30: chega a carta da profecia (`checkProphecyMail`) — o começo da história dos Três Pilares.
+      if (checkProphecyMail()) {
+        this.lockedMessage.show('UMA CARTA CHEGOU', 'Alguém deixou uma carta na sua Caixa de Correio, lá na Fazenda.');
+        saveGame();
+      }
     }
     this.cameras.main.fadeIn(FADE_MS, 0, 0, 0);
   }
@@ -231,13 +255,15 @@ export class CaveFloorScene extends Phaser.Scene {
    * Os VEIOS do andar (`systems/caveOres.ts`): encostados nas paredes, fora de onde os inimigos nascem, sem fechar passagem — minerados
    * com a Picareta como os da Pedreira, mas de uma visita só. A primeira Azurita (andar 45+) é um marco da história.
    */
-  private buildOres(grid: WalkableGrid, interactions: InteractionRegistry): void {
+  private buildOres(grid: WalkableGrid, interactions: InteractionRegistry): Set<string> {
     const { spawnCells } = this.layout;
     const occupied = new Set(spawnCells.slice(0, this.config.enemyCount + 1).map((cell) => `${cell.col},${cell.row}`));
     const last = spawnCells[spawnCells.length - 1];
     if (last) occupied.add(`${last.col},${last.row}`);
     this.sparkles = new OreSparkles(this, this.player.sprite, TILE_SIZE * DISPLAY_SCALE);
+    const oreCells = new Set<string>();
     for (const ore of placeCaveOres(this.config, this.layout, occupied)) {
+      oreCells.add(`${ore.col},${ore.row}`);
       const sprite = buildOreDeposit(this, TILE_SIZE, ore.col, ore.row, ore.kind);
       this.sparkles.add(sprite, ore.kind);
       grid.block(ore.col, ore.row);
@@ -245,6 +271,50 @@ export class CaveFloorScene extends Phaser.Scene {
         if (kind === 'azurite' && reachMilestone('azurite')) this.lockedMessage.show('AZURITA!', 'Um minério raro e cintilante. Dizem que serve para forjar magia.');
       }));
     }
+    return oreCells;
+  }
+
+  /**
+   * As PEDRAS do andar (`systems/caveRocks.ts`): soltas pelo chão, quebradas com a Picareta como as da Pedreira (sem fechar passagem).
+   * Com `hideStairs`, a escada de descida está debaixo de uma delas — ao quebrar essa, a escada aparece com a luz dela.
+   */
+  private buildRocks(grid: WalkableGrid, interactions: InteractionRegistry, oreCells: Set<string>, hideStairs: boolean, tilePx: number): void {
+    const { spawnCells } = this.layout;
+    const occupied = new Set<string>(oreCells);
+    for (const cell of spawnCells.slice(0, this.config.enemyCount + 1)) occupied.add(`${cell.col},${cell.row}`);
+    const last = spawnCells[spawnCells.length - 1];
+    if (last) occupied.add(`${last.col},${last.row}`);
+    // Andar 50: o baú esquecido fica do lado da escada (a área dela já fica livre de pedras; a célula vai junto por garantia).
+    if (this.config.floor === BARRIER_FLOOR) {
+      const chest = forgottenChestCell(this.layout.stairsDown, this.layout.cols);
+      occupied.add(`${chest.col},${chest.row}`);
+    }
+
+    const plan = planCaveRocks(this.layout, { floor: this.config.floor, occupied, blocked: oreCells, hideStairs });
+    const rockCells = new Set(plan.rocks.map((rock) => `${rock.col},${rock.row}`));
+    // As ondas de inimigos que vêm depois (Horda Final) não nascem dentro de pedra nem de veio.
+    this.layout.spawnCells = spawnCells.filter((cell) => !rockCells.has(`${cell.col},${cell.row}`) && !oreCells.has(`${cell.col},${cell.row}`));
+    if (plan.hiddenStairs) {
+      this.stairsDown = plan.hiddenStairs;
+      this.stairsFound = false;
+    }
+
+    for (const rock of plan.rocks) {
+      const sprite = buildCaveRock(this, TILE_SIZE, rock.col, rock.row, rock.variant);
+      grid.block(rock.col, rock.row);
+      const hidesStairs = !this.stairsFound && rock.col === this.stairsDown.col && rock.row === this.stairsDown.row;
+      interactions.set(rock.col, rock.row, new RockInteractable(this.player, { sprite }, grid, interactions, CAVE_FLOOR_SCENE_KEY, rock.col, rock.row, false, hidesStairs ? () => this.revealStairs(tilePx) : undefined));
+    }
+  }
+
+  /** A pedra da escada quebrou: a escada de descida aparece (com a luz azul dela) e já dá pra descer. */
+  private revealStairs(tilePx: number): void {
+    this.stairsFound = true;
+    this.addStairs(this.stairsDown, CAVE_STAIRS.downFrame, tilePx);
+    this.lighting?.lightStairsDown(this.stairsDown);
+    playEffect(this, UNLOCK_SOUND);
+    popText(this, (this.stairsDown.col + 0.5) * tilePx, this.stairsDown.row * tilePx - 8, 'Escada!', { color: '#ffe9b3', fontSize: 16 });
+    this.refreshCounter();
   }
 
   /** HORDA FINAL (andar 100): cada vez que o andar esvazia vem a próxima onda; depois da última, o santuário se revela. */
@@ -323,8 +393,13 @@ export class CaveFloorScene extends Phaser.Scene {
       return;
     }
     const guardian = this.config.guardian ? ' (Guardião!)' : '';
-    const cleared = isBarrierActive(this.config.floor) ? 'Andar limpo — uma barreira mágica bloqueia a descida' : 'Andar limpo — pise na escada pra descer';
-    this.counterText.setText(left > 0 ? `Inimigos: ${left}/${total}${guardian}` : cleared);
+    const cleared = isBarrierActive(this.config.floor)
+      ? 'Andar limpo — uma barreira mágica bloqueia a descida'
+      : this.stairsFound
+        ? 'Andar limpo — pise na escada pra descer'
+        : 'Andar limpo — a escada está debaixo de uma das pedras';
+    const hint = this.stairsFound ? '' : ' — quebre as pedras pra achar a escada';
+    this.counterText.setText(left > 0 ? `Inimigos: ${left}/${total}${guardian}${hint}` : cleared);
   }
 
   update(time: number, delta: number): void {

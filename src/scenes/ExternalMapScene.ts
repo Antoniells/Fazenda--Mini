@@ -9,6 +9,7 @@ import { PET_ROAM } from '../data/pets';
 import { gameState } from '../systems/gameState';
 import { SHADOW_KEY, SHADOW_PATH } from '../data/effects';
 import { buildGroundChunk, buildBridge, bridgeRailingCells, bridgeWalkwayCells, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { getGroundPatches } from '../systems/groundPatches';
 import { setupWorldCamera } from '../systems/cameraSetup';
 import { WalkableGrid } from '../systems/grid';
 import { waterCellsFromGround } from '../systems/waterCells';
@@ -245,7 +246,10 @@ export abstract class ExternalMapScene extends Phaser.Scene {
 
     const groundLayer = buildGroundChunk(this, TILE_SIZE, 0, 0, cols, rows, this.config.dirtZone, this.config.groundTint, this.config.ground, this.config.waterStyle);
     if (this.config.groundSaturation !== undefined) {
-      groundLayer.enableFilters().filters!.internal.addColorMatrix().colorMatrix.saturate(this.config.groundSaturation - 1);
+      // As manchas de grama (`systems/groundPatches.ts`) recebem o mesmo filtro do chão.
+      for (const layer of [groundLayer, getGroundPatches(groundLayer)]) {
+        layer?.enableFilters().filters!.internal.addColorMatrix().colorMatrix.saturate(this.config.groundSaturation - 1);
+      }
     }
     // Mesmo tratamento de `MainScene.create()` pro `farmMap.backgroundColor`
     // — opcional, sem ele mantém a cor padrão do Phaser (preto).

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { playClick } from '../systems/soundEffects';
-import { Inventory, HOTBAR_SIZE, INVENTORY_SIZE } from '../systems/inventory';
+import { Inventory, HOTBAR_SIZE, STORAGE_SIZE } from '../systems/inventory';
 import { resolveSlotVisual } from '../data/items';
 import { CROPS, ALL_CROPS_ICONS_KEY, CropDefinition } from '../data/crops';
 import { PLAYER_ANIM_FRAMES, getPlayerAssets } from '../data/player';
@@ -63,6 +63,31 @@ const ROW_GAP = 12;
 const GRID_COLS = 6;
 const GRID_ROWS = 5;
 const ITEMS_PER_PAGE = GRID_COLS * GRID_ROWS;
+/**
+ * As células do caderno: as da página (o ESTOQUE da Bolsa, na Mochila) e, em cima do livro, a fileira da HOTBAR (pedido explícito: a
+ * Hotbar sobe pra cima do caderno aberto, no estilo dele, e não se repete dentro dele — cada célula mostra um slot só da Bolsa).
+ */
+const HOTBAR_ROW_FIRST_CELL = ITEMS_PER_PAGE;
+const CELL_COUNT = ITEMS_PER_PAGE + HOTBAR_SIZE;
+/**
+ * Fundo da fileira da Hotbar: um "livro fino" montado do próprio `Book.png` — a metade esquerda e a direita das páginas, cada uma
+ * num NineSlice (os cantos dourados, a madeira de baixo e o fecho não esticam; o encontro das duas metades vira a lombada). Medidas em
+ * pixels nativos, conferidas pixel a pixel: canto dourado de cima 12x19, de baixo 21x20 com a faixa de madeira, fecho no meio de baixo.
+ */
+const HOTBAR_BOOK_LEFT = { name: 'inventory-hotbar-book-left', rect: { x: 0, y: 0, width: 120, height: 144 } };
+const HOTBAR_BOOK_RIGHT = { name: 'inventory-hotbar-book-right', rect: { x: 120, y: 0, width: 119, height: 144 } };
+const HOTBAR_BOOK_OUTER = 23;
+const HOTBAR_BOOK_INNER = 8;
+const HOTBAR_BOOK_TOP = 20;
+const HOTBAR_BOOK_BOTTOM = 23;
+/** Altura do livro fino (nativa): só os cantos, sem esticar no meio. As células ficam no bege, a `HOTBAR_BOOK_ROW_Y` do topo. */
+const HOTBAR_BOOK_HEIGHT = HOTBAR_BOOK_TOP + HOTBAR_BOOK_BOTTOM;
+const HOTBAR_BOOK_ROW_Y = 14;
+/** Folga (px de tela) entre a fileira e a borda do livro fino, além dos cantos dourados; e entre o livro fino e o caderno. */
+const HOTBAR_BOOK_SIDE_PAD = 10;
+/** Espaço a mais no meio da fileira (px de tela), em cima da lombada do livro fino: as células do meio não encostam nela. */
+const HOTBAR_BOOK_SPINE_GAP = 14;
+const HOTBAR_BOOK_GAP = 4;
 /** Fração da célula (16px nativos) que um ícone "normal" (16x16) preenche. */
 const ICON_FILL_RATIO = 0.8;
 const ICON_TARGET_PX = 16 * SLOT_SCALE * ICON_FILL_RATIO;
@@ -242,6 +267,8 @@ interface InventorySlot {
   onClick: (() => void) | null;
   /** Nome do item no slot (balão do `Tooltip` ao passar o mouse); `''` = slot vazio, sem balão. Atualizado a cada `renderActiveCategory`. */
   name: string;
+  /** Célula da fileira da Hotbar (em cima do livro): aparece em todas as abas e sempre aceita arrasto. */
+  hotbar: boolean;
 }
 
 /** O que um slot do grid mostra, resolvido a partir do `Inventory`/`CROPS` — ver `computeContent`. */
@@ -267,9 +294,11 @@ interface InventorySlotContent {
  * Livro, abas rotacionadas na lateral esquerda com hover, seletor branco de
  * canto na aba ativa e botão de fechar (marcador de couro + X) na direita.
  *
- * 3 abas: Mochila (os 24 slots físicos de `Inventory` — ferramentas,
- * sementes, decorações e materiais coletados; clicar num dos 8 primeiros
- * troca o slot ativo da Hotbar, mesma regra de antes desta reformulação),
+ * Abas: Mochila (o ESTOQUE da Bolsa — os slots de `Inventory` depois dos 8 da Hotbar: ferramentas,
+ * sementes, decorações e materiais guardados), Pesca, Agricultura e Habilidades. Em cima do livro, em
+ * todas as abas, fica a fileira da HOTBAR (os 8 primeiros slots, no estilo do caderno): clicar seleciona
+ * o slot ativo e arrastar entre ela e a página troca os slots — um item nunca aparece nos dois lugares.
+ * Detalhe das outras abas:
  * Pesca (placeholder "Em breve" — sem mecânica de pesca ainda) e Agricultura
  * (visão só-leitura da colheita: `CROPS` + `inventory.getCount(cropId)`, em
  * vez de depender de um slot físico — corrige o bug relatado de colheitas
@@ -297,8 +326,12 @@ export class InventoryScreen implements PointerInputInterceptor {
   /** Ponteiro sob o qual o balão do `Tooltip` se posiciona quando o redesenho (não um evento do mouse) pede pra atualizá-lo. */
   private readonly activePointer: Phaser.Input.Pointer;
   /** Por slot: o ponteiro está em cima da moldura / do ícone (o ícone cobre o centro da moldura, então cada um recebe o hover da sua própria área) — `pointerover`/`pointerout` ligam e desligam. */
-  private readonly frameHovered: boolean[] = new Array(ITEMS_PER_PAGE).fill(false);
-  private readonly iconHovered: boolean[] = new Array(ITEMS_PER_PAGE).fill(false);
+  private readonly frameHovered: boolean[] = new Array(CELL_COUNT).fill(false);
+  private readonly iconHovered: boolean[] = new Array(CELL_COUNT).fill(false);
+  /** Slot da Bolsa que cada célula mostra agora (`undefined` = célula sem slot, ex.: a Agricultura) — o arrasto troca esses slots. */
+  private cellSlotIndex: Array<number | undefined> = [];
+  /** O "livro fino" atrás da fileira da Hotbar (duas metades). */
+  private readonly hotbarBook: Phaser.GameObjects.NineSlice[] = [];
 
   // Página direita da aba Mochila (Fase 9 — personagem + equipamento).
   private readonly characterSprite: Phaser.GameObjects.Image;
@@ -511,11 +544,8 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     const leftPageWidth = PAGE_RECT.left.width * BOOK_SCALE;
     const leftStartX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + (leftPageWidth - gridWidth) / 2 + slotWidth / 2;
 
-    // Reformulação (Fase 9): o grid inteiro cabe numa página só — 6x4 = 24 =
-    // `INVENTORY_SIZE` exatamente —, então o pool de slots agora vive só na
-    // página ESQUERDA, sempre; a direita virou conteúdo próprio por aba (ver
-    // personagem+equipamento/painel de detalhe abaixo), em vez de uma
-    // segunda leva do mesmo grid.
+    // O grid da página ESQUERDA (6x5 = `STORAGE_SIZE`, o estoque inteiro numa página); a direita é conteúdo próprio por aba
+    // (personagem+equipamento, painel de detalhe). A Hotbar fica numa fileira à parte, em cima do livro (abaixo).
     for (let index = 0; index < ITEMS_PER_PAGE; index++) {
       const col = index % GRID_COLS;
       const row = Math.floor(index / GRID_COLS);
@@ -523,134 +553,25 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       const x = leftStartX + col * (slotWidth + SLOT_GAP);
       const y = startY + row * (slotHeight + ROW_GAP);
 
-      const frame = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
-      frame.setOrigin(0.5, 0.5);
-      frame.setScale(SLOT_SCALE);
-      frame.setScrollFactor(0);
-      frame.setDepth(3001);
+      this.createCell(scene, index, x, y, slotWidth, slotHeight, false);
+    }
 
-      // "Clique" no slot (selecionar a Hotbar, vestir a armadura...). A moldura também é interativa em
-      // slots sem ação (só pro balão do nome) — esses não fazem "clique".
-      const activateSlot = (): void => {
-        if (!this.isOpen_ || !this.slots[index].onClick) return;
-        playClick(scene);
-        this.slots[index].onClick?.();
-      };
-
-      frame.setInteractive({ useHandCursor: true });
-      frame.disableInteractive();
-      frame.on(
-        'pointerdown',
-        (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
-          if (!this.isOpen_) return;
-          event.stopPropagation();
-          activateSlot();
-        },
-      );
-      this.attachSlotHover(frame, index, this.frameHovered);
-
-      const icon = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
-      icon.setOrigin(0.5, 0.5);
-      icon.setScrollFactor(0);
-      icon.setDepth(3002);
-
-      // Drag and drop (Fase 9, pedido explícito do usuário): só o ÍCONE é
-      // arrastável (o `frame` embaixo continua cuidando do clique-pra-
-      // selecionar-Hotbar, igual antes) — só fica interativo/arrastável
-      // quando a aba Mochila está ativa E o slot tem algo dentro
-      // (`renderActiveCategory` decide isso a cada frame).
-      //
-      // "Juice" (pedido explícito): pop de escala/opacidade ao pegar, e um
-      // tween suave ao soltar — tanto no caso de encaixe válido (volta à
-      // escala normal) quanto inválido (some volta pro slot de origem).
-      // `dragBaseScale` guarda a escala "de repouso" (a que `computeFitScale`
-      // calculou pra esse ícone) capturada no instante do pickup, porque o
-      // pop escala RELATIVO a ela (não um valor fixo) — cada ícone pode ter
-      // uma escala de repouso diferente dependendo do tamanho nativo do
-      // frame. `renderActiveCategory` só solta o controle de posição/escala
-      // de volta pro ícone quando `dragSourceIndex` volta a `null` — por
-      // isso só é zerado no `onComplete` do tween de retorno, não na hora
-      // do `dragend`: senão o redesenho de todo frame reposicionaria/
-      // reescalaria o ícone instantaneamente, cortando o tween no meio.
-      let dragBaseScale = 1;
-      icon.setInteractive({ useHandCursor: true });
-      icon.disableInteractive();
-      scene.input.setDraggable(icon, true);
-      this.attachSlotHover(icon, index, this.iconHovered);
-      // O ícone (arrastável) fica POR CIMA da moldura e leva o clique sozinho — sem isto, clicar no item
-      // nunca chegava na moldura. Soltar sem ter arrastado conta como clique no slot.
-      let dragged = false;
-      icon.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
-        dragged = false;
-        if (this.isOpen_) event.stopPropagation();
-      });
-      icon.on('pointerup', () => {
-        if (!dragged) activateSlot();
-      });
-      icon.on('dragstart', () => {
-        dragged = true;
-        this.clearHover(); // Arrastando: o balão some (o ícone segue o cursor por conta própria).
-        this.dragSourceIndex = index;
-        icon.setDepth(3500);
-        dragBaseScale = icon.scaleX;
-        scene.tweens.killTweensOf(icon);
-        scene.tweens.add({
-          targets: icon,
-          scale: dragBaseScale * 1.2,
-          alpha: 0.85,
-          duration: 100,
-          ease: 'Quad.easeOut',
-        });
-      });
-      icon.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-        icon.setPosition(dragX, dragY);
-      });
-      icon.on('dragend', () => {
-        const sourceIndex = this.dragSourceIndex;
-        icon.setDepth(3002);
-        if (sourceIndex === null || !this.currentInventory) return;
-
-        const targetIndex = this.slots.findIndex((slot) => Phaser.Geom.Rectangle.Contains(slot.frame.getBounds(), icon.x, icon.y));
-        const validDrop = targetIndex !== -1 && targetIndex !== sourceIndex;
-        if (validDrop) this.currentInventory.swapSlots(sourceIndex, targetIndex);
-
-        // Encaixe válido: tween curto e rápido (já "encaixou"). Inválido:
-        // tween mais longo com "Back.easeOut" — um pequeno ricochete ao
-        // pousar de volta na origem, mais perceptível como "devolvido".
-        scene.tweens.killTweensOf(icon);
-        scene.tweens.add({
-          targets: icon,
-          x: this.slots[index].x,
-          y: this.slots[index].y,
-          scale: dragBaseScale,
-          alpha: 1,
-          duration: validDrop ? 100 : 180,
-          ease: validDrop ? 'Quad.easeOut' : 'Back.easeOut',
-          onComplete: () => {
-            this.dragSourceIndex = null;
-          },
-        });
-      });
-
-      const badgeText = scene.add.text(x + slotWidth / 2 - 2, y + slotHeight / 2 - 2, '', {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        fontStyle: 'bold',
-        color: '#ffffff',
-        stroke: '#2b1d0e',
-        strokeThickness: 3,
-      });
-      badgeText.setOrigin(1, 1);
-      badgeText.setScrollFactor(0);
-      badgeText.setDepth(3004); // Acima do ícone (3002; 3500 enquanto arrasta): a quantidade nunca fica atrás dele.
-
-      const questionMark = scene.add.text(x, y, '?', QUESTION_MARK_STYLE);
-      questionMark.setOrigin(0.5, 0.5);
-      questionMark.setScrollFactor(0);
-      questionMark.setDepth(3002);
-      questionMark.setVisible(false);
-
-      this.slots.push({ frame, icon, badgeText, questionMark, x, y, onClick: null, name: '' });
+    // A fileira da Hotbar, em cima do caderno e centralizada nele, sobre o "livro fino" (ver `HOTBAR_BOOK_*`).
+    const rowWidth = HOTBAR_SIZE * slotWidth + (HOTBAR_SIZE - 1) * SLOT_GAP + HOTBAR_BOOK_SPINE_GAP;
+    const hotbarBookHalfWidth = (rowWidth / 2 + HOTBAR_BOOK_SIDE_PAD) / BOOK_SCALE + HOTBAR_BOOK_OUTER;
+    const hotbarBookTop = bookTop - HOTBAR_BOOK_GAP - HOTBAR_BOOK_HEIGHT * BOOK_SCALE;
+    const bookTexture = scene.textures.get(SHOP_BOOK_KEY);
+    for (const half of [HOTBAR_BOOK_LEFT, HOTBAR_BOOK_RIGHT]) {
+      if (!bookTexture.has(half.name)) bookTexture.add(half.name, 0, half.rect.x, half.rect.y, half.rect.width, half.rect.height);
+      const isLeft = half === HOTBAR_BOOK_LEFT;
+      const piece = scene.add.nineslice(centerX, hotbarBookTop, SHOP_BOOK_KEY, half.name, hotbarBookHalfWidth, HOTBAR_BOOK_HEIGHT, isLeft ? HOTBAR_BOOK_OUTER : HOTBAR_BOOK_INNER, isLeft ? HOTBAR_BOOK_INNER : HOTBAR_BOOK_OUTER, HOTBAR_BOOK_TOP, HOTBAR_BOOK_BOTTOM);
+      piece.setOrigin(isLeft ? 1 : 0, 0).setScale(BOOK_SCALE).setScrollFactor(0).setDepth(3000);
+      this.hotbarBook.push(piece);
+    }
+    const rowY = hotbarBookTop + HOTBAR_BOOK_ROW_Y * BOOK_SCALE;
+    for (let cell = 0; cell < HOTBAR_SIZE; cell++) {
+      const x = centerX - rowWidth / 2 + slotWidth / 2 + cell * (slotWidth + SLOT_GAP) + (cell >= HOTBAR_SIZE / 2 ? HOTBAR_BOOK_SPINE_GAP : 0);
+      this.createCell(scene, HOTBAR_ROW_FIRST_CELL + cell, x, rowY, slotWidth, slotHeight, true);
     }
 
     // Página direita — Mochila: personagem parado (mesmo frame usado como
@@ -891,48 +812,193 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     this.selectedCropId = cropId;
   }
 
-  /** Resolve o conteúdo (ícone/quantidade/clique) de cada slot da aba ativa — ver `InventorySlotContent`. */
-  private computeContent(inventory: Inventory): InventorySlotContent[] {
+/** Uma célula (moldura, ícone arrastável, número, "?") — as da página do caderno e as da fileira da Hotbar em cima dele. */
+  private createCell(scene: Phaser.Scene, index: number, x: number, y: number, slotWidth: number, slotHeight: number, hotbar: boolean): void {
+    const frame = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
+    frame.setOrigin(0.5, 0.5);
+    frame.setScale(SLOT_SCALE);
+    frame.setScrollFactor(0);
+    frame.setDepth(3001);
+
+    // "Clique" no slot (selecionar a Hotbar, vestir a armadura...). A moldura também é interativa em
+    // slots sem ação (só pro balão do nome) — esses não fazem "clique".
+    const activateSlot = (): void => {
+      if (!this.isOpen_ || !this.slots[index].onClick) return;
+      playClick(scene);
+      this.slots[index].onClick?.();
+    };
+
+    frame.setInteractive({ useHandCursor: true });
+    frame.disableInteractive();
+    frame.on(
+      'pointerdown',
+      (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        if (!this.isOpen_) return;
+        event.stopPropagation();
+        activateSlot();
+      },
+    );
+    this.attachSlotHover(frame, index, this.frameHovered);
+
+    const icon = scene.add.image(x, y, INVENTORY_PANEL_KEY, INVENTORY_SLOT_FRAME_NAME);
+    icon.setOrigin(0.5, 0.5);
+    icon.setScrollFactor(0);
+    icon.setDepth(3002);
+
+    // Drag and drop (Fase 9, pedido explícito do usuário): só o ÍCONE é
+    // arrastável (o `frame` embaixo continua cuidando do clique-pra-
+    // selecionar-Hotbar, igual antes) — só fica interativo/arrastável
+    // quando a aba Mochila está ativa E o slot tem algo dentro
+    // (`renderActiveCategory` decide isso a cada frame).
+    //
+    // "Juice" (pedido explícito): pop de escala/opacidade ao pegar, e um
+    // tween suave ao soltar — tanto no caso de encaixe válido (volta à
+    // escala normal) quanto inválido (some volta pro slot de origem).
+    // `dragBaseScale` guarda a escala "de repouso" (a que `computeFitScale`
+    // calculou pra esse ícone) capturada no instante do pickup, porque o
+    // pop escala RELATIVO a ela (não um valor fixo) — cada ícone pode ter
+    // uma escala de repouso diferente dependendo do tamanho nativo do
+    // frame. `renderActiveCategory` só solta o controle de posição/escala
+    // de volta pro ícone quando `dragSourceIndex` volta a `null` — por
+    // isso só é zerado no `onComplete` do tween de retorno, não na hora
+    // do `dragend`: senão o redesenho de todo frame reposicionaria/
+    // reescalaria o ícone instantaneamente, cortando o tween no meio.
+    let dragBaseScale = 1;
+    icon.setInteractive({ useHandCursor: true });
+    icon.disableInteractive();
+    scene.input.setDraggable(icon, true);
+    this.attachSlotHover(icon, index, this.iconHovered);
+    // O ícone (arrastável) fica POR CIMA da moldura e leva o clique sozinho — sem isto, clicar no item
+    // nunca chegava na moldura. Soltar sem ter arrastado conta como clique no slot.
+    let dragged = false;
+    icon.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+      dragged = false;
+      if (this.isOpen_) event.stopPropagation();
+    });
+    icon.on('pointerup', () => {
+      if (!dragged) activateSlot();
+    });
+    icon.on('dragstart', () => {
+      dragged = true;
+      this.clearHover(); // Arrastando: o balão some (o ícone segue o cursor por conta própria).
+      this.dragSourceIndex = index;
+      icon.setDepth(3500);
+      dragBaseScale = icon.scaleX;
+      scene.tweens.killTweensOf(icon);
+      scene.tweens.add({
+        targets: icon,
+        scale: dragBaseScale * 1.2,
+        alpha: 0.85,
+        duration: 100,
+        ease: 'Quad.easeOut',
+      });
+    });
+    icon.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+      icon.setPosition(dragX, dragY);
+    });
+    icon.on('dragend', () => {
+      const sourceIndex = this.dragSourceIndex;
+      icon.setDepth(3002);
+      if (sourceIndex === null || !this.currentInventory) return;
+
+      const targetIndex = this.slots.findIndex((slot) => Phaser.Geom.Rectangle.Contains(slot.frame.getBounds(), icon.x, icon.y));
+      // Troca os SLOTS da Bolsa que as duas células mostram (a página é o estoque, a fileira de cima é a Hotbar): equipar tira do
+      // caderno e guardar tira da Hotbar — o item nunca aparece duas vezes.
+      const sourceSlot = this.cellSlotIndex[sourceIndex];
+      const targetSlot = targetIndex === -1 ? undefined : this.cellSlotIndex[targetIndex];
+      const validDrop = targetIndex !== -1 && targetIndex !== sourceIndex && sourceSlot !== undefined && targetSlot !== undefined;
+      if (validDrop) this.currentInventory.swapSlots(sourceSlot!, targetSlot!);
+
+      // Encaixe válido: tween curto e rápido (já "encaixou"). Inválido:
+      // tween mais longo com "Back.easeOut" — um pequeno ricochete ao
+      // pousar de volta na origem, mais perceptível como "devolvido".
+      scene.tweens.killTweensOf(icon);
+      scene.tweens.add({
+        targets: icon,
+        x: this.slots[index].x,
+        y: this.slots[index].y,
+        scale: dragBaseScale,
+        alpha: 1,
+        duration: validDrop ? 100 : 180,
+        ease: validDrop ? 'Quad.easeOut' : 'Back.easeOut',
+        onComplete: () => {
+          this.dragSourceIndex = null;
+        },
+      });
+    });
+
+    const badgeText = scene.add.text(x + slotWidth / 2 - 2, y + slotHeight / 2 - 2, '', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#ffffff',
+      stroke: '#2b1d0e',
+      strokeThickness: 3,
+    });
+    badgeText.setOrigin(1, 1);
+    badgeText.setScrollFactor(0);
+    badgeText.setDepth(3004); // Acima do ícone (3002; 3500 enquanto arrasta): a quantidade nunca fica atrás dele.
+
+    const questionMark = scene.add.text(x, y, '?', QUESTION_MARK_STYLE);
+    questionMark.setOrigin(0.5, 0.5);
+    questionMark.setScrollFactor(0);
+    questionMark.setDepth(3002);
+    questionMark.setVisible(false);
+
+    this.slots.push({ frame, icon, badgeText, questionMark, x, y, onClick: null, name: '', hotbar });
+  }
+
+  /**
+   * O que uma célula mostra pra um slot da Bolsa: ícone, quantidade, clique. Slot da Hotbar (0-7): clicar seleciona e o ativo ganha o tom
+   * creme. Armadura: clicar veste/tira (a vestida ganha "E" e um tom azulado).
+   */
+  private slotContent(inventory: Inventory, slotIndex: number): InventorySlotContent {
+    const isHotbarSlot = slotIndex < HOTBAR_SIZE;
+    const tint = isHotbarSlot && slotIndex === inventory.getSelectedHotbarIndex() ? SELECTED_HOTBAR_TINT : UNSELECTED_TINT;
+    const onClick = isHotbarSlot ? () => this.onSelectHotbarSlot(slotIndex) : null;
+    const ref = inventory.getSlot(slotIndex);
+    const visual = ref ? resolveSlotVisual(ref) : null;
+    if (!visual || !ref) return { textureKey: '', iconFrame: '', badge: '', tint, name: '', onClick, discovered: true, slotIndex };
+
+    const isArmor = ref.category === 'armor';
+    const armorEquipped = isArmor && inventory.getEquippedArmorId() === ref.id;
+    let badge = '';
+    if (armorEquipped) badge = 'E';
+    else if (ref.category === 'seed') badge = String(inventory.getSeedCount(ref.id));
+    else if (ref.category === 'decoration') badge = String(inventory.getDecorationCount(ref.id));
+    else if (ref.category === 'resource') badge = String(inventory.getResourceCount(ref.id));
+    // 'crop': estoque ATUAL na Bolsa — diferente do "Total já coletado" (histórico) mostrado na aba Agricultura.
+    else if (ref.category === 'crop') badge = String(inventory.getCount(ref.id));
+
+    return {
+      textureKey: visual.textureKey,
+      iconFrame: visual.iconFrame,
+      badge,
+      tint: armorEquipped ? EQUIPPED_ARMOR_TINT : tint,
+      iconTint: visual.tint,
+      name: armorEquipped ? `${visual.name} (equipada)` : visual.name,
+      onClick: isArmor ? () => inventory.toggleArmor(ref.id) : onClick,
+      discovered: true,
+      slotIndex,
+    };
+  }
+
+  /**
+   * O conteúdo de todas as células: as da página (aba ativa — na Mochila, o ESTOQUE: slots `HOTBAR_SIZE` em diante) e as da fileira da
+   * Hotbar (slots 0-7), que aparecem em toda aba. `gridCount` = quantas células da página têm conteúdo (o "Em breve" usa).
+   */
+  private computeContent(inventory: Inventory): { cells: Array<InventorySlotContent | undefined>; gridCount: number } {
+    const grid = this.computeGridContent(inventory);
+    const cells: Array<InventorySlotContent | undefined> = new Array(CELL_COUNT).fill(undefined);
+    grid.forEach((entry, index) => (cells[index] = entry));
+    for (let slot = 0; slot < HOTBAR_SIZE; slot++) cells[HOTBAR_ROW_FIRST_CELL + slot] = this.slotContent(inventory, slot);
+    return { cells, gridCount: grid.length };
+  }
+
+  /** O conteúdo da PÁGINA do caderno na aba ativa. */
+  private computeGridContent(inventory: Inventory): InventorySlotContent[] {
     if (this.activeCategory === 'backpack') {
-      const selectedIndex = inventory.getSelectedHotbarIndex();
-      const content: InventorySlotContent[] = [];
-      for (let index = 0; index < INVENTORY_SIZE; index++) {
-        const ref = inventory.getSlot(index);
-        const visual = ref ? resolveSlotVisual(ref) : null;
-        const tint = index === selectedIndex ? SELECTED_HOTBAR_TINT : UNSELECTED_TINT;
-        const onClick = index < HOTBAR_SIZE ? () => this.onSelectHotbarSlot(index) : null;
-
-        if (!visual || !ref) {
-          content.push({ textureKey: '', iconFrame: '', badge: '', tint, name: '', onClick, discovered: true, slotIndex: index });
-          continue;
-        }
-
-        // Armadura: clicar veste/tira (em vez de selecionar o slot da Hotbar) — a vestida ganha "E" e um tom azulado.
-        const isArmor = ref.category === 'armor';
-        const armorEquipped = isArmor && inventory.getEquippedArmorId() === ref.id;
-
-        let badge = '';
-        if (armorEquipped) badge = 'E';
-        else if (ref.category === 'seed') badge = String(inventory.getSeedCount(ref.id));
-        else if (ref.category === 'decoration') badge = String(inventory.getDecorationCount(ref.id));
-        else if (ref.category === 'resource') badge = String(inventory.getResourceCount(ref.id));
-        // 'crop' (bug corrigido, item 3): estoque ATUAL na Bolsa — diferente
-        // do "Total já coletado" (histórico) mostrado na aba Descobertas.
-        else if (ref.category === 'crop') badge = String(inventory.getCount(ref.id));
-
-        content.push({
-          textureKey: visual.textureKey,
-          iconFrame: visual.iconFrame,
-          badge,
-          tint: armorEquipped ? EQUIPPED_ARMOR_TINT : tint,
-          iconTint: visual.tint,
-          name: armorEquipped ? `${visual.name} (equipada)` : visual.name,
-          onClick: isArmor ? () => inventory.toggleArmor(ref.id) : onClick,
-          discovered: true,
-          slotIndex: index,
-        });
-      }
-      return content;
+      return Array.from({ length: STORAGE_SIZE }, (_, cell) => this.slotContent(inventory, HOTBAR_SIZE + cell));
     }
 
     if (this.activeCategory === 'agriculture') {
@@ -970,7 +1036,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     }
     this.positionTabSelector();
 
-    const content = this.computeContent(inventory);
+    const { cells: content, gridCount } = this.computeContent(inventory);
     const isBackpack = this.activeCategory === 'backpack';
     const isAgriculture = this.activeCategory === 'agriculture';
     const isSkills = this.activeCategory === 'skills';
@@ -979,7 +1045,9 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       const entry: InventorySlotContent | undefined = content[index];
       slot.onClick = entry?.onClick ?? null;
       slot.name = entry?.name ?? '';
-      slot.frame.setVisible(this.isOpen_ && !isSkills); // A aba Habilidades tem as páginas dela: sem o grid de slots.
+      this.cellSlotIndex[index] = entry?.slotIndex;
+      // A aba Habilidades tem as páginas dela: sem o grid de slots (a fileira da Hotbar fica).
+      slot.frame.setVisible(this.isOpen_ && (slot.hotbar || !isSkills));
 
       // A moldura precisa estar interativa pra receber o hover do balão: com ação de clique (como antes) OU com um item dentro.
       const frameInteractive = this.isOpen_ && (!!slot.onClick || !!slot.name);
@@ -1007,7 +1075,8 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       const isBeingDragged = index === this.dragSourceIndex;
       if (!isBeingDragged) slot.icon.setPosition(slot.x, slot.y);
 
-      const draggable = isBackpack && !!entry?.textureKey;
+      // Arrasta quem mostra um slot da Bolsa: as células da Mochila e as da Hotbar (em qualquer aba).
+      const draggable = this.isOpen_ && entry?.slotIndex !== undefined && !!entry.textureKey && (isBackpack || slot.hotbar);
       if (draggable) {
         slot.icon.setInteractive();
       } else if (slot.icon.input?.enabled) {
@@ -1032,7 +1101,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       slot.questionMark.setVisible(false);
     });
 
-    this.emptyText.setVisible(content.length === 0 && !isSkills);
+    this.emptyText.setVisible(gridCount === 0 && !isSkills);
     this.skillPanel.setVisible(this.isOpen_ && isSkills);
     this.skillPanel.refresh();
     this.updateTooltip(this.activePointer); // O conteúdo do slot sob o mouse pode ter mudado (troca de slot, aba).
@@ -1145,8 +1214,9 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     this.closeButtonMark.setVisible(visible);
 
     this.skillPanel.setVisible(visible && this.activeCategory === 'skills');
+    for (const piece of this.hotbarBook) piece.setVisible(visible);
     for (const slot of this.slots) {
-      slot.frame.setVisible(visible && this.activeCategory !== 'skills');
+      slot.frame.setVisible(visible && (slot.hotbar || this.activeCategory !== 'skills'));
       const slotVisible = visible && slot.icon.visible;
       slot.icon.setVisible(slotVisible);
       slot.badgeText.setVisible(visible && slot.badgeText.visible);

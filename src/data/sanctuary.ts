@@ -108,6 +108,7 @@ export const CREDITS: Array<{ title: string; lines: string[] }> = [
   { title: 'Criação', lines: ['Antoniells'] },
   { title: 'Arte', lines: ['EmanuelleDev', 'emanuelledev.itch.io'] },
   { title: 'O Mago', lines: ['pinogames', 'pinogames.itch.io'] },
+  { title: 'Sons extras', lines: ['Kenney (CC0)', 'kenney.nl'] },
   { title: 'Feito com', lines: ['Phaser, TypeScript e Vite'] },
   { title: '', lines: ['Obrigado por jogar!'] },
 ];

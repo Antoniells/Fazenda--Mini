@@ -10,7 +10,7 @@ import { WIZARD, WIZARD_FISH_REQUESTS, WIZARD_LINES } from '../data/hiddenForest
 import { FISH_BY_ID } from '../data/fishing';
 import { ENCHANTS, ENCHANT_BAR_ID, EnchantTarget } from '../data/enchanting';
 import { RESOURCES } from '../data/resources';
-import { SPEND_MONEY_SOUND, UNLOCK_SOUND } from '../data/audio';
+import { QUEST_DONE_SOUND, SPEND_MONEY_SOUND, UNLOCK_SOUND } from '../data/audio';
 
 /**
  * O MAGO da Floresta Oculta (Fase 11) e a MESA DE ENCANTAMENTOS dele, tudo pelo painel de conversa (`ui/dialoguePanel.ts`):
@@ -79,7 +79,7 @@ export function talkToWizard(scene: Phaser.Scene, anchor: { x: number; y: number
         playEffect(scene, SPEND_MONEY_SOUND);
         saveGame();
         if (hasMilestone('wizardTrust')) {
-          playEffect(scene, UNLOCK_SOUND);
+          playEffect(scene, QUEST_DONE_SOUND); // Entregou os peixes que ele pediu.
           open(scene, { speaker: WIZARD.name, subtitle: WIZARD.title, portrait: PORTRAIT, text: WIZARD_LINES.thanks, actions: [{ label: 'Mesa de Encantamentos', onSelect: () => openEnchantTable(scene, anchor) }] });
         } else {
           popText(scene, anchor.x, anchor.y, `Entregue: ${delivered.map(fishName).join(', ')}`, { color: '#b8f5a0', fontSize: 13 });

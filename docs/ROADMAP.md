@@ -77,7 +77,8 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#sistema-de-tempo-fase-7).
 - [x] Feedback visual (sombras, cursor, SeedBar/CoinBar animadas — "Pit Stop de Polimento")
 - [x] Sons e Música (SFX de ferramentas, passos, combate e interface; música do dia; narração da cena introdutória) — os sons dos momentos da história ficam na Fase 11, Etapa 6
 - [x] Animações (água animada; vento global que balança a vegetação em onda, árvores e plantas empurradas por quem passa, folhas caindo)
-- [x] Atmosfera (Cavernas em penumbra com o halo do personagem e escadas iluminadas; veios que cintilam)
+- [x] Atmosfera (iluminação nativa do Phaser 4 — Cavernas: penumbra por andar, luz que segue o personagem e escadas iluminadas; superfície: a cor do sol como luz ambiente e postes que iluminam a rua à noite; veios que cintilam)
+- [x] Terreno orgânico (a grama escura em manchas com o autotile do próprio tileset, sem os quadrados soltos; vale pra Fazenda, Vilarejo, Floresta e Pedreira)
 - [x] Retratos (Pirata e Sereia com 8 expressões, montados das camadas do pacote; retrato do personagem nos cartões de save e na criação)
 - [x] Personalização do personagem (pele, olhos, cabelo e cor, roupa, barba, orelhas e acessório, montados das camadas em todas as animações; os 5 personagens viraram modelos; o retrato sai das mesmas peças)
 - [ ] Balanceamento (ajuste de preços da loja e custo das pontes de expansão) — junto com a rodada de jogo da história (Fase 11, Etapa 6)
@@ -95,13 +96,17 @@ Detalhes: ver [TECHNICAL.md](TECHNICAL.md#polimento-visual-pit-stop-antes-da-fas
 
 ## Fase 11 — Os Três Pilares do Equilíbrio (endgame)
 A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à paz quando a Cenoura Dourada, o Peixe Dourado e a Amizade Dourada (o pet escolhido na criação, que se sacrifica) forem oferecidos no altar do Sábio Coelho, no andar 100 das Cavernas. A campanha dos moradores continua, mas a Noite Final não encerra mais o jogo. Detalhes: ver [TECHNICAL.md](TECHNICAL.md#história-principal-os-três-pilares-fase-11).
-- [x] Etapa 0 — Fundação: estado da história (`gameState.story`, marcos no save), carta da profecia (dia 3), objetivo dos Três Pilares no HUD, a Noite Final sem tela final, chamado da horda (o jogador é teletransportado pra Fazenda na hora da horda) e seção História no menu de hack
+- [x] Etapa 0 — Fundação: estado da história (`gameState.story`, marcos no save), carta da profecia (chega ao alcançar o andar 30 das Cavernas), objetivo dos Três Pilares no HUD, a Noite Final sem tela final, chamado da horda (o jogador é teletransportado pra Fazenda na hora da horda) e seção História no menu de hack
 - [x] Etapa 1 — Pesca: Vara de Pescar (Ferreiro), minijogo de timing, 21 peixes (`Icons/Fish`) na Praia e no lago da Floresta, Sorte do Pescador e XP de pesca
-- [x] Etapa 2 — Cavernas até o 50: minérios nos andares (por profundidade e raridade), Azurita a partir do 45 (minério e barra), barreira no 50 bloqueando a escada e o baú com o mapa
+- [x] Etapa 2 — Cavernas até o 50: minérios nos andares (por profundidade e raridade), Azurita a partir do 45 (minério e barra), barreira no 50 bloqueando a escada e o baú com o mapa; pedras quebráveis em todo andar, com a escada de descida escondida debaixo de uma delas
 - [x] Etapa 3 — Floresta oculta e o Mago: área oculta (castelo), o Mago e as entregas de peixes, Mesa de Encantamentos (Picareta/Machado +20% força, Espada +35% dano, Armadura +15% defesa) e a barreira quebrada pela Picareta encantada
 - [x] Etapa 4 — Descida 51-100: andares mais hostis e a Horda Final do andar 100 (3 ondas)
 - [x] Etapa 5 — Santuário e fim: o andar 100 vira santuário, semente e lago do Peixe Dourado, plantio no altar, sacrifício do pet, cinemática, créditos e a caixa com o filhote; depois do fim, o mundo em paz (sem hordas nem monstros)
 - [x] Cena introdutória narrada: 4 slides com texto datilografado, narração por slide (ElevenLabs, `tools/generate_intro_voices.py`), avançar com F/Espaço e pular com ESC — ver [TECHNICAL.md](TECHNICAL.md#cena-introdutória-scenesintroscenets-dataintrots)
+- [x] Correções do playtest (primeiro bloco): Fornalha entrega as barras sozinha, carta e linha no marcador avisando a horda, plantações perdidas no resumo da horda, placas nas lojas do Vilarejo e o objetivo de conhecê-lo, pirata na rua com chuva e a chegada da Pedreira sempre livre — ver [TECHNICAL.md](TECHNICAL.md#correções-do-playtest--primeiro-bloco)
+- [x] Correções do playtest (segundo bloco): pedidos de ferro só com a Picareta de Cobre e o "Hoje não", recompensas dos pedidos perto da Caixa, regadores de Cobre/Ferro/Ouro (mais água e rega em área), aspersores mais baratos e encomenda de sementes pela Caixa de Correio — ver [TECHNICAL.md](TECHNICAL.md#correções-do-playtest--segundo-bloco)
+- [x] Correções do playtest (terceiro bloco): plantação murcha antes de morrer, sinal de pronta e o "Bom dia" da lavoura, plantar com um clique (o pet não rouba mais o clique), aviso de Hotbar cheia, dica do regador só na Fazenda, Fôlego com efeito (defesa) e a doação do coreto justa — ver [TECHNICAL.md](TECHNICAL.md#correções-do-playtest--terceiro-bloco)
+- [x] Correções do playtest (quarto bloco): desmaiar custa de verdade (e não pula a horda), andares das Cavernas rendem uma vez por dia, slimes da Floresta soltam moedas, falas com memória e sem gênero, porta de casa clicável no desenho, Caixa de Remessas fecha ao vender, chuva por baixo dos menus, árvore transparente sobre o personagem e retratos da Lia e do Tomás — ver [TECHNICAL.md](TECHNICAL.md#correções-do-playtest--quarto-bloco)
 - [ ] Etapa 6 — Polimento: rodada de jogo da história inteira e balanceamento (Azurita, peixes do Mago, custo dos encantamentos, Horda Final, crescimento da Cenoura), falas e cartas dos moradores e do Mago sobre a profecia, sons do altar/sacrifício/onda de luz/pesca, música da cinemática e dos créditos e a narração em inglês (a arte da Cenoura Dourada já foi refeita com troca de paleta)
 
 ---

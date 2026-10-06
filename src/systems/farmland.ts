@@ -4,6 +4,34 @@ export type PlotState = 'untilled' | 'tilled' | 'growing' | 'dead';
 
 /** Chance de uma célula arada (`tilled`) e vazia voltar a `untilled` na virada do dia — ver `onNewDay`. */
 const TILLED_DECAY_CHANCE = 0.3;
+/**
+ * O "Bom dia" da lavoura numa linha ("4 prontas pra colher · 2 murchas: regue hoje!"), ou `null` se não há nada a dizer. As mortas
+ * lembram a Foice (é ela que limpa o canteiro).
+ */
+export function describeFarmReport(report: FarmDayReport): string | null {
+  const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+  const parts: string[] = [];
+  if (report.ready > 0) parts.push(`${plural(report.ready, 'pronta', 'prontas')} pra colher`);
+  if (report.grew > 0) parts.push(`${plural(report.grew, 'cresceu', 'cresceram')}`);
+  if (report.wilted > 0) parts.push(`${plural(report.wilted, 'murcha', 'murchas')} sem água: regue hoje ou ${report.wilted === 1 ? 'ela morre' : 'elas morrem'}`);
+  if (report.died > 0) parts.push(`${plural(report.died, 'morreu', 'morreram')} sem água (limpe com a Foice)`);
+  return parts.length > 0 ? `Na lavoura: ${parts.join(' · ')}.` : null;
+}
+
+/** Dias SEGUIDOS sem água até uma plantação germinada morrer: no 1º ela só murcha (não cresce), no 2º morre. */
+export const DRY_DAYS_TO_DIE = 2;
+
+/** O que a virada do dia fez na lavoura — o "Bom dia" da Fazenda (`describeFarmReport`). */
+export interface FarmDayReport {
+  /** Cresceram um estágio (foram regadas ontem). */
+  grew: number;
+  /** Ficaram sem água ontem: murcharam e não cresceram — sem água hoje, morrem. */
+  wilted: number;
+  /** Morreram (o 2º dia seguido sem água). */
+  died: number;
+  /** Prontas pra colher agora. */
+  ready: number;
+}
 
 export interface Plot {
   readonly col: number;
@@ -25,6 +53,11 @@ export interface Plot {
    * como regar.
    */
   wateredToday: boolean;
+  /**
+   * Dias seguidos sem água desde que germinou (`DRY_DAYS_TO_DIE`): 1 = murcha (avisada no "Bom dia" e tingida na lavoura), zera ao
+   * regar. Ausente em saves antigos = 0.
+   */
+  dryDays?: number;
 }
 
 function plotKey(col: number, row: number): string {
@@ -41,8 +74,11 @@ export type PlotSaveData = Plot;
  * - Rega: precisa acontecer todo dia (`water` marca `wateredToday`), mas só
  *   depois de germinada. Na virada do dia (`onNewDay`), quem foi regada
  *   avança 1 estágio e volta a precisar de rega no novo dia; quem não foi
- *   regada e já germinou (`stage > 0`) morre; a semente ainda não germinada
- *   (`stage === 0`) sem água só fica dormente, não morre.
+ *   regada e já germinou (`stage > 0`) MURCHA (não cresce) e, no 2º dia
+ *   seguido sem água, morre (`DRY_DAYS_TO_DIE` — antes morria no 1º, e o
+ *   playtest mostrou que isso punia quem regava: a semente nunca regada só
+ *   fica dormente). A que já está pronta pra colher não morre mais; a semente
+ *   ainda não germinada (`stage === 0`) sem água só fica dormente.
  *
  * Sem nenhuma dependência do Phaser — a renderização fica em
  * `systems/farmlandRenderer.ts`.
@@ -159,6 +195,7 @@ export class Farmland {
     plot.state = 'growing';
     plot.cropId = cropId;
     plot.stage = 0;
+    plot.dryDays = 0;
     plot.wateredToday = raining; // Chovendo, a semente já está molhada (a chuva cai nela).
     return true;
   }
@@ -247,7 +284,8 @@ export class Farmland {
    *   (`stage === 0`, ainda não germinada) fica dormente sem água, não
    *   morre — a rega diária só passa a ser obrigatória depois de germinar.
    */
-  onNewDay(): void {
+  onNewDay(): FarmDayReport {
+    const report: FarmDayReport = { grew: 0, wilted: 0, died: 0, ready: 0 };
     for (const plot of this.plots.values()) {
       if (plot.state === 'tilled') {
         plot.wateredToday = false; // O solo colhido na chuva (`harvest`) seca na virada do dia.
@@ -259,18 +297,31 @@ export class Farmland {
       const crop = this.getCrop(plot);
       if (!crop) continue;
 
+      const lastStage = crop.growthFrames.length - 1;
       if (plot.wateredToday) {
-        plot.stage = Math.min(crop.growthFrames.length - 1, plot.stage + 1);
+        if (plot.stage < lastStage) report.grew += 1;
+        plot.stage = Math.min(lastStage, plot.stage + 1);
         plot.wateredToday = false;
-        continue;
+        plot.dryDays = 0;
+      } else if (plot.stage > 0 && plot.stage < lastStage) {
+        // Sem água e já germinada (a semente em si, stage 0, não morre — pedido explícito: só fica dormente até ser regada; e a
+        // pronta pra colher também não): murcha no 1º dia, morre no 2º seguido.
+        plot.dryDays = (plot.dryDays ?? 0) + 1;
+        if (plot.dryDays >= DRY_DAYS_TO_DIE) {
+          plot.state = 'dead';
+          report.died += 1;
+          continue;
+        }
+        report.wilted += 1;
       }
-
-      // Não foi regada hoje. Só morre se já tiver germinado (stage > 0,
-      // além da semente recém-plantada) — pedido explícito: a semente em
-      // si (stage 0) não morre com o passar dos dias, só fica dormente até
-      // ser regada e germinar.
-      if (plot.stage > 0) plot.state = 'dead';
+      if (plot.stage >= lastStage) report.ready += 1;
     }
+    return report;
+  }
+
+  /** Murcha: ficou sem água ontem e, sem água hoje, morre na virada (`DRY_DAYS_TO_DIE`). */
+  isWilted(plot: Plot): boolean {
+    return plot.state === 'growing' && !plot.wateredToday && (plot.dryDays ?? 0) > 0;
   }
 
   getAllPlots(): Plot[] {
@@ -295,6 +346,7 @@ export class Farmland {
       plot.state = saved.state;
       plot.cropId = saved.cropId;
       plot.stage = saved.stage;
+      plot.dryDays = saved.dryDays ?? 0;
       // Solo arado e vazio só está molhado se estiver chovendo (saves antigos deixavam a flag ligada depois de colher).
       plot.wateredToday = saved.state === 'tilled' ? saved.wateredToday && raining : saved.wateredToday;
     }

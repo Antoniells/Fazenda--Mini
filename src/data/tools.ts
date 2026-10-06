@@ -22,6 +22,9 @@ export type ToolId =
   | 'axe-gold'
   | 'pickaxe-iron'
   | 'pickaxe-gold'
+  | 'water-copper'
+  | 'water-iron'
+  | 'water-gold'
   | 'hammer'
   | 'fishing-rod';
 
@@ -165,6 +168,31 @@ export const GOLD_PICKAXE: ToolDefinition = {
   iconFrame: 0,
 };
 
+/** Regadores de Cobre/Ferro/Ouro (`data/wateringCan.ts`: mais cargas e, nos dois últimos, rega em área) — o pacote tem `Watering Can.png` em cada pasta de tier. */
+export const COPPER_WATERING_CAN: ToolDefinition = {
+  id: 'water-copper',
+  name: 'Regador de Cobre',
+  textureKey: 'tool-water-copper',
+  texturePath: `${COPPER_TOOLS_BASE_PATH}/Watering Can.png`,
+  iconFrame: 0,
+};
+
+export const IRON_WATERING_CAN: ToolDefinition = {
+  id: 'water-iron',
+  name: 'Regador de Ferro',
+  textureKey: 'tool-water-iron',
+  texturePath: `${IRON_TOOLS_BASE_PATH}/Watering Can.png`,
+  iconFrame: 0,
+};
+
+export const GOLD_WATERING_CAN: ToolDefinition = {
+  id: 'water-gold',
+  name: 'Regador de Ouro',
+  textureKey: 'tool-water-gold',
+  texturePath: `${GOLD_TOOLS_BASE_PATH}/Watering Can.png`,
+  iconFrame: 0,
+};
+
 export const TOOLS: Record<ToolId, ToolDefinition> = {
   hoe: HOE,
   water: WATERING_CAN_TOOL,
@@ -177,6 +205,9 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
   'axe-gold': GOLD_AXE,
   'pickaxe-iron': IRON_PICKAXE,
   'pickaxe-gold': GOLD_PICKAXE,
+  'water-copper': COPPER_WATERING_CAN,
+  'water-iron': IRON_WATERING_CAN,
+  'water-gold': GOLD_WATERING_CAN,
   hammer: HAMMER,
   'fishing-rod': FISHING_ROD,
 };

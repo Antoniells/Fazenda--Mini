@@ -48,14 +48,14 @@ export const LIGHTS_OFF_END_HOUR = 6.5;
 export type LightSourceType = 'lampPost' | 'torch';
 
 export interface LightSourceDefinition {
-  /** Onde a fonte fica (px nativos, relativos à BASE dela: x = centro, y = pé) e o quanto o brilho sobe do chão. */
+  /** Onde a fonte fica (px nativos, relativos à BASE dela: x = centro, y = pé) e o quanto a luz sobe do chão. */
   glowOffsetY: number;
-  /** Raio (em células) do brilho externo; os anéis de dentro são frações dele. */
+  /** Raio (em células) da luz (iluminação nativa do Phaser 4 — `systems/lightSources.ts`). */
   glowRadiusCells: number;
-  /** Cor do brilho (somado à cena por cima da escuridão). */
+  /** Cor da luz. */
   glowColor: number;
-  /** Opacidade do brilho no centro, com o anel de dentro somando aos de fora. */
-  glowAlpha: number;
+  /** Intensidade da luz acesa (multiplicador do Phaser: soma à luz ambiente na cor de quem ela toca). */
+  lightIntensity: number;
   /** Oscilação rápida da chama: fração da opacidade que varia (0 = luz firme). */
   flicker: number;
   /** "Respiração" da luz: ciclo lento (ms) em que o brilho aumenta e diminui; a opacidade oscila em `breatheAlpha` (fração) e o tamanho em `breatheScale`. */
@@ -65,8 +65,8 @@ export interface LightSourceDefinition {
 }
 
 export const LIGHT_SOURCES: Record<LightSourceType, LightSourceDefinition> = {
-  lampPost: { glowOffsetY: -22, glowRadiusCells: 4.5, glowColor: 0xffe066, glowAlpha: 0.22, flicker: 0.03, breatheMs: 6500, breatheAlpha: 0.4, breatheScale: 0.1 },
-  torch: { glowOffsetY: -22, glowRadiusCells: 3.2, glowColor: 0xff9a4a, glowAlpha: 0.26, flicker: 0.14, breatheMs: 5000, breatheAlpha: 0.15, breatheScale: 0.05 },
+  lampPost: { glowOffsetY: -22, glowRadiusCells: 4.5, glowColor: 0xffdcaa, lightIntensity: 1.6, flicker: 0.03, breatheMs: 6500, breatheAlpha: 0.4, breatheScale: 0.1 },
+  torch: { glowOffsetY: -22, glowRadiusCells: 3.2, glowColor: 0xffb070, lightIntensity: 1.4, flicker: 0.14, breatheMs: 5000, breatheAlpha: 0.15, breatheScale: 0.05 },
 };
 
 /**
@@ -120,12 +120,13 @@ export const VILLAGE_LIGHT_SOURCES: LightSourcePlacement[] = [
 ];
 
 /**
- * CAVERNAS EM PENUMBRA (`systems/caveLighting.ts`, pedido explícito: escuras, mas não breu): o véu (MULTIPLY) vai do tom do 1º andar ao
- * do último, e o personagem leva um halo quente que abre a escuridão em volta. As escadas brilham de leve: a de subida com a luz que
- * vem de cima, a de descida num azul frio — dá pra achá-las de longe. O santuário não tem véu.
+ * CAVERNAS — ILUMINAÇÃO NATIVA DO PHASER 4 (`systems/caveLighting.ts`; estudo em docs/studies/ILUMINACAO_PHASER4.md): a cor de tudo é
+ * multiplicada pela luz AMBIENTE (mais escura a cada andar — penumbra, não breu) somada às luzes de verdade: a quente que segue o
+ * personagem e as das escadas (a de subida com a luz que vem de cima, a de descida num azul frio). Raio e intensidade em px de tela /
+ * multiplicador do Phaser. O santuário não tem essa luz (fica claro).
  */
-export const CAVE_PENUMBRA_TOP = 0xa8a4b8;
-export const CAVE_PENUMBRA_BOTTOM = 0x67637f;
-export const CAVE_PLAYER_LIGHT = { radiusCells: 3.5, color: 0xffcf8f, alpha: 0.13, flicker: 0.08, offsetY: -16 };
-export const CAVE_STAIRS_UP_LIGHT = { radiusCells: 1.6, color: 0xfff0c4, alpha: 0.32 };
-export const CAVE_STAIRS_DOWN_LIGHT = { radiusCells: 1.4, color: 0x9cc0ff, alpha: 0.24 };
+export const CAVE_AMBIENT_TOP = 0x5e5a74;
+export const CAVE_AMBIENT_BOTTOM = 0x2c283e;
+export const CAVE_PLAYER_LIGHT = { radius: 230, color: 0xffd9a0, intensity: 1.6, flicker: 0.06, offsetY: -16 };
+export const CAVE_STAIRS_UP_LIGHT = { radius: 110, color: 0xfff0c4, intensity: 1.2 };
+export const CAVE_STAIRS_DOWN_LIGHT = { radius: 100, color: 0x9cc0ff, intensity: 1.2 };

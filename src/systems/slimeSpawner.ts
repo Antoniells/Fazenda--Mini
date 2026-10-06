@@ -7,6 +7,10 @@ import { DISPLAY_SCALE } from './mapBuilder';
 import { gameState } from './gameState';
 import { handlePlayerDeath } from './playerDeath';
 import { SLIME_GOO } from '../data/resources';
+import { FOREST_SLIME, SLIME_STATS } from '../data/enemies';
+import { popText } from './floatingText';
+import { playEffect } from './soundEffects';
+import { SELL_SOUND } from '../data/audio';
 import { spawnLoot } from './lootDrops';
 import { awardXp } from './skills';
 import { PLAYER_ATTACKED_EVENT } from './combat';
@@ -62,7 +66,8 @@ export class SlimeSpawner {
       const x = cell.col * tile + tile / 2;
       const y = (cell.row + 1) * tile; // Agora a âncora (pés) fica no FUNDO do bloco, igual ao player!
       // Adicionamos o "grid" e o "tile" para o Slime saber onde pisar
-      this.slimes.push(new Slime(scene, x, y, (deathX, deathY) => this.dropLoot(deathX, deathY), grid, tile, (damage, time, attacker) => this.hurtPlayer(damage, time, attacker)));
+      const stats = { ...SLIME_STATS, contactDamage: FOREST_SLIME.contactDamage };
+      this.slimes.push(new Slime(scene, x, y, (deathX, deathY) => this.dropLoot(deathX, deathY), grid, tile, (damage, time, attacker) => this.hurtPlayer(damage, time, attacker), stats));
     }
   }
 
@@ -71,6 +76,11 @@ export class SlimeSpawner {
     const amount = Phaser.Math.Between(1, 3);
     // A gosma cai no chão onde o Slime morreu; o jogador pega ao chegar perto (ver `systems/lootDrops.ts`).
     spawnLoot(this.scene, this.player, x, y, { category: 'resource', id: SLIME_GOO.id, amount });
+    // E umas moedas, direto pro bolso (`FOREST_SLIME.coins`).
+    const coins = Phaser.Math.Between(FOREST_SLIME.coins.min, FOREST_SLIME.coins.max);
+    gameState.inventory.addCoins(coins);
+    playEffect(this.scene, SELL_SOUND);
+    popText(this.scene, x, y - 36, `+${coins} moedas`, { color: '#ffe27a', fontSize: 14 });
     awardXp(this.scene, 'slime', x, y - 20);
     console.log(`Slime derrotado: +${amount} ${SLIME_GOO.name}.`);
   }

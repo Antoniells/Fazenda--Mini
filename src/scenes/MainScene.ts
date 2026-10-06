@@ -55,7 +55,7 @@ import { PET_ROAM } from '../data/pets';
 import { CROPS, CARROT, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
 import { ensureGolden } from '../systems/paletteSwap';
 import { DECORATIONS, WELL, DecorationDefinition, MORNING_ANIMATION_HOURS } from '../data/decorations';
-import { HOE, SICKLE, AXE, PICKAXE, HAMMER, COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE } from '../data/tools';
+import { HOE, SICKLE, AXE, PICKAXE, HAMMER, COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE, COPPER_WATERING_CAN, IRON_WATERING_CAN, GOLD_WATERING_CAN } from '../data/tools';
 import {
   INVENTORY_UI_KEY,
   INVENTORY_UI_PATH,
@@ -124,12 +124,16 @@ import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
 import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
 import { registerEnterHouseInteractable } from '../systems/enterHouseInteraction';
 import { startNextDay, DayTurn } from '../systems/dayCycle';
-import { shouldStartHorde } from '../systems/horde';
+import { describeCropsLost, shouldStartHorde } from '../systems/horde';
 import { advanceWorldTime, describeNewDay } from '../systems/worldTime';
+import { OreSparkles, preloadOreSparkles } from '../systems/oreSparkle';
+import { describeFarmReport } from '../systems/farmland';
 import { FarmFences } from '../systems/farmFences';
 import { SLIME_KEY, SLIME_PATH, SLIME_FRAME_SIZE } from '../data/enemies';
 import { attachFootDust, isDirtGround, isGrassGround } from '../systems/grassDust';
 import { tutorial } from '../systems/tutorial';
+import { createSeedOrderShop } from '../systems/vendorShops';
+import type { ShopMenu } from '../ui/shopMenu';
 import { onPlayerStepped } from '../systems/sceneEvents';
 import { ButterflyField, preloadButterflies } from '../systems/butterflies';
 import { HordeDirector } from '../systems/hordeDirector';
@@ -179,6 +183,8 @@ import { preloadChickens } from '../entities/Chicken';
 import { ChickenFlock } from '../systems/chickenFlock';
 import { ShippingBinMenu } from '../ui/shippingBinMenu';
 import { registerMapEditorShortcut } from '../systems/mapEditorLauncher';
+import { checkProphecyMail } from '../systems/mail';
+import { WORLD_MENU_OPEN_KEY } from '../ui/weatherOverlay';
 
 /**
  * Cena principal: monta a propriedade da fazenda (Fase 2), o personagem
@@ -219,6 +225,8 @@ export class MainScene extends Phaser.Scene {
   private farmlandRenderer!: FarmlandRenderer;
   private inventory!: Inventory;
   private shippingBinMenu!: ShippingBinMenu;
+  /** A encomenda de sementes pela Caixa de Correio (aberta ao clicar nela sem carta nova). */
+  private seedOrderShop!: ShopMenu;
   private mailbox!: Mailbox;
   private eventManager!: EventManager;
   /** Último instante em que a conversa estava aberta (`update`) — ver o ESC em `create`. */
@@ -240,6 +248,8 @@ export class MainScene extends Phaser.Scene {
   private spawnOverride: { col: number; row: number } | null = null;
   /** Só preenchido quando a Fazenda abre porque o jogador desmaiou (ver `systems/playerDeath.ts`) — mostra o aviso e faz a tela clarear em vez de aparecer de repente. */
   private wakeUpNotice: WakeUpAfterDeath | null = null;
+  /** A cintilância da plantação pronta (`FarmlandRenderer.setReadyGlints`). */
+  private readyGlints!: OreSparkles;
 
   constructor() {
     super('MainScene');
@@ -258,6 +268,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   preload(): void {
+    preloadOreSparkles(this); // A estrelinha da plantação pronta pra colher.
     this.load.image(GRASS_TILESET_KEY, encodeURI(`/${GRASS_TILESET_PATH}`));
     this.load.spritesheet(FENCE_TILESET_KEY, encodeURI(`/${FENCE_TILESET_PATH}`), {
       frameWidth: TILE_SIZE,
@@ -348,7 +359,7 @@ export class MainScene extends Phaser.Scene {
 
     // Ferramentas de progressão e armaduras: só se obtêm comprando no Ferreiro (`data/toolShop.ts`),
     // mas o ícone precisa estar carregado desde já pra aparecer na loja dele.
-    for (const tool of [COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE]) {
+    for (const tool of [COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE, COPPER_WATERING_CAN, IRON_WATERING_CAN, GOLD_WATERING_CAN]) {
       this.load.spritesheet(tool.textureKey, encodeURI(`/${tool.texturePath}`), {
         frameWidth: WATERING_CAN_ICON_FRAME_SIZE,
         frameHeight: WATERING_CAN_ICON_FRAME_SIZE,
@@ -407,6 +418,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   create(): void {
+    checkProphecyMail(); // Save de quem já tinha passado do andar 30 antes de a carta depender dele: ela chega agora.
     applyUpgrades(); // Casa, lavoura e cerca do nível atual das melhorias do Marceneiro (`systems/farmUpgrades.ts`).
     for (const level of HOUSE_LEVELS) {
       // Os recortes das casas de folha (a loja do Marceneiro, no Vilarejo, usa como ícone).
@@ -607,6 +619,9 @@ export class MainScene extends Phaser.Scene {
     // estado (possivelmente não-vazio) e desenha imediatamente.
     this.farmland = gameState.farmland;
     this.farmlandRenderer = new FarmlandRenderer(this, farmMap);
+    // A plantação pronta pra colher cintila de vez em quando (a mesma estrelinha dos veios das Cavernas).
+    this.readyGlints = new OreSparkles(this, this.player.sprite, tilePx);
+    this.farmlandRenderer.setReadyGlints(this.readyGlints);
     this.farmlandRenderer.renderAll(this.farmland);
 
     this.inventory = gameState.inventory;
@@ -661,19 +676,30 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Caixa de Correio: cartas agendadas (`data/mail.ts`) chegam nos dias delas; um papel flutua em cima enquanto há carta não lida.
-    this.mailbox = new Mailbox(this, tilePx, grid, interactions, this.player);
+    // Sem carta nova, a caixa abre a encomenda de sementes da Lia (`systems/seedOrders.ts`): chegam amanhã, sem ir ao Vilarejo.
+    this.seedOrderShop = createSeedOrderShop(this, this.inventory, this.player);
+    // Saindo da Fazenda com um menu aberto, a chuva não pode ficar escondida nas outras cenas.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.registry.set(WORLD_MENU_OPEN_KEY, false));
+    this.mailbox = new Mailbox(this, tilePx, grid, interactions, this.player, () => {
+      if (!tutorial.allows({ kind: 'menu' })) return;
+      this.seedOrderShop.open();
+      this.seedOrderShop.refresh(this.inventory.getCoins());
+    });
 
     if (this.wakeUpNotice) {
       const { coinsLost, hordeDefeat } = this.wakeUpNotice;
       this.wakeUpNotice = null;
       this.cameras.main.fadeIn(700, 0, 0, 0);
       if (hordeDefeat) {
-        const kept = hordeDefeat.drops.length > 0 ? `Você guardou: ${hordeDefeat.drops.join(', ')}.` : 'Você não abateu nenhum inimigo.';
-        lockedMessage.show('A HORDA VENCEU', `O dia avançou. ${coinsLost > 0 ? `Você perdeu ${coinsLost} moedas. ` : ''}${kept}`);
+        const kept = hordeDefeat.drops.length > 0 ? `A horda levou o que você tinha juntado: ${hordeDefeat.drops.join(', ')}.` : 'Nada da noite foi recuperado.';
+        const lostLine = describeCropsLost(hordeDefeat.cropsLost ?? 0);
+        lockedMessage.show('A HORDA VENCEU', `O dia avançou. ${coinsLost > 0 ? `Você perdeu ${coinsLost} moedas. ` : ''}${kept}${lostLine ? ` ${lostLine}` : ''}`);
       } else {
         lockedMessage.show('VOCÊ DESMAIOU', coinsLost > 0 ? `Você acordou em casa e perdeu ${coinsLost} moedas.` : 'Você acordou em casa.');
       }
     }
+    // Saiu de casa depois de dormir (ou voltou à Fazenda no dia): o "Bom dia" da lavoura, se ainda não foi mostrado.
+    this.showMorningReport();
 
     this.decorationPlacement = new DecorationPlacementSystem(
       this,
@@ -762,9 +788,9 @@ export class MainScene extends Phaser.Scene {
       handleClick: () => {},
     });
 
-    // Menu da Caixa de Remessas aberto: o clique é só dele (mesma ideia do Inventário/Fornalha).
+    // Menu da Caixa de Remessas (ou a encomenda de sementes) aberto: o clique é só dele (mesma ideia do Inventário/Fornalha).
     this.controller.addInputInterceptor({
-      isActive: () => this.shippingBinMenu.isOpen(),
+      isActive: () => this.shippingBinMenu.isOpen() || this.seedOrderShop.isOpen(),
       handleClick: () => {},
     });
 
@@ -808,6 +834,10 @@ export class MainScene extends Phaser.Scene {
         this.shippingBinMenu.close();
         return;
       }
+      if (this.seedOrderShop.isOpen()) {
+        this.seedOrderShop.close();
+        return;
+      }
       if (this.isEnteringHouse) return;
       togglePauseMenu();
     });
@@ -816,6 +846,7 @@ export class MainScene extends Phaser.Scene {
       if (!tutorial.allows({ kind: 'menu' })) return; // Tutorial: nada de Inventário até terminar.
       if (isChestMenuOpen()) return; // O baú já mostra a bolsa; E não abre outra tela por cima.
       if (this.shippingBinMenu.isOpen()) this.shippingBinMenu.close();
+      if (this.seedOrderShop.isOpen()) this.seedOrderShop.close();
       if (isFurnaceMenuOpen()) closeFurnaceMenu();
       this.decorationPlacement.cancel();
       toggleInventoryScreen();
@@ -984,6 +1015,15 @@ export class MainScene extends Phaser.Scene {
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(HOUSE_SCENE_KEY));
   }
 
+  /** O "Bom dia" da lavoura (`runDayTurn` → `gameState.morningReport`): mostrado uma vez, ao abrir a Fazenda no dia ou na virada dele aqui. */
+  private showMorningReport(): void {
+    const pending = gameState.morningReport;
+    if (!pending || pending.day !== this.gameClock.getDay()) return;
+    gameState.morningReport = null;
+    const text = describeFarmReport(pending.report);
+    if (text) this.lockedMessage.show('BOM DIA', text);
+  }
+
   private isInputLocked(): boolean {
     return (
       isInventoryOpen() ||
@@ -993,7 +1033,8 @@ export class MainScene extends Phaser.Scene {
       isChestMenuOpen() ||
       this.isEnteringHouse ||
       isPauseMenuOpen() ||
-      this.shippingBinMenu.isOpen()
+      this.shippingBinMenu.isOpen() ||
+      this.seedOrderShop.isOpen()
     );
   }
 
@@ -1037,6 +1078,9 @@ export class MainScene extends Phaser.Scene {
     this.mailbox.update();
     this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts` quando não precisar mais.
     this.farmlandRenderer.renderAll(this.farmland);
+    if (!isPauseMenuOpen()) this.readyGlints.update(delta);
+    // A chuva (na `UIScene`) não pode cobrir os menus desta cena (`WORLD_MENU_OPEN_KEY`).
+    this.registry.set(WORLD_MENU_OPEN_KEY, this.shippingBinMenu.isOpen() || this.seedOrderShop.isOpen());
 
     if (!this.isEnteringHouse && !isPauseMenuOpen()) {
       const { dayTurn } = advanceWorldTime(delta, true);
@@ -1047,6 +1091,7 @@ export class MainScene extends Phaser.Scene {
         // Faixa de novo dia (como o Stardew): número do dia + o clima de hoje.
         const { title, subtitle } = describeNewDay();
         this.lockedMessage.show(title, subtitle);
+        this.showMorningReport();
       }
       if (!isLetterOpen()) this.hordeDirector.update(time, delta);
       this.butterflies.update(delta);

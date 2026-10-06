@@ -7,13 +7,20 @@ const MAIN_SCENE_KEY = 'MainScene';
 
 /** Moedas perdidas ao desmaiar (pedido explícito) — nunca deixa o saldo negativo (perde no máximo o que tem). */
 const DEATH_COIN_PENALTY = 50;
+/** ...ou esta fração do saldo, se for mais: com o bolso cheio, 50 moedas não pesavam nada (o playtest morreu sem sentir). */
+const DEATH_COIN_FRACTION = 0.1;
+
+/** Quanto se perde ao desmaiar com `coins` no bolso: 50 ou 10%, o que for maior, nunca mais que o saldo. */
+export function deathCoinPenalty(coins: number): number {
+  return Math.min(coins, Math.max(DEATH_COIN_PENALTY, Math.floor(coins * DEATH_COIN_FRACTION)));
+}
 const FADE_OUT_MS = 700;
 
 /** Dados que a `MainScene` recebe ao acordar depois de desmaiar (ver `MainScene.init`). */
 export interface WakeUpAfterDeath {
   coinsLost: number;
-  /** Só quando o jogador desmaiou NA HORDA: o evento acabou sem bônus e o dia deve avançar (`MainScene.init` chama `startNextDay`); `drops` = só o que os inimigos já abatidos deram. */
-  hordeDefeat?: { drops: string[] };
+  /** Só quando o jogador desmaiou NA HORDA: o evento acabou sem bônus, o que os inimigos derrubaram se perdeu e o dia deve avançar (`MainScene.init` chama `startNextDay`); `drops` = o que se perdeu. */
+  hordeDefeat?: { drops: string[]; cropsLost?: number };
 }
 
 /** Trava contra reentrância: enquanto a tela escurece, a vida já está em 0 e nada deve disparar a morte de novo. */
@@ -38,13 +45,15 @@ export function handlePlayerDeath(scene: Phaser.Scene): void {
   const camera = scene.cameras.main;
   camera.fadeOut(FADE_OUT_MS, 0, 0, 0);
   camera.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-    const coinsLost = Math.min(DEATH_COIN_PENALTY, gameState.inventory.getCoins());
+    const coinsLost = deathCoinPenalty(gameState.inventory.getCoins());
     gameState.inventory.spendCoins(coinsLost);
     gameState.playerHealth.restoreFull();
 
     // Morreu durante a horda: o evento termina SEM o bônus — o jogador leva apenas os drops dos inimigos que já tinha abatido — e
     // o dia avança (quem acorda, `MainScene.init`, roda a virada de dia).
-    const hordeDefeat = gameState.horde.active ? { drops: finishHordeDefeat().lines } : undefined;
+    // Morrer não pode ser o jeito barato de pular a horda: o que os inimigos já tinham derrubado fica com eles.
+    const defeat = gameState.horde.active ? finishHordeDefeat({ keepDrops: false }) : null;
+    const hordeDefeat = defeat ? { drops: defeat.lines, cropsLost: defeat.cropsLost } : undefined;
     saveGame();
 
     isHandlingDeath = false;

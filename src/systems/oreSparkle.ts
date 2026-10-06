@@ -26,7 +26,7 @@ export function preloadOreSparkles(scene: Phaser.Scene): void {
 }
 
 export class OreSparkles {
-  private readonly ores: Array<{ sprite: Phaser.GameObjects.Image; kind: OreKind }> = [];
+  private readonly ores: Array<{ sprite: Phaser.GameObjects.Image; perSecond: number; color: number }> = [];
   private readonly pool: Phaser.GameObjects.Image[] = [];
 
   constructor(
@@ -39,22 +39,27 @@ export class OreSparkles {
   }
 
   add(sprite: Phaser.GameObjects.Image, kind: OreKind): void {
-    this.ores.push({ sprite, kind });
+    this.addGlint(sprite, ORE_SPARKLE[kind].perSecond, ORE_SPARKLE[kind].color);
+  }
+
+  /** Qualquer outra coisa que cintile do mesmo jeito (a plantação pronta pra colher, `FarmlandRenderer`): ritmo e cor próprios. */
+  addGlint(sprite: Phaser.GameObjects.Image, perSecond: number, color: number): void {
+    this.ores.push({ sprite, perSecond, color });
   }
 
   update(deltaMs: number): void {
     const dt = deltaMs / 1000;
     const view = this.scene.cameras.main.worldView;
     for (let index = this.ores.length - 1; index >= 0; index--) {
-      const { sprite, kind } = this.ores[index];
+      const { sprite, perSecond, color } = this.ores[index];
       if (!sprite.active) {
         this.ores.splice(index, 1); // Minerado.
         continue;
       }
       if (!view.contains(sprite.x, sprite.y - sprite.displayHeight / 2)) continue;
       const cells = Phaser.Math.Distance.Between(this.follow.x, this.follow.y, sprite.x, sprite.y) / this.tilePx;
-      const rate = ORE_SPARKLE[kind].perSecond * (cells <= NEAR_LIGHT_CELLS ? NEAR_LIGHT_MULTIPLIER : 1);
-      if (Math.random() < rate * dt) this.sparkle(sprite, ORE_SPARKLE[kind].color);
+      const rate = perSecond * (cells <= NEAR_LIGHT_CELLS ? NEAR_LIGHT_MULTIPLIER : 1);
+      if (Math.random() < rate * dt) this.sparkle(sprite, color);
     }
   }
 

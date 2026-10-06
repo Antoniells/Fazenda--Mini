@@ -7,6 +7,7 @@ import { DISPLAY_SCALE } from './mapBuilder';
 import { createGroundShadow } from './shadow';
 import { pushPlant, registerSway } from './foliageSway';
 import { FarmMapData } from '../data/maps/farmMap';
+import type { OreSparkles } from './oreSparkle';
 
 /** Os 4 vizinhos ortogonais de uma célula — usado tanto para escolher a borda do autotile quanto para saber quem re-renderizar depois de arar/limpar. */
 const NEIGHBOR_OFFSETS: ReadonlyArray<[number, number]> = [
@@ -64,6 +65,10 @@ function pickSoilAutotileKey(
 
 /** Tingimento aplicado à plantação morta — reaproveita o frame existente, sem novo sprite. */
 const DEAD_TINT = 0x8a6d4a;
+/** Plantação MURCHA (ficou um dia sem água — `Farmland.isWilted`): o mesmo frame, amarelado; some ao regar. */
+const WILTED_TINT = 0xd9c27a;
+/** A plantação pronta pra colher cintila de vez em quando (a estrelinha dos veios, `OreSparkles.addGlint`), num dourado claro. */
+const READY_GLINT = { perSecond: 0.35, color: 0xfff0a8 };
 /** Tingimento marrom-terra aplicado à mancha de sombra para virar "poeira" ao arar — mesmo asset, só a cor muda. */
 const DUST_TINT = 0x8a5a2e;
 /**
@@ -87,6 +92,9 @@ export class FarmlandRenderer {
   private readonly tilePx: number;
   private readonly soilImages = new Map<string, Phaser.GameObjects.Image>();
   private readonly cropImages = new Map<string, Phaser.GameObjects.Image>();
+  /** Quem faz a plantação pronta cintilar (a cena liga com `setReadyGlints`) e quais imagens já estão nele. */
+  private readyGlints: OreSparkles | null = null;
+  private readonly glinting = new WeakSet<Phaser.GameObjects.Image>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -185,14 +193,28 @@ private renderCrop(plot: Plot): void {
     
     image.setFrame(frame);
 
+    const wilted = plot.state === 'growing' && !plot.wateredToday && (plot.dryDays ?? 0) > 0;
     if (plot.state === 'dead') image.setTint(DEAD_TINT);
+    else if (wilted) image.setTint(WILTED_TINT);
     else image.clearTint();
+
+    // Pronta pra colher: entra na cintilância (sai sozinha quando a imagem some, na colheita).
+    const ready = plot.state === 'growing' && plot.stage >= crop.growthFrames.length - 1;
+    if (ready && this.readyGlints && !this.glinting.has(image)) {
+      this.glinting.add(image);
+      this.readyGlints.addGlint(image, READY_GLINT.perSecond, READY_GLINT.color);
+    }
 
     if (plot.stage === 0 || plot.state === 'dead') {
       image.setDepth(-0.25);
     } else {
       image.setDepth(image.y + 1);
     }
+  }
+
+  /** Liga a cintilância da plantação pronta pra colher (a cena chama `sparkles.update` a cada quadro). */
+  setReadyGlints(sparkles: OreSparkles): void {
+    this.readyGlints = sparkles;
   }
 
   renderPlot(farmland: Farmland, plot: Plot): void {

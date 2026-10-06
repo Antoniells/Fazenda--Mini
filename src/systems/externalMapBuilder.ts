@@ -20,6 +20,7 @@ import {
   WATER_KEY,
 } from '../data/tiles';
 import { ORES, ORE_DISPLAY_SCALE_MULT, OreKind } from '../data/ores';
+import { CAVE_ROCK_FRAMES } from '../data/caveRocks';
 import { createGroundShadow } from './shadow';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { TreeStage, TreeSpecies } from './resourceNodeRegistry';
@@ -165,6 +166,23 @@ export function buildOreDeposit(scene: Phaser.Scene, tileSize: number, col: numb
   ore.setDepth(ore.y);
 
   return ore;
+}
+
+/**
+ * Pedra solta das Cavernas (`systems/caveRocks.ts`): um dos recortes lisos da folha dos veios (`CAVE_ROCK_FRAMES`), na mesma escala e
+ * âncora dos veios (`buildOreDeposit`) — pedra e veio parecem a mesma rocha, um com cristal e o outro sem.
+ */
+export function buildCaveRock(scene: Phaser.Scene, tileSize: number, col: number, row: number, variant: number): Phaser.GameObjects.Image {
+  const frame = CAVE_ROCK_FRAMES[variant % CAVE_ROCK_FRAMES.length];
+  registerFrame(scene, ORE_KEY, frame);
+
+  const tile = tileSize * DISPLAY_SCALE;
+  const rock = scene.add.image(col * tile + tile / 2, (row + 1) * tile, ORE_KEY, frame.name);
+  rock.setOrigin(0.5, 1);
+  rock.setScale(DISPLAY_SCALE * ORE_DISPLAY_SCALE_MULT);
+  rock.setDepth(rock.y);
+
+  return rock;
 }
 
 /** Entrada de caverna/mina (Caverna) — estrutura única e maior, ancorada pela base como os demais objetos estáticos. */

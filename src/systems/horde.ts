@@ -29,6 +29,25 @@ export function shouldStartHorde(): boolean {
   return isHordeToday(day) && horde.lastHordeDay !== day && gameClock.getHours() >= HORDE_START_HOUR;
 }
 
+/**
+ * A linha da horda no marcador de objetivo (a `UIScene` a põe em primeiro): na véspera, "amanhã às 19:00"; no dia, a contagem até as
+ * 19:00. Durante a horda não aparece (a Fazenda mostra os inimigos restantes) e, depois dela ou em paz, também não.
+ */
+export function describeHordeObjective(): string | null {
+  const { horde, gameClock, campaign } = gameState;
+  if (horde.active) return null;
+  const day = gameClock.getDay();
+  const name = (d: number): string => (campaign.finalNightDay === d ? 'Noite Final' : 'Horda');
+  if (isHordeToday(day) && horde.lastHordeDay !== day) {
+    const left = HORDE_START_HOUR - gameClock.getHours();
+    if (left <= 0) return `${name(day)} chegando — volte para a Fazenda!`;
+    const countdown = left >= 1 ? `faltam ${Math.floor(left)}h` : 'falta menos de 1h';
+    return `${name(day)} hoje às ${HORDE_START_HOUR}:00 (${countdown}) — defenda a Fazenda`;
+  }
+  if (isHordeToday(day + 1)) return `${name(day + 1)} amanhã às ${HORDE_START_HOUR}:00 — prepare a Fazenda`;
+  return null;
+}
+
 /** Amanheceu? (06:00–19:00) — fim da noite da horda. */
 export function isDawn(): boolean {
   const hours = gameState.gameClock.getHours();
@@ -38,7 +57,7 @@ export function isDawn(): boolean {
 export function startHorde(): HordeState {
   const day = gameState.gameClock.getDay();
   const number = hordeNumberOfDay(day);
-  gameState.horde = { active: true, number, total: hordeSize(number), killed: 0, drops: {}, lastHordeDay: day };
+  gameState.horde = { active: true, number, total: hordeSize(number), killed: 0, drops: {}, lastHordeDay: day, cropsLost: 0 };
   return gameState.horde;
 }
 
@@ -49,9 +68,22 @@ export function registerHordeKill(resourceId: string, amount: number): void {
   horde.drops[resourceId] = (horde.drops[resourceId] ?? 0) + amount;
 }
 
+/** Um inimigo da horda destruiu uma plantação: conta pro resumo do fim. */
+export function registerHordeCropLost(): void {
+  gameState.horde.cropsLost = (gameState.horde.cropsLost ?? 0) + 1;
+}
+
+/** Frase do resumo sobre a lavoura ("3 plantações destruídas."), ou `null` se nenhuma se perdeu. */
+export function describeCropsLost(count: number): string | null {
+  if (count <= 0) return null;
+  return count === 1 ? '1 plantação destruída.' : `${count} plantações destruídas.`;
+}
+
 export interface HordeSummary {
   /** Linhas prontas pra mostrar ("12 Madeira"), na ordem: drops dos inimigos e depois o bônus. */
   lines: string[];
+  /** Plantações que os inimigos destruíram nesta horda. */
+  cropsLost: number;
   /** Era a Noite Final e o jogador a venceu: a campanha se completou (a cena mostra o epílogo). */
   finalNightWon?: boolean;
 }
@@ -88,6 +120,7 @@ export function finishHordeVictory(): HordeSummary {
 
   return {
     finalNightWon: wasFinalNight,
+    cropsLost: gameState.horde.cropsLost ?? 0,
     lines: [
       ...delivered.map(({ id, amount }) => describe(id, amount)),
       `${reward.coins} moedas`,
@@ -98,13 +131,20 @@ export function finishHordeVictory(): HordeSummary {
   };
 }
 
-/** O jogador morreu: encerra o evento SEM bônus, entregando só os drops dos inimigos que ele já abateu. (Quem chama avança o dia.) */
-export function finishHordeDefeat(): HordeSummary {
-  const delivered = deliverDrops();
+/**
+ * A horda acabou sem vitória: encerra o evento SEM bônus. `keepDrops` (padrão): entrega os drops dos inimigos já abatidos (amanheceu
+ * com o jogador longe); `false`: o jogador desmaiou na horda e eles se perdem — as linhas do resumo dizem o que se perdeu. (Quem chama
+ * avança o dia.)
+ */
+export function finishHordeDefeat(options: { keepDrops?: boolean } = {}): HordeSummary {
+  const keepDrops = options.keepDrops ?? true;
+  const lost = Object.entries(gameState.horde.drops).filter(([, amount]) => amount > 0).map(([id, amount]) => ({ id, amount }));
+  const delivered = keepDrops ? deliverDrops() : lost;
+  if (!keepDrops) gameState.horde.drops = {};
   // A Noite Final perdida (desmaio, ou o dia amanheceu com o jogador longe) não vale: o jogador tem que marcá-la de novo com o Alberto.
   if (isFinalNightActive()) gameState.campaign.finalNightDay = null;
   gameState.horde.active = false;
-  return { lines: delivered.map(({ id, amount }) => describe(id, amount)) };
+  return { lines: delivered.map(({ id, amount }) => describe(id, amount)), cropsLost: gameState.horde.cropsLost ?? 0 };
 }
 
 /**

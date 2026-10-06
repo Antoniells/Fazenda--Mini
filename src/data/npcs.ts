@@ -11,6 +11,7 @@
  */
 import { VILLAGE_SHOP_HOUSE, VILLAGE_BANKER_HOUSE, VILLAGE_PIRATE_HOUSE, VILLAGE_SUPPLIER_HOUSE, VILLAGE_CARPENTER_HOUSE, VillageStructure } from './maps/villageMap';
 import { BEACH_MERMAID_CELL } from './maps/beachDecor';
+import { APPEARANCE_PRESETS, portraitLayers } from './playerAppearance';
 
 /** `banker` é o Alberto, agora PADEIRO: o id interno não mudou (campanha, pedidos, saves e o `role` da casa no layout dependem dele) — só o título e as falas. */
 export type NpcId = 'blacksmith' | 'banker' | 'pirate' | 'mermaid' | 'supplier' | 'carpenter';
@@ -101,6 +102,27 @@ const LAYERED_EXPRESSIONS: Partial<Record<PortraitExpression, { x: number; y: nu
   crying: { x: 64, y: 64 },
   surprised: { x: 128, y: 64 },
 };
+/**
+ * Retrato da Lia e do Tomás: eles são os personagens prontos Tori e Josh (as mesmas folhas de corpo), então o retrato é montado com as
+ * MESMAS peças do retrato do personagem pronto (`Character/Character/Portrait/PNG`, `portraitLayers(APPEARANCE_PRESETS.x)`) — antes eles
+ * usavam o quadro de repouso 32x32 ampliado e destoavam dos outros moradores. Folha 320x192: as colunas são as bocas (neutro, feliz,
+ * surpreso, sério, falando) e as linhas, a piscada (olhos abertos, meio fechados, fechados).
+ */
+const PREMADE_PORTRAIT_EXPRESSIONS: Partial<Record<PortraitExpression, { x: number; y: number }>> = {
+  happy: { x: 64, y: 0 },
+  content: { x: 64, y: 128 },
+  surprised: { x: 128, y: 0 },
+  angry: { x: 192, y: 0 },
+  sad: { x: 192, y: 0 },
+  crying: { x: 192, y: 128 },
+  thoughtful: { x: 256, y: 0 },
+};
+const premadePortrait = (character: 'Tori' | 'Josh'): { width: number; height: number; paths: string[] } => ({
+  width: 320,
+  height: 192,
+  paths: portraitLayers(APPEARANCE_PRESETS[character]),
+});
+
 const layeredPortrait = (npc: string, layers: string[]): { width: number; height: number; paths: string[] } => ({
   width: 256,
   height: 128,
@@ -210,6 +232,8 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       expressions: LAYERED_EXPRESSIONS,
     },
     home: VILLAGE_PIRATE_HOUSE,
+    // Velho marujo: chuva não o tira da rua (e ele não tem loja onde atender — se entrasse, sumiria o dia todo).
+    staysInRain: true,
     schedule: [
       { fromHour: 0, place: { kind: 'inside' } },
       { fromHour: 7, place: { kind: 'spot', col: 18, row: 25, facing: 'down' } },
@@ -241,7 +265,7 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       flipLeft: true,
     },
     // Sem retrato próprio na pasta: o quadro de repouso de frente (32x32) faz as vezes.
-    portrait: { key: 'npc-supplier-idle-portrait', path: `${PREMADE_DIR}/Tori/Idle.png`, frame: { x: 0, y: 0, width: 32, height: 32 } },
+    portrait: { key: 'npc-supplier-portrait-layered', layers: premadePortrait('Tori'), frame: { x: 0, y: 0, width: 64, height: 64 }, expressions: PREMADE_PORTRAIT_EXPRESSIONS },
     home: VILLAGE_SUPPLIER_HOUSE,
     sells: true,
     schedule: [
@@ -274,7 +298,7 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
       rows: SIDE_SHEET_ROWS,
       flipLeft: true,
     },
-    portrait: { key: 'npc-carpenter-idle-portrait', path: `${PREMADE_DIR}/Josh/Idle.png`, frame: { x: 0, y: 0, width: 32, height: 32 } },
+    portrait: { key: 'npc-carpenter-portrait-layered', layers: premadePortrait('Josh'), frame: { x: 0, y: 0, width: 64, height: 64 }, expressions: PREMADE_PORTRAIT_EXPRESSIONS },
     home: VILLAGE_CARPENTER_HOUSE,
     sells: true,
     schedule: [

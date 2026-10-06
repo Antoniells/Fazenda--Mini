@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { gameState } from './gameState';
 import { popText } from './floatingText';
 import {
-  BASE_MAX_STAMINA,
   SKILL_BONUS,
   XP_REWARDS,
   getSkillDefinition,
@@ -102,7 +101,7 @@ export function getFishingLuck(): number {
   return getSkillRank('fishingLuck') * SKILL_BONUS.fishingLuckPerRank;
 }
 
-/** Resistência máxima (stamina) — a barra de resistência lê daqui quando existir. */
-export function getMaxStamina(): number {
-  return BASE_MAX_STAMINA + getSkillRank('stamina') * SKILL_BONUS.staminaPerRank;
+/** Defesa que o Fôlego soma à da armadura (`getPlayerDefense`, `systems/enchanting.ts`). */
+export function getSkillDefense(): number {
+  return getSkillRank('stamina') * SKILL_BONUS.defensePerRank;
 }

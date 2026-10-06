@@ -6,7 +6,8 @@ import { advanceForestDay } from '../scenes/ForestScene';
 import { advanceQuarryDay } from '../scenes/QuarryScene';
 import { advanceFarmResourcesDay } from './farmResources';
 import { layEggs } from './animals';
-import type { Plot } from './farmland';
+import { deliverSeedOrders } from './seedOrders';
+import type { FarmDayReport, Plot } from './farmland';
 
 /** Avança só o estado do mundo (registros de árvores/pedras da Floresta, Pedreira e da Fazenda — na Fazenda, brotos novos nascem e as árvores crescem de estágio) — não depende de nenhuma cena estar aberta. */
 export function advanceWorldResourcesState(): void {
@@ -20,6 +21,8 @@ export function advanceWorldResourcesState(): void {
 export interface DayTurn {
   rained: Plot[];
   sprayed: Plot[];
+  /** O que aconteceu na lavoura (o "Bom dia" da Fazenda, `describeFarmReport`). */
+  farm: FarmDayReport;
 }
 
 /**
@@ -28,11 +31,15 @@ export interface DayTurn {
  * meia-noite, `startNextDay` ao dormir). Devolve o que foi regado pra a cena, se for a Fazenda, mostrar os respingos.
  */
 export function runDayTurn(): DayTurn {
-  gameState.farmland.onNewDay();
+  const farm = gameState.farmland.onNewDay();
   const rained = rollDailyWeather(gameState.farmland);
   const sprayed = waterFromSprinklers(gameState.farmland);
+  // As murchas que a chuva ou um aspersor já regou não correm mais perigo hoje: o aviso só conta as que ainda precisam de água.
+  farm.wilted = gameState.farmland.getAllPlots().filter((plot) => gameState.farmland.isWilted(plot)).length;
+  gameState.morningReport = { day: gameState.gameClock.getDay(), report: farm };
   advanceWorldResourcesState();
-  return { rained, sprayed };
+  deliverSeedOrders(); // A encomenda de sementes de ontem chega na carta da Lia.
+  return { rained, sprayed, farm };
 }
 
 /**

@@ -5,12 +5,13 @@ import { Inventory } from './inventory';
 import { Player } from '../entities/Player';
 import { FarmMapData } from '../data/maps/farmMap';
 import { CROPS } from '../data/crops';
-import { HOE_SOUNDS, WATER_SOUND, PLANT_SOUND, HARVEST_SOUND, SICKLE_SOUND } from '../data/audio';
+import { HOE_SOUNDS, WATER_SOUND, PLANT_SOUND, HARVEST_SOUNDS, SICKLE_SOUND } from '../data/audio';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { spawnLoot } from './lootDrops';
 import { awardXp, rollDoubleDrop } from './skills';
 import { gameState } from './gameState';
-import { isToolOfFamily } from '../data/toolProgression';
+import { getToolTierInfo, isToolOfFamily } from '../data/toolProgression';
+import { wateringCells } from '../data/wateringCan';
 import { tutorial } from './tutorial';
 import { popText } from './floatingText';
 import { hotbarTopCenter } from '../ui/hotbar';
@@ -24,7 +25,7 @@ import { cutWeedAt } from './wildGrass';
  * - `untilled` + Enxada selecionada = ara.
  * - `tilled` + uma semente selecionada = planta (consome 1 do estoque).
  * - `tilled` (vazio) + Picareta selecionada (qualquer tier) = desfaz o arado: volta a terra normal.
- * - `growing` (não pronta) + Regador selecionado = rega.
+ * - `growing` (não pronta) + Regador selecionado = rega (os de Ferro e Ouro regam também as vizinhas — `data/wateringCan.ts`).
  * - `dead` + Foice selecionada = remove a plantação morta.
  * - `growing` pronta = colhe sempre, "com as mãos" — sem exigir ferramenta
  *   (mesma convenção do Stardew Valley).
@@ -40,6 +41,9 @@ import { cutWeedAt } from './wildGrass';
  * — é a mesma ferramenta, sem sentido criar uma ação nova só pra isso.
  */
 class PlotInteractable implements Interactable {
+  /** O pet anda atrás do jogador: o clique no canteiro é do canteiro, não dele (`Interactable.overridesCreatureClick`). */
+  readonly overridesCreatureClick = true;
+
   constructor(
     private readonly farmland: Farmland,
     private readonly renderer: FarmlandRenderer,
@@ -133,7 +137,7 @@ class PlotInteractable implements Interactable {
 
   private handleWater(): void {
     const selected = this.inventory.getSelectedSlot();
-    if (!selected || selected.category !== 'tool' || selected.id !== 'water') {
+    if (!selected || selected.category !== 'tool' || !isToolOfFamily(selected.id, 'water')) {
       console.log('Selecione o Regador para regar.');
       return;
     }
@@ -156,14 +160,26 @@ class PlotInteractable implements Interactable {
       return;
     }
 
+    const tier = getToolTierInfo(selected.id)?.tier ?? 0;
     this.player.performAction(
       'water',
       () => {
         // Mesma regra: só gasta a carga se o canteiro ainda aceita água (a plantação pode ter morrido/sido colhida durante o golpe).
         const watered = this.farmland.water(this.col, this.row);
-        if (watered && this.inventory.useWaterCharge() && this.inventory.getWateringCanCharges() === 0) tutorial.notifyWaterEmpty();
+        if (watered) this.inventory.useWaterCharge();
         this.renderer.spawnWaterSplash(this.col, this.row);
         this.refresh();
+        // Regador de Ferro/Ouro: as vizinhas que ainda precisam de água também (1 carga cada, enquanto houver).
+        for (const [col, row] of wateringCells(tier, this.col, this.row).slice(1)) {
+          if (this.inventory.getWateringCanCharges() <= 0) break;
+          const neighbor = this.farmland.getPlot(col, row);
+          if (!neighbor || neighbor.state !== 'growing' || this.farmland.isWatered(neighbor) || this.farmland.isReady(neighbor)) continue;
+          if (!this.farmland.water(col, row)) continue;
+          this.inventory.useWaterCharge();
+          this.renderer.spawnWaterSplash(col, row);
+          this.renderer.renderPlot(this.farmland, neighbor);
+        }
+        if (watered && this.inventory.getWateringCanCharges() === 0) tutorial.notifyWaterEmpty();
         if (watered) tutorial.notify({ kind: 'act', action: 'water' });
       },
       () => playEffect(this.player.sprite.scene, WATER_SOUND),
@@ -198,7 +214,7 @@ class PlotInteractable implements Interactable {
       // encontrar a célula vazia) não tenta destruí-la de novo por cima
       // da animação.
       this.renderer.playHarvestPop(this.col, this.row);
-      playEffect(this.player.sprite.scene, HARVEST_SOUND);
+      playRandomEffect(this.player.sprite.scene, HARVEST_SOUNDS);
       const result = this.farmland.harvest(this.col, this.row, gameState.weather.raining);
       if (result) {
         // A colheita cai no chão (o som de coleta toca quando o jogador pega — ver `systems/lootDrops.ts`).

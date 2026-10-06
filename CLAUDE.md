@@ -56,6 +56,23 @@ Nunca gerar elementos visuais via HTML, CSS, SVG, emojis ou formas desenhadas pr
 
 Este é exclusivamente um jogo de fazenda, inspirado na experiência da Mini Fazenda do Orkut. Educação, produtividade, tarefas educacionais, conteúdo educacional e qualquer integração entre estudo e jogo estão fora de escopo e não devem ser propostas ou implementadas.
 
+## Direção de Arte
+
+O jogo utiliza pixel art 2D com identidade visual própria.
+
+Ao criar ou modificar elementos visuais:
+
+1. Estudar primeiro os assets existentes no projeto.
+2. Manter escala, resolução, perspectiva, iluminação, outlines e densidade de detalhes consistentes.
+3. Utilizar referências externas apenas para compreender técnicas e princípios.
+4. Nunca copiar diretamente sprites, tilesets, personagens, paletas ou outros assets de projetos de terceiros.
+5. Evitar padrões visuais excessivamente repetitivos.
+6. Priorizar variações pequenas e orgânicas nos elementos de ambiente.
+7. Grandes áreas de terreno devem parecer contínuas, e não compostas por grandes quadrados perceptíveis.
+8. Novos elementos devem parecer pertencentes ao mesmo jogo, e não adicionados posteriormente.
+9. Antes de criar novos assets, verificar se um asset existente pode ser reutilizado ou adaptado.
+10. Para cada novo sistema visual, considerar também sua eficiência no Phaser.
+
 ## Estado atual
 
 Versão **0.1.11**. O jogo está completo do começo ao fim: agricultura, economia, construções e melhorias, tempo e clima, recursos e mineração, Vilarejo com moradores e campanha, hordas, Cavernas de 100 andares, pesca e a história principal ("Os Três Pilares do Equilíbrio"), da cena introdutória narrada ao fim com cinemática e créditos. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para o que está pronto e o que falta — o próximo trabalho é a **Etapa 6 da Fase 11** (rodada de jogo, balanceamento e polimento de falas, sons e arte).

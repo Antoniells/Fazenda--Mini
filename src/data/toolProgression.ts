@@ -6,13 +6,15 @@ import type { ToolId } from './tools';
  * novo SUBSTITUI o anterior no mesmo slot do Inventário (`Inventory.upgradeTool`) — nunca vira um item extra.
  * Adicionar outra família (Enxada, Foice…) é uma linha em `TOOL_PROGRESSION` + os 4 `ToolDefinition`s.
  */
-export type ToolFamily = 'axe' | 'pickaxe';
+export type ToolFamily = 'axe' | 'pickaxe' | 'water';
 
 export const TOOL_TIER_NAMES = ['Madeira', 'Cobre', 'Ferro', 'Ouro'] as const;
 
 export const TOOL_PROGRESSION: Record<ToolFamily, readonly ToolId[]> = {
   axe: ['axe', 'axe-copper', 'axe-iron', 'axe-gold'],
   pickaxe: ['pickaxe', 'pickaxe-copper', 'pickaxe-iron', 'pickaxe-gold'],
+  // O Regador: o tier não muda a força (`TOOL_TIER_POWER` não vale pra ele), e sim as cargas e a área de rega (`data/wateringCan.ts`).
+  water: ['water', 'water-copper', 'water-iron', 'water-gold'],
 };
 
 /** Ids antigos das ferramentas do 2º tier (era Pedra; hoje é Cobre) → o id atual, pra migrar saves e slots. */
@@ -33,7 +35,7 @@ export interface ToolTierInfo {
   tier: number;
 }
 
-/** A que família/tier pertence esta ferramenta? `null` = não faz parte de nenhuma progressão (Enxada, Foice, Regador, espadas). */
+/** A que família/tier pertence esta ferramenta? `null` = não faz parte de nenhuma progressão (Enxada, Foice, Martelo, Vara, espadas). */
 export function getToolTierInfo(toolId: string): ToolTierInfo | null {
   for (const family of Object.keys(TOOL_PROGRESSION) as ToolFamily[]) {
     const tier = TOOL_PROGRESSION[family].indexOf(toolId as ToolId);

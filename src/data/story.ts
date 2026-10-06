@@ -47,7 +47,7 @@ export interface StoryMilestone {
 }
 
 export const STORY_MILESTONES: StoryMilestone[] = [
-  { id: 'prophecy', title: 'A profecia', objective: 'Leia a carta na Caixa de Correio' },
+  { id: 'prophecy', title: 'A profecia', objective: 'Leia a carta na Caixa de Correio (chega ao alcançar o andar 30 das Cavernas)' },
   { id: 'azurite', title: 'Azurita', objective: 'Desça as Cavernas até o andar 45 e extraia Azurita' },
   { id: 'barrier', title: 'A barreira', objective: 'Chegue ao andar 50 das Cavernas' },
   { id: 'map', title: 'O mapa', objective: 'Abra o baú esquecido do andar 50' },
@@ -81,3 +81,5 @@ export function createStoryState(): StoryState {
 
 /** A carta que conta a profecia (`data/mail.ts`): lê-la registra o marco `prophecy`. */
 export const PROPHECY_MAIL_ID = 'prophecy';
+/** A carta da profecia só chega quando o jogador alcança este andar das Cavernas (pedido explícito). */
+export const PROPHECY_CAVE_FLOOR = 30;

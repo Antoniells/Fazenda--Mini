@@ -28,6 +28,12 @@ export const STEP_GRASS_SOUNDS: SoundEffectDef[] = [
 /** Farfalhar da copa quando o personagem passa pelas folhas (`systems/treeSway.ts`): os mesmos passos na grama, mais baixos (já carregados). */
 export const TREE_RUSTLE_SOUNDS: SoundEffectDef[] = STEP_GRASS_SOUNDS.map((sound) => ({ ...sound, volume: 0.45 }));
 export const STEP_BRIDGE_SOUND: SoundEffectDef = { key: 'sfx-step-bridge', path: `${EFFECTS_DIR}/Passos ponte.wav`, volume: 1 };
+/**
+ * Passos no chão de pedra das Cavernas: 5 variações (sorteadas sem repetir a anterior, como na grama) — `footstep_concrete_000-004` do
+ * pacote "Impact Sounds" do Kenney (CC0, kenney.nl), copiados da biblioteca de referência (`docs/REFERENCE_GUIDE.md`). Antes a Caverna
+ * usava o passo de madeira da ponte. Os arquivos têm pico ~0,9 (os passos na grama, ~0,13): volume baixo pra soar parecido.
+ */
+export const STEP_STONE_SOUNDS: SoundEffectDef[] = [1, 2, 3, 4, 5].map((n) => ({ key: `sfx-step-stone-${n}`, path: `${EFFECTS_DIR}/Passos de pedra ${n}.ogg`, volume: 0.2 }));
 export const HURT_SOUND: SoundEffectDef = { key: 'sfx-hurt', path: `${EFFECTS_DIR}/Dano.wav`, volume: 1 };
 export const PICKUP_SOUND: SoundEffectDef = { key: 'sfx-pickup', path: `${EFFECTS_DIR}/Coletor de itens.wav`, volume: 1 };
 /** Golpe de espada acertando um Slime (`EnemyStats.hitSound`, ver `data/enemies.ts`). */
@@ -88,7 +94,11 @@ export const SWORD_SWING_SOUND = sfx('sword-swing', 'Espada golpe');
 /** Som da Foice (cortar o mato, limpar plantação morta): por enquanto o mesmo da espada — quando a foice ganhar um som próprio, é só trocar aqui. */
 export const SICKLE_SOUND = SWORD_SWING_SOUND;
 export const PLANT_SOUND = sfx('plant', 'Plantar');
-export const HARVEST_SOUND = sfx('harvest', 'Colher');
+/**
+ * Colher (puxar a planta da terra): o farfalhar de folhas, sorteado entre 4 variações — `cloth1-4` do pacote "RPG Audio" do Kenney
+ * (CC0, kenney.nl), copiados da biblioteca de referência (`docs/REFERENCE_GUIDE.md`). Antes era `Colher.wav`.
+ */
+export const HARVEST_SOUNDS: SoundEffectDef[] = [1, 2, 3, 4].map((n) => ({ key: `sfx-harvest-${n}`, path: `${EFFECTS_DIR}/Colher folhas ${n}.ogg`, volume: 0.8 }));
 /** Posicionar uma decoração, um móvel ou uma muda. */
 export const PLACE_SOUND = sfx('place', 'Posicionar objeto');
 /** Porta abrindo: toda vez que alguém passa por uma porta (a casa do jogador, e os moradores do Vilarejo quando entram/saem perto dele). */
@@ -101,6 +111,8 @@ export const CRAFT_SOUND = sfx('craft', 'Fabricar');
 export const SELL_SOUND = sfx('sell', 'Vender');
 /** Ponte/expansão desbloqueada. */
 export const UNLOCK_SOUND = sfx('unlock', 'Desbloquear');
+/** Missão/pedido entregue (e os peixes do Mago): uma vinheta curta e alegre — `jingles-pizzicato_00` do pacote "Music Jingles" do Kenney (CC0, kenney.nl). Antes era o `UNLOCK_SOUND`. */
+export const QUEST_DONE_SOUND: SoundEffectDef = { key: 'sfx-quest-done', path: `${EFFECTS_DIR}/Missao entregue.ogg`, volume: 0.7 };
 export const ENEMY_DEFEATED_SOUND = sfx('enemy-defeated', 'Inimigo derrotado');
 export const HORDE_ALERT_SOUND = sfx('horde-alert', 'Alerta horda', 0.7);
 export const VICTORY_SOUND = sfx('victory', 'Vitoria', 0.8);
@@ -113,6 +125,7 @@ export const ROOSTER_HOURS = { from: 6, to: 6.5 };
 export const ALL_SOUND_EFFECTS: SoundEffectDef[] = [
   ...STEP_GRASS_SOUNDS,
   STEP_BRIDGE_SOUND,
+  ...STEP_STONE_SOUNDS,
   HURT_SOUND,
   PICKUP_SOUND,
   SLIME_HIT_SOUND,
@@ -132,7 +145,7 @@ export const ALL_SOUND_EFFECTS: SoundEffectDef[] = [
   HAMMER_SOUND,
   SWORD_SWING_SOUND,
   PLANT_SOUND,
-  HARVEST_SOUND,
+  ...HARVEST_SOUNDS,
   PLACE_SOUND,
   DOOR_SOUND,
   DOOR_KNOCK_SOUND,
@@ -141,6 +154,7 @@ export const ALL_SOUND_EFFECTS: SoundEffectDef[] = [
   CRAFT_SOUND,
   SELL_SOUND,
   UNLOCK_SOUND,
+  QUEST_DONE_SOUND,
   ENEMY_DEFEATED_SOUND,
   HORDE_ALERT_SOUND,
   VICTORY_SOUND,

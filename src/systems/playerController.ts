@@ -202,10 +202,11 @@ export class PlayerController {
       return;
     }
 
-    if (this.worldClickHandlers.some((handler) => handler(x, y))) return;
-
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
+    // Um canteiro da lavoura (`overridesCreatureClick`) vale mais que o pet/galinha por cima dele; nas outras células o bicho atende primeiro.
+    const cellFirst = this.interactions.get(col, row)?.overridesCreatureClick === true && this.canInteractWith(col, row);
+    if (!cellFirst && this.worldClickHandlers.some((handler) => handler(x, y))) return;
 
     if (!this.grid.isWalkable(col, row) || this.interactions.get(col, row)?.interactFromAdjacent) {
       this.handleBlockedClick(col, row);

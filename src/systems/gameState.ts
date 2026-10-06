@@ -3,7 +3,8 @@ import { createSmeltState, SmeltState } from '../data/smelting';
 import { createUpgradesState, UpgradesState } from '../data/upgrades';
 import { GameClock } from './gameClock';
 import { PlayerHealth } from './playerHealth';
-import { Farmland } from './farmland';
+import { Farmland, FarmDayReport } from './farmland';
+import type { NpcId } from '../data/npcs';
 import { farmMap } from '../data/maps/farmMap';
 import { CharacterId, DEFAULT_CHARACTER_ID } from '../data/player';
 import { PetId, DEFAULT_PET_ID } from '../data/pets';
@@ -134,6 +135,10 @@ export const gameState = {
   requests: createRequestsState() as RequestsState,
   /** Caixa de Correio: cartas já lidas e as agendadas por código — `systems/mail.ts`. Vai pro save. */
   mail: createMailState() as MailState,
+  /** Sementes encomendadas pela Caixa de Correio (id da cultura → quantidade), pagas e ainda não entregues — `systems/seedOrders.ts`. Vai pro save. */
+  seedOrders: {} as Record<string, number>,
+  /** Moradores com quem o jogador já conversou (`systems/npcDialogue.ts`): só na 1ª conversa o morador se apresenta. Vai pro save. */
+  metNpcs: [] as NpcId[],
   /** Eventos do mundo por dia (`systems/eventManager.ts`): quais eventos de uma vez só já aconteceram. Vai pro save. */
   events: createEventsState() as EventsState,
   /** Progressão: XP ganho/disponível e o nível comprado de cada habilidade — `systems/skills.ts`. Vai pro save. */
@@ -144,6 +149,8 @@ export const gameState = {
   construction: createConstructionState() as ConstructionState,
   /** Caverna: o andar mais fundo já alcançado (0 = nunca entrou) — libera um atalho a cada 5 andares (`data/caveFloors.ts`). Vai pro save. */
   cave: { deepest: 0 },
+  /** Andares das Cavernas já explorados hoje (`systems/caveVisits.ts`): voltam vazios até amanhã. Vai pro save. */
+  caveExplored: { day: 0, floors: [] as number[] },
   /** Fundições em andamento na Fornalha (`systems/smelting.ts`). Vai pro save. */
   smelting: createSmeltState() as SmeltState,
   /** Nível de cada melhoria do Marceneiro — casa, plantio e cerca (`data/upgrades.ts`, `systems/farmUpgrades.ts`). Vai pro save. */
@@ -160,10 +167,14 @@ export const gameState = {
   waterHintSeen: true,
   /** Depois da dica, enquanto o regador está vazio o objetivo "encher o regador no poço da Vila" aparece na lista (`data/tutorial.ts` `WATER_OBJECTIVE_TEXT`) — só na sessão, some ao encher. */
   waterObjective: false,
+  /** O jogador já pisou no Vilarejo? Enquanto não, depois do tutorial, o objetivo "conhecer o Vilarejo" fica na lista (`data/tutorial.ts` `VILLAGE_OBJECTIVE_TEXT`). Vai pro save: partida nova começa `false`, save antigo carrega `true`; o padrão `true` cobre o fluxo de desenvolvimento. */
+  villageVisited: true,
   tutorialStep: 0,
   tutorialProgress: 0,
   /** Último dia em que os aspersores tocaram a animação da manhã (só uma vez por dia) — não vai pro save. */
   sprinklerAnimDay: 0,
+  /** O "Bom dia" da lavoura da última virada de dia (`runDayTurn`), à espera de a Fazenda mostrá-lo — só na sessão, não vai pro save. */
+  morningReport: null as { day: number; report: FarmDayReport } | null,
   /** Último dia em que o galo cantou (só uma vez por dia, ao amanhecer) — não vai pro save. */
   roosterSoundDay: 0,
 };

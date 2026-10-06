@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { playClick } from '../systems/soundEffects';
 import { Inventory, HOTBAR_SIZE } from '../systems/inventory';
 import { resolveSlotVisual } from '../data/items';
-import { WATERING_CAN_TOOL } from '../data/tools';
+import { isToolOfFamily } from '../data/toolProgression';
 import { INVENTORY_UI_KEY, HOTBAR_BAR_FRAME_NAME, HOTBAR_BAR_RECT, HOTBAR_BAR_SLOT_PITCH } from '../data/ui';
 import { computeFitScale } from './slotIcon';
 import { Tooltip } from './tooltip';
@@ -62,6 +62,10 @@ export class Hotbar {
   /** Slot sob o ponteiro (balão do `Tooltip` com o nome do item), `null` = nenhum. */
   private hoveredIndex: number | null = null;
   private readonly tooltip: Tooltip;
+  /** Peças da barra (fundo, zonas de clique, ícones, números) — escondidas juntas enquanto o caderno está aberto (`setHidden`). */
+  private readonly bar: Phaser.GameObjects.Image;
+  private readonly hitZones: Phaser.GameObjects.Zone[] = [];
+  private hidden = false;
 
   constructor(scene: Phaser.Scene, onSelect: (index: number) => void, tooltip: Tooltip) {
     this.scene = scene;
@@ -85,6 +89,7 @@ export class Hotbar {
     const pitch = HOTBAR_BAR_SLOT_PITCH * BAR_SCALE;
 
     const bar = scene.add.image(centerX, baseY, INVENTORY_UI_KEY, HOTBAR_BAR_FRAME_NAME);
+    this.bar = bar;
     bar.setOrigin(0.5, 0.5);
     bar.setScale(BAR_SCALE);
     bar.setAlpha(BAR_ALPHA);
@@ -99,6 +104,7 @@ export class Hotbar {
       const hitZone = scene.add.zone(x, baseY, pitch, barHeight);
       hitZone.setScrollFactor(0);
       hitZone.setInteractive({ useHandCursor: true });
+      this.hitZones.push(hitZone);
       hitZone.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
         event.stopPropagation();
         playClick(scene);
@@ -147,6 +153,7 @@ export class Hotbar {
    * valor relevante muda de fato.
    */
   refresh(inventory: Inventory): void {
+    if (this.hidden) return;
     const selectedIndex = inventory.getSelectedHotbarIndex();
 
     for (let index = 0; index < this.slots.length; index++) {
@@ -188,7 +195,7 @@ export class Hotbar {
         } else if (ref!.category === 'crop') {
           // Bug corrigido (item 3): fruto colhido, estoque atual (não o total histórico da aba Descobertas).
           slot.countText.setText(String(inventory.getCount(ref!.id)));
-        } else if (ref!.category === 'tool' && ref!.id === WATERING_CAN_TOOL.id) {
+        } else if (ref!.category === 'tool' && isToolOfFamily(ref!.id, 'water')) {
           // Regador: não tem "quantidade" (é uma ferramenta permanente),
           // mas mostra as cargas de água restantes — pedido explícito pra
           // substituir a antiga `WaterBar` separada (removida).
@@ -217,6 +224,29 @@ export class Hotbar {
     if (selectedIndex === this.lastSelected) return;
     this.lastSelected = selectedIndex;
     this.applyHighlight(selectedIndex);
+  }
+
+  /**
+   * Esconde a barra de baixo enquanto o CADERNO (inventário) está aberto: lá a Hotbar aparece em cima do livro, no estilo dele
+   * (`ui/inventoryScreen.ts`). Ao voltar, o próximo `refresh` reaplica ícones e destaque.
+   */
+  setHidden(hidden: boolean): void {
+    if (hidden === this.hidden) return;
+    this.hidden = hidden;
+    this.bar.setVisible(!hidden);
+    for (const zone of this.hitZones) {
+      if (hidden) zone.disableInteractive();
+      else zone.setInteractive({ useHandCursor: true });
+    }
+    for (const slot of this.slots) {
+      slot.icon.setVisible(false);
+      slot.countText.setVisible(!hidden);
+    }
+    if (hidden) {
+      this.hoveredIndex = null;
+    } else {
+      this.lastSelected = -1; // Reaplica o destaque do slot ativo.
+    }
   }
 
   /** Mostra o nome do item do slot sob o ponteiro; slot vazio não mostra balão. */

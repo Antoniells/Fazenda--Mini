@@ -35,6 +35,11 @@ class TutorialManager {
   private running = false;
   /** Uma dica avulsa aberta (`WATER_EMPTY_HINT`): ocupa o painel como um passo "info" e some no botão — fora da fila de passos. */
   private hint: TutorialStep | null = null;
+  /**
+   * A dica avulsa só aparece (e só trava comandos) onde faz sentido: na Fazenda, fora da horda (`setHintAllowed`, a `UIScene` decide a
+   * cada quadro). Fora dali ela espera — o playtest a viu abrir no andar 10 das Cavernas, travando o jogador no meio dos inimigos.
+   */
+  private hintAllowed = true;
 
   /** Começa (ou retoma, se a cena reabriu no meio) o tutorial — no-op se já foi concluído. */
   begin(): void {
@@ -51,13 +56,20 @@ class TutorialManager {
   }
 
   getStep(): TutorialStep | null {
-    if (this.hint) return this.hint;
+    if (this.hint) return this.hintAllowed ? this.hint : null;
     return this.isRunning() ? TUTORIAL_STEPS[gameState.tutorialStep] ?? null : null;
   }
 
   /** O painel está mostrando uma dica avulsa (e não um passo do tutorial)? */
   isHint(): boolean {
-    return this.hint !== null;
+    return this.hint !== null && this.hintAllowed;
+  }
+
+  /** Pode mostrar a dica avulsa agora? (Fazenda aberta e sem horda.) Muda o painel só quando o valor muda. */
+  setHintAllowed(allowed: boolean): void {
+    if (allowed === this.hintAllowed) return;
+    this.hintAllowed = allowed;
+    if (this.hint) this.emit();
   }
 
   /**
@@ -123,7 +135,7 @@ class TutorialManager {
 
   /** Botão dos passos "info" (Começar / Concluir). */
   confirm(): void {
-    if (this.hint) {
+    if (this.hint && this.hintAllowed) {
       this.hint = null;
       gameState.waterHintSeen = true;
       gameState.waterObjective = gameState.inventory.getWateringCanCharges() === 0;

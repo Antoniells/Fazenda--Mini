@@ -13,6 +13,11 @@ export function isHordeDay(day: number): boolean {
   return day > 0 && day % HORDE_INTERVAL_DAYS === 0;
 }
 
+/** O próximo dia de horda do calendário a partir de `day`, contando o próprio `day` (dia 3 → 10, dia 10 → 10, dia 11 → 20). */
+export function nextHordeDayFrom(day: number): number {
+  return Math.ceil(Math.max(1, day) / HORDE_INTERVAL_DAYS) * HORDE_INTERVAL_DAYS;
+}
+
 /** Número da horda de um dia de horda (dia 10 = 1, dia 20 = 2…). */
 export function hordeNumberForDay(day: number): number {
   return Math.floor(day / HORDE_INTERVAL_DAYS);
@@ -78,8 +83,10 @@ export interface HordeState {
   drops: Record<string, number>;
   /** Dia (do calendário) em que a última horda COMEÇOU — pra não recomeçar no mesmo dia. */
   lastHordeDay: number;
+  /** Plantações que os inimigos destruíram nesta horda (entra no resumo do fim). Ausente em saves antigos = 0. */
+  cropsLost?: number;
 }
 
 export function createHordeState(): HordeState {
-  return { active: false, number: 0, total: 0, killed: 0, drops: {}, lastHordeDay: 0 };
+  return { active: false, number: 0, total: 0, killed: 0, drops: {}, lastHordeDay: 0, cropsLost: 0 };
 }

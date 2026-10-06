@@ -21,6 +21,7 @@ import { CAVE_MAX_FLOOR } from '../data/caveFloors';
 import { STORY_MILESTONES } from '../data/story';
 import { reachMilestone, clearMilestone, hasMilestone, countPillars } from '../systems/story';
 import { closeChestMenu, closeDialogue, closeFurnaceMenu, closeInventoryScreen, closePauseMenu } from '../scenes/UIScene';
+import { HOTBAR_SIZE, INVENTORY_SIZE, STORAGE_SIZE } from '../systems/inventory';
 
 /**
  * MENU DE HACK (ferramenta de teste, não faz parte do jogo): aperte F9 pra abrir/fechar. Painel HTML por cima do jogo (não usa arte do jogo — é só uma ferramenta de desenvolvimento).
@@ -324,7 +325,7 @@ História: ${STORY_MILESTONES.filter((milestone) => hasMilestone(milestone.id)).
   button(money, '+10.000', () => inventory().addCoins(10000));
   button(money, '+100.000', () => inventory().addCoins(100000));
 
-  const items = section('Itens (a Bolsa tem 24 slots)');
+  const items = section(`Itens (a Bolsa tem ${INVENTORY_SIZE} slots: ${HOTBAR_SIZE} na Hotbar + ${STORAGE_SIZE} no caderno)`);
   button(items, 'Recursos x99', giveResources);
   button(items, 'Sementes x50', giveSeeds);
   button(items, 'Peixes x5', giveFish);

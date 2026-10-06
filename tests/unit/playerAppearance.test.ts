@@ -56,11 +56,13 @@ describe('personalização do personagem', () => {
   });
 
   it('o retrato tem todas as peças de toda escolha, e os arquivos existem', () => {
+    const files = new Set<string>(); // Cada arquivo conferido uma vez só (as aparências repetem camadas).
     for (const look of everyLook()) {
       const layers = portraitLayers(look);
       expect(layers.length).toBe(4 + 1 + (look.beard !== 'none' ? 1 : 0) + (look.accessory !== 'none' ? 1 : 0));
-      for (const layer of layers) expect(assetExists(layer), layer).toBe(true);
+      for (const layer of layers) files.add(layer);
     }
+    for (const file of files) expect(assetExists(file), file).toBe(true);
   });
 
   it('a Criação de Personagem carrega antes tudo o que qualquer escolha pede', () => {

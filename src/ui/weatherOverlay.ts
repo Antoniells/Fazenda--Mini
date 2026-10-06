@@ -22,6 +22,13 @@ const SPLASH_FRAME_RATE = 12;
 /** Cenas de mapa a céu aberto — onde os respingos são criados (a que estiver ativa). */
 const WORLD_SCENE_KEYS = ['MainScene', 'ForestScene', 'QuarryScene', 'BeachScene', 'VillageScene'];
 
+/**
+ * Chave do registro do jogo (`game.registry`) que a cena do mapa liga enquanto um menu DELA está aberto (a Caixa de Remessas, a
+ * encomenda de sementes): a chuva vive na `UIScene`, desenhada depois do mapa, e cobria esses menus. Com ela ligada, as riscas e o
+ * véu somem até o menu fechar.
+ */
+export const WORLD_MENU_OPEN_KEY = 'world-menu-open';
+
 /** Cenas fechadas (sem céu) onde não chove: a Caverna (a entrada e os andares), o interior da casa e o das lojas. */
 const INDOOR_SCENE_KEYS = ['CaveScene', 'CaveFloorScene', 'HouseScene', 'ShopInteriorScene'];
 
@@ -116,6 +123,12 @@ export class WeatherOverlay {
       splash.play(SPLASH_ANIM_KEY);
       splash.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => splash.destroy());
     }
+  }
+
+  /** Um menu de cena de mapa aberto (`WORLD_MENU_OPEN_KEY`): a chuva (riscas e véu) some por cima dele e volta ao fechar. */
+  setHiddenForMenu(hidden: boolean): void {
+    this.rain.setVisible(!hidden);
+    this.veil.setVisible(!hidden);
   }
 
   isRaining(): boolean {

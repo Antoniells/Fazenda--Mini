@@ -205,6 +205,8 @@ export class RockInteractable implements Interactable {
     private readonly col: number,
     private readonly row: number,
     private readonly big: boolean,
+    /** Chamado depois que a pedra quebra e sai do mundo (as Cavernas usam pra revelar a escada escondida). */
+    private readonly onBroken?: () => void,
   ) {
     this.hits = resourceNodeRegistry.getNode(sceneKey, col, row)?.hits ?? 0;
   }
@@ -240,6 +242,7 @@ export class RockInteractable implements Interactable {
       console.log(`${this.big ? 'Rocha' : 'Pedra'} quebrada: +${stone} Pedra.`);
 
       clearHarvestedNode(this.visual, this.grid, this.interactions, this.sceneKey, this.col, this.row);
+      this.onBroken?.();
     });
   }
 }

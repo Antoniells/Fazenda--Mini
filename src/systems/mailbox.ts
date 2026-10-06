@@ -20,7 +20,7 @@ const PAPER_BOB_PX = 4;
 /**
  * Interagir com a Caixa de Correio: abre a próxima carta não lida no painel de carta (`ui/letterPanel.ts`, aberto por evento — o
  * mundo não importa a UI). Ao terminar a leitura a carta é marcada como lida e o jogo salva; as seguintes ficam pra próxima
- * interação. Sem carta, só um aviso flutuante.
+ * interação. Sem carta nova, abre a encomenda de sementes da Lia (`onNoMail`, `systems/seedOrders.ts`) — ou, sem ela, só um aviso flutuante.
  */
 class MailboxInteractable implements Interactable {
   /** Responde à tecla F (`PlayerController.handleInteractKey`), além do clique — mesmo padrão da Loja/Caixa de Remessas/Porta. */
@@ -31,6 +31,7 @@ class MailboxInteractable implements Interactable {
     private readonly player: Player,
     private readonly x: number,
     private readonly y: number,
+    private readonly onNoMail?: () => void,
   ) {}
 
   interact(): void {
@@ -38,7 +39,8 @@ class MailboxInteractable implements Interactable {
 
     const [message] = getUnreadMail();
     if (!message) {
-      popText(this.scene, this.x, this.y - 40, 'Sem cartas novas');
+      if (this.onNoMail) this.onNoMail();
+      else popText(this.scene, this.x, this.y - 40, 'Sem cartas novas');
       return;
     }
 
@@ -73,6 +75,8 @@ export class Mailbox {
     private readonly grid: WalkableGrid,
     private readonly interactions: InteractionRegistry,
     player: Player,
+    /** Clicar na caixa sem carta nova (a Fazenda abre a encomenda de sementes). */
+    onNoMail?: () => void,
   ) {
     const texture = scene.textures.get(MAILBOX_KEY);
     for (const frame of [MAILBOX_FRAME, MAIL_PAPER_FRAME]) {
@@ -99,7 +103,7 @@ export class Mailbox {
     scene.tweens.add({ targets: this.indicator, y: paperY - PAPER_BOB_PX, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
     grid.block(col, row);
-    interactions.set(col, row, new MailboxInteractable(scene, player, x, this.image.y - this.image.displayHeight));
+    interactions.set(col, row, new MailboxInteractable(scene, player, x, this.image.y - this.image.displayHeight, onNoMail));
   }
 
   update(): void {

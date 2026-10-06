@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { playClick } from '../systems/soundEffects';
-import { Inventory } from '../systems/inventory';
+import { Inventory, INVENTORY_SIZE } from '../systems/inventory';
 import { ChestSlot, CHEST_SLOT_COUNT, getChestSlots, isChestEmpty, depositToChest, withdrawFromChest, TransferResult } from '../systems/chestStorage';
 import { resolveSlotVisual, SlotRef } from '../data/items';
 import {
@@ -17,14 +17,16 @@ import {
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
 
-const PANEL_WIDTH = 440;
-const PANEL_HEIGHT = 448;
 const DEPTH = 3000;
 
 const SLOT_SCALE = 1.7;
 const SLOT_GAP = 6;
 const GRID_COLS = 8;
 const GRID_ROWS = CHEST_SLOT_COUNT / GRID_COLS;
+/** A grade da Bolsa tem uma célula por slot dela (Hotbar + estoque do caderno), em linhas de 8 — o painel cresce junto. */
+const BAG_ROWS = Math.ceil(INVENTORY_SIZE / GRID_COLS);
+const PANEL_WIDTH = 440;
+const PANEL_HEIGHT = 448 + (BAG_ROWS - GRID_ROWS) * (18 * SLOT_SCALE + SLOT_GAP);
 const ICON_TARGET_PX = 16 * SLOT_SCALE * 0.8;
 
 const FONT = '"Courier New", Courier, monospace';
@@ -140,8 +142,8 @@ export class ChestMenu {
     this.bagLabel = makeText(cx, bagLabelY, 'Sua bolsa (clique para guardar)', 11, TEXT_SOFT);
     const bagTop = bagLabelY + 22 + slotHeight / 2;
 
-    const buildGrid = (rowsTop: number, slots: GridSlot[], onClick: (ref: SlotRef, all: boolean) => void): void => {
-      for (let index = 0; index < CHEST_SLOT_COUNT; index++) {
+    const buildGrid = (rowsTop: number, slots: GridSlot[], onClick: (ref: SlotRef, all: boolean) => void, count: number): void => {
+      for (let index = 0; index < count; index++) {
         const x = startX + (index % GRID_COLS) * (slotWidth + SLOT_GAP);
         const y = rowsTop + Math.floor(index / GRID_COLS) * (slotHeight + SLOT_GAP);
 
@@ -192,10 +194,11 @@ export class ChestMenu {
       }
     };
 
-    buildGrid(chestTop, this.chestSlots, (ref, all) => this.transfer('withdraw', ref, all));
-    buildGrid(bagTop, this.bagSlots, (ref, all) => this.transfer('deposit', ref, all));
+    buildGrid(chestTop, this.chestSlots, (ref, all) => this.transfer('withdraw', ref, all), CHEST_SLOT_COUNT);
+    buildGrid(bagTop, this.bagSlots, (ref, all) => this.transfer('deposit', ref, all), BAG_ROWS * GRID_COLS);
 
-    const infoY = bagTop + gridHeight - slotHeight / 2 + 22;
+    const bagGridHeight = BAG_ROWS * slotHeight + (BAG_ROWS - 1) * SLOT_GAP;
+    const infoY = bagTop + bagGridHeight - slotHeight / 2 + 22;
     this.infoText = makeText(cx, infoY, '', 11, TEXT_SOFT);
 
     const buttonsY = top + PANEL_HEIGHT - 40;

@@ -53,6 +53,11 @@ export interface QuestDefinition {
   title: string;
   /** Fala do morador ao oferecer/lembrar a missão. */
   intro: string;
+  /**
+   * A apresentação do morador ("Sou o Bruno, o ferreiro."), dita antes do `intro` só se o jogador ainda não tinha falado com ele
+   * (`gameState.metNpcs`) — antes ele se reapresentava a cada conversa, mesmo depois de vender espada pro jogador.
+   */
+  introLead?: string;
   requirements: QuestRequirement[];
   reward: QuestReward;
   /** Fala ao entregar a missão. */
@@ -77,8 +82,8 @@ export const QUESTS: QuestDefinition[] = [
     act: 1,
     giver: 'banker',
     title: 'A primeira colheita',
-    intro:
-      'Então você é quem herdou a velha Fazenda! Terra parada não dá pão, meu jovem. Traga-me 10 Cenouras colhidas por você e eu apresento o Vilarejo a quem trabalha de verdade.',
+    introLead: 'Então é você quem herdou a velha Fazenda! ',
+    intro: 'Terra parada não dá pão, não é? Traga-me 10 Cenouras colhidas por você e eu apresento o Vilarejo a quem trabalha de verdade.',
     requirements: [{ kind: 'deliverCrop', id: 'carrot', amount: 10 }],
     reward: { coins: 150 },
     outro: 'Cenouras lindas! Prova de que a Fazenda tem futuro. Aqui está um adiantamento pelo trabalho.',
@@ -88,7 +93,8 @@ export const QUESTS: QuestDefinition[] = [
     act: 1,
     giver: 'blacksmith',
     title: 'A forja precisa de reparos',
-    intro: 'Sou o Bruno, o ferreiro. Minha forja está caindo aos pedaços... 20 de Madeira e 15 de Pedra e eu volto a trabalhar de verdade. Preciso de você.',
+    introLead: 'Sou o Bruno, o ferreiro. ',
+    intro: 'Minha forja está caindo aos pedaços... 20 de Madeira e 15 de Pedra e eu volto a trabalhar de verdade. Preciso de você.',
     requirements: [
       { kind: 'deliverResource', id: 'wood', amount: 20 },
       { kind: 'deliverResource', id: 'stone', amount: 15 },
@@ -116,11 +122,11 @@ export const QUESTS: QuestDefinition[] = [
     act: 2,
     giver: 'pirate',
     title: 'Novos horizontes',
-    intro:
-      'Arr! Sou o Capitão Salgado. Você só planta e vende? Há Cavernas, Praia, Pedreira e Floresta ao redor da Fazenda! Abra pelo menos 2 das pontes e me diga o que viu.',
+    introLead: 'Arr! Sou o Capitão Salgado. ',
+    intro: 'Você só planta e vende? Há Cavernas, Praia, Pedreira e Floresta ao redor da Fazenda! Abra pelo menos 2 das pontes e me diga o que viu.',
     requirements: [{ kind: 'bridges', count: 2 }],
     reward: { coins: 300 },
-    outro: 'Sabia que tinha alma de explorador! O mundo é bem maior que uma horta, marujo.',
+    outro: 'Sabia que você tinha alma aventureira! O mundo é bem maior que uma horta, marujo.',
   },
   {
     id: 'good-timber',
@@ -137,7 +143,7 @@ export const QUESTS: QuestDefinition[] = [
     act: 2,
     giver: 'pirate',
     title: 'Minério de verdade',
-    intro: 'Tem ferro escondido nas pedras da Pedreira. Se me trouxer 15 de Ferro Bruto, eu conto o que sei sobre as noites de horda que assombram a Fazenda...',
+    intro: 'Tem ferro escondido nas pedras da Pedreira. Se me trouxer 15 de Ferro Bruto, eu conto o que sei sobre as noites de horda que assombram a Fazenda... Ah: o veio de ferro só cede a uma Picareta de Cobre. O Bruno faz uma, com barras de cobre da Fornalha.',
     requirements: [{ kind: 'deliverResource', id: 'iron-ore', amount: 15 }],
     reward: { coins: 400 },
     outro:

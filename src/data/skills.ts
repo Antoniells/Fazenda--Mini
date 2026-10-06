@@ -66,12 +66,9 @@ export const SKILL_BONUS = {
   doubleDropPerRank: 0.06,
   /** +2 de sorte na pesca por nível (a sorte base é 0). */
   fishingLuckPerRank: 2,
-  /** +10 de resistência máxima por nível. */
-  staminaPerRank: 10,
+  /** +1 de defesa por nível (Fôlego), somada à da armadura — cada ponto tira 5% do dano (`reduceDamage`). */
+  defensePerRank: 1,
 };
-
-/** Resistência máxima sem nenhuma habilidade (o jogo ainda não tem a barra de resistência — quando tiver, parte deste valor). */
-export const BASE_MAX_STAMINA = 100;
 
 const pct = (value: number): string => `+${Math.round(value * 100)}%`;
 
@@ -127,17 +124,18 @@ export const SKILLS: SkillDefinition[] = [
     effectText: (rank) => `+${rank * SKILL_BONUS.fishingLuckPerRank} de sorte na pesca`,
   },
   {
+    // Id `stamina` mantido pelos saves: a habilidade prometia uma barra de resistência que o jogo não tem (o playtest viu o XP gasto
+    // em nada) — agora dá defesa, que já existe e aparece no HUD.
     id: 'stamina',
     name: 'Fôlego',
-    description: 'Aumenta a barra máxima de resistência (stamina).',
+    description: 'Você aguenta mais pancada: soma defesa à da armadura e recebe menos dano.',
     icon: {
       key: 'skill-icon-potions',
       path: `${SKILL_ICON_DIR}/Extras/Potions.png`,
       frame: { name: 'skill-potion', rect: { x: 16, y: 32, width: 16, height: 16 } },
     },
     costs: [40, 80, 130, 190, 270],
-    effectText: (rank) => `+${rank * SKILL_BONUS.staminaPerRank} de resistência máxima (${BASE_MAX_STAMINA + rank * SKILL_BONUS.staminaPerRank} no total)`,
-    pendingNote: 'O jogo ainda não tem a barra de resistência: o bônus fica guardado e passa a valer quando ela chegar.',
+    effectText: (rank) => `+${rank * SKILL_BONUS.defensePerRank} de defesa (${rank * SKILL_BONUS.defensePerRank * 5}% menos dano)`,
   },
 ];
 

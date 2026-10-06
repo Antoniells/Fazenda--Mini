@@ -6,6 +6,7 @@ import { WOODEN_SWORD } from '../data/weapons';
 import { SlotCategory, SlotRef } from '../data/items';
 import { ARMORS } from '../data/armors';
 import { TOOL_PROGRESSION, ToolFamily, getToolTierInfo, getPreviousToolId } from '../data/toolProgression';
+import { wateringCanCapacity } from '../data/wateringCan';
 
 /** Formato salvo pelo `SaveManager` (Fase 10 — Persistência) — um campo por `Map`/`Set` privado da classe, todos convertidos pra formas serializáveis em JSON (`Record`/array). */
 export interface InventorySaveData {
@@ -37,10 +38,20 @@ const STARTING_SEEDS = 10;
  */
 export const WATERING_CAN_CAPACITY = 10;
 
-/** Tamanho da Hotbar (linha de baixo, sempre visível) e do inventário completo (Hotbar + 2 linhas extras, tecla E). */
+/**
+ * Os slots da Bolsa: os 8 primeiros são a HOTBAR (acesso rápido) e o resto é o ESTOQUE guardado no caderno (tecla E) — uma página cheia
+ * do grid do caderno (6x5). São a MESMA lista: cada item ocupa um slot só, então equipar na Hotbar tira do caderno e vice-versa (pedido
+ * explícito: sem duplicatas). Saves de quando a Bolsa tinha 24 slots carregam normalmente (os slots novos começam vazios).
+ */
 export const HOTBAR_SIZE = 8;
-export const INVENTORY_ROWS = 3;
-export const INVENTORY_SIZE = HOTBAR_SIZE * INVENTORY_ROWS;
+
+/** Um item novo que entrou na Bolsa fora da Hotbar: no caderno (`notebook`) ou sem slot nenhum (`full`, Bolsa cheia). */
+export interface SlotNotice {
+  ref: SlotRef;
+  where: 'notebook' | 'full';
+}
+export const STORAGE_SIZE = 30;
+export const INVENTORY_SIZE = HOTBAR_SIZE + STORAGE_SIZE;
 
 /**
  * Estrutura mínima para guardar o resultado de colheitas, o estoque de
@@ -106,12 +117,15 @@ export class Inventory {
     return taken;
   }
 
+  /** Itens novos que não couberam na Hotbar, à espera de a interface avisar (`takeSlotNotices`) — só na sessão. */
+  private readonly slotNotices: SlotNotice[] = [];
+
   /** Cargas restantes do regador (Fase 7) — começa cheio. */
   private wateringCanCharges = WATERING_CAN_CAPACITY;
 
   /**
-   * Slots da Hotbar (índices 0-7) + 2 linhas extras do Inventário completo
-   * (8-23) — ver `HOTBAR_SIZE`/`INVENTORY_SIZE`. O jogador começa com as 3
+   * Slots da Hotbar (índices 0-7) + o estoque do caderno (8 em diante) —
+   * ver `HOTBAR_SIZE`/`STORAGE_SIZE`. O jogador começa com as 3
    * ferramentas fixas nos 3 primeiros slots e um estoque inicial de
    * sementes de cenoura no 4º (pedido explícito) — sem sistema de
    * arrastar/reorganizar ainda, as ferramentas não saem desses slots.
@@ -394,9 +408,14 @@ export class Inventory {
     return true;
   }
 
+  /** Quantas cargas cabem no regador que o jogador tem (o tier dele, `data/wateringCan.ts`). */
+  getWateringCanCapacity(): number {
+    return wateringCanCapacity(this.getToolTier('water'));
+  }
+
   /** Enche o regador de volta ao máximo (ex.: interagir com o Poço). */
   refillWateringCan(): void {
-    this.wateringCanCharges = WATERING_CAN_CAPACITY;
+    this.wateringCanCharges = this.getWateringCanCapacity();
   }
 
   getCoins(): number {
@@ -444,6 +463,7 @@ export class Inventory {
     const index = this.slots.findIndex((slot) => slot?.category === 'tool' && slot.id === previousId);
     if (index === -1) return false;
     this.slots[index] = { category: 'tool', id: toolId };
+    if (info.family === 'water') this.refillWateringCan(); // O regador novo vem cheio.
     return true;
   }
 
@@ -548,12 +568,19 @@ export class Inventory {
   }
 
   /** Se `category`+`id` ainda não ocupam nenhum slot, ocupa o primeiro vazio (Hotbar antes do resto do Inventário). Chamado ao ganhar sementes/decorações novas. */
-  private ensureSlotted(category: SlotCategory, id: string): void {
+  private ensureSlotted(category: SlotCategory, id: string, notify = true): void {
     const alreadySlotted = this.slots.some((slot) => slot?.category === category && slot?.id === id);
     if (alreadySlotted) return;
 
     const emptyIndex = this.slots.findIndex((slot) => slot === null);
     if (emptyIndex !== -1) this.slots[emptyIndex] = { category, id };
+    // Item novo fora da Hotbar (foi pro caderno) ou sem lugar nenhum: a interface avisa (`takeSlotNotices`) — antes a compra "sumia".
+    if (notify && (emptyIndex === -1 || emptyIndex >= HOTBAR_SIZE)) this.slotNotices.push({ ref: { category, id }, where: emptyIndex === -1 ? 'full' : 'notebook' });
+  }
+
+  /** Os avisos de item novo que não coube na Hotbar desde a última chamada (e os esvazia) — a `UIScene` mostra cada um. */
+  takeSlotNotices(): SlotNotice[] {
+    return this.slotNotices.splice(0);
   }
 
   /**
@@ -568,7 +595,7 @@ export class Inventory {
       ['resource', this.resources],
     ];
     for (const [category, stock] of stocks) {
-      for (const [id, amount] of stock) if (amount > 0) this.ensureSlotted(category, id);
+      for (const [id, amount] of stock) if (amount > 0) this.ensureSlotted(category, id, false);
     }
   }
 

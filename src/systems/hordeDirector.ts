@@ -15,7 +15,7 @@ import { PLAYER_ATTACKED_EVENT } from './combat';
 import { popText } from './floatingText';
 import { awardXp } from './skills';
 import { save as saveGame } from './saveManager';
-import { shouldStartHorde, isDawn, startHorde, registerHordeKill, finishHordeVictory, isFinalNightActive } from './horde';
+import { shouldStartHorde, isDawn, startHorde, registerHordeKill, finishHordeVictory, isFinalNightActive, registerHordeCropLost, describeCropsLost } from './horde';
 import { completeCampaign } from './campaign';
 import { findWeightedPath } from './hordePathfinding';
 import { GridPoint } from './pathfinding';
@@ -70,7 +70,7 @@ export class HordeDirector {
   /** A Fazenda abriu por causa do chamado da horda. Se a noite já estava em andamento, avisa agora; senão, o aviso do começo explica. */
   noteRecalled(): void {
     this.recalled = true;
-    if (gameState.horde.active) this.message.show('A HORDA NÃO ESPERA!', 'Você foi trazido de volta para defender a Fazenda.');
+    if (gameState.horde.active) this.message.show('A HORDA NÃO ESPERA!', 'A noite te trouxe de volta: defenda a Fazenda.');
   }
 
   /** Inimigos vivos — o `PlayerController` usa pra colisão e pro golpe de espada. */
@@ -111,7 +111,7 @@ export class HordeDirector {
     const horde = startHorde();
     playEffect(this.scene, HORDE_ALERT_SOUND);
     if (isFinalNightActive()) this.message.show('A NOITE FINAL!', 'A última horda chegou. Defenda a Fazenda até o amanhecer!');
-    else this.message.show(`HORDA ${horde.number}!`, this.recalled ? 'Você foi levado de volta à Fazenda: proteja-a até o amanhecer.' : 'Proteja a fazenda até o amanhecer.');
+    else this.message.show(`HORDA ${horde.number}!`, this.recalled ? 'De volta à Fazenda: proteja-a até o amanhecer.' : 'Proteja a fazenda até o amanhecer.');
     this.nextSpawnAt = time + HORDE_SPAWN_INTERVAL_MS;
     this.spawnBurst(HORDE_INITIAL_BURST);
     saveGame(); // O estado da horda já vai pro save (recarregar não "cancela" o evento).
@@ -128,7 +128,8 @@ export class HordeDirector {
       // A Noite Final foi vencida: a campanha dos moradores se completa, mas o jogo NÃO acaba — o fim é o altar do Sábio Coelho
       // (`data/story.ts`). As hordas continuam enquanto o mundo estiver em desequilíbrio.
       completeCampaign();
-      this.message.show('A NOITE FINAL FOI VENCIDA!', `Recompensa: ${summary.lines.join(', ')}. As hordas voltam enquanto o mundo estiver em desequilíbrio.`);
+      const lostLine = describeCropsLost(summary.cropsLost);
+      this.message.show('A NOITE FINAL FOI VENCIDA!', `Recompensa: ${summary.lines.join(', ')}.${lostLine ? ` ${lostLine}` : ''} As hordas voltam enquanto o mundo estiver em desequilíbrio.`);
       saveGame();
       this.statusText.setVisible(false);
       return;
@@ -136,7 +137,8 @@ export class HordeDirector {
     // Cercas destruídas ficam assim até o Martelo: avisa quantas faltam consertar.
     const broken = this.fences.destroyedCount();
     const repairHint = broken > 0 ? ` ${broken} cerca(s) destruída(s) — conserte com o Martelo.` : '';
-    this.message.show(title, `Recompensa: ${summary.lines.join(', ')}.${repairHint}`);
+    const lostLine = describeCropsLost(summary.cropsLost);
+    this.message.show(title, `Recompensa: ${summary.lines.join(', ')}.${lostLine ? ` ${lostLine}` : ''}${repairHint}`);
     console.log(`Horda vencida. Recompensa: ${summary.lines.join(', ')}.`);
     this.statusText.setVisible(false);
     saveGame();
@@ -187,6 +189,7 @@ export class HordeDirector {
       },
       destroyCrop: (col, row) => {
         if (!this.farmland.destroyCrop(col, row)) return;
+        registerHordeCropLost();
         const plot = this.farmland.getPlot(col, row);
         if (plot) this.farmlandRenderer.renderPlot(this.farmland, plot);
       },

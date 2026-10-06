@@ -44,3 +44,12 @@ export const SLIME_STATS = {
   moveSpeed: 40,
   hitSound: SLIME_HIT_SOUND,
 };
+
+/**
+ * O Slime da FLORESTA (`systems/slimeSpawner.ts`): o playtest perdeu 35 de vida por 2 abates e ganhou só gosma — quem jogava evitava a
+ * Floresta. Agora bate um pouco menos e solta umas moedas além da gosma. (Os das Cavernas e os da horda têm os atributos deles.)
+ */
+export const FOREST_SLIME = {
+  contactDamage: 4,
+  coins: { min: 3, max: 7 },
+};

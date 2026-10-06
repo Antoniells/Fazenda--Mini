@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { gameState } from '../systems/gameState';
-import { Hotbar } from '../ui/hotbar';
+import { Hotbar, hotbarTopCenter } from '../ui/hotbar';
+import { resolveSlotVisual } from '../data/items';
 import { TimeMoneyHud } from '../ui/timeMoneyHud';
 import { HealthHud } from '../ui/healthHud';
 import { ArmorHud } from '../ui/armorHud';
-import { WeatherOverlay } from '../ui/weatherOverlay';
+import { WeatherOverlay, WORLD_MENU_OPEN_KEY } from '../ui/weatherOverlay';
 import { SKILLS, SKILLS_TAB_ICON } from '../data/skills';
 import { RAIN_KEY, RAIN_PATH, RAIN_FRAME_SIZE, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
 import { PLAYER_ATE_EVENT } from '../systems/eating';
@@ -21,7 +22,8 @@ import { DialoguePanel, OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialo
 import { QuestTracker } from '../ui/questTracker';
 import { describeObjective } from '../systems/campaign';
 import { describeStoryObjective } from '../systems/story';
-import { WATER_OBJECTIVE_TEXT } from '../data/tutorial';
+import { describeHordeObjective } from '../systems/horde';
+import { VILLAGE_OBJECTIVE_TEXT, WATER_OBJECTIVE_TEXT } from '../data/tutorial';
 import { TutorialPanel } from '../ui/tutorialPanel';
 import { tutorial } from '../systems/tutorial';
 import { playEffect } from '../systems/soundEffects';
@@ -35,6 +37,9 @@ import { collectFinished, queueSmelt, remainingQueueMs } from '../systems/smelti
 import { resourceDisplayName } from '../data/resources';
 import { popText } from '../systems/floatingText';
 import { getPlayerDefense } from '../systems/enchanting';
+
+/** A Fazenda (a única cena onde a dica do regador vazio aparece). */
+const MAIN_SCENE_KEY = 'MainScene';
 
 export const UI_SCENE_KEY = 'UIScene';
 /** Emitido (via `scene.game.events`) sempre que o slot ativo da Hotbar muda — quem mutou o `Inventory` é sempre quem emite, ver `UIScene`/`MainScene`. Outras cenas (ex.: `MainScene`, pra reagir com posicionamento de decoração) escutam este evento em vez de conhecer a `UIScene`. */
@@ -365,7 +370,7 @@ export class UIScene extends Phaser.Scene {
     this.hotbar.refresh(inventory);
   }
 
-  /** Entrega à Bolsa as barras que ficaram prontas na Fornalha (chamado ao abrir a tela dela e a cada frame com ela aberta). */
+  /** Entrega à Bolsa as barras que ficaram prontas na Fornalha (a cada frame, com a tela dela aberta ou não — o jogador não precisa voltar lá pra buscar). */
   private collectSmelted(): void {
     const finished = collectFinished();
     if (finished.length === 0) return;
@@ -377,6 +382,25 @@ export class UIScene extends Phaser.Scene {
     }
     playEffect(this, CRAFT_SOUND);
     this.hotbar.refresh(gameState.inventory);
+  }
+
+  /**
+   * Item novo que não coube na Hotbar (`Inventory.takeSlotNotices`): avisa em cima dela que foi pro caderno (E abre) ou que a Bolsa
+   * está cheia — o playtest comprou 10 sementes que "sumiram" no caderno e só as achou no dia seguinte.
+   */
+  private showSlotNotices(): void {
+    const notices = gameState.inventory.takeSlotNotices();
+    if (notices.length === 0) return;
+    const { x, y } = hotbarTopCenter(this);
+    const seen = new Set<string>();
+    for (const { ref, where } of notices) {
+      const base = resolveSlotVisual(ref)?.name ?? ref.id;
+      const name = ref.category === 'seed' ? `Semente de ${base}` : base; // (o slot de semente usa só o nome da cultura)
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const text = where === 'notebook' ? `${name} foi pro caderno (E)` : `Bolsa cheia: ${name} não coube`;
+      popText(this, x, y - 8, text, { screenFixed: true, color: where === 'notebook' ? '#ffe9b3' : '#ff8a8a', fontSize: 15, delay: (seen.size - 1) * 400 });
+    }
   }
 
   /** "Sair para o Menu Principal" da Pausa: salva e volta ao menu, a partir da cena de jogo que estiver rodando (é ela que sai). */
@@ -419,19 +443,26 @@ export class UIScene extends Phaser.Scene {
     this.healthHud.refresh(gameState.playerHealth.getHp(), gameState.playerHealth.getMaxHp());
     this.armorHud.refresh(getPlayerDefense());
     this.weatherOverlay.refresh(gameState.weather.raining);
+    this.weatherOverlay.setHiddenForMenu(this.registry.get(WORLD_MENU_OPEN_KEY) === true); // Menu da cena do mapa aberto: a chuva não o cobre.
     if (this.inventoryScreen.isOpen()) this.inventoryScreen.refresh(gameState.inventory);
     if (this.furnaceMenu.isOpen()) this.furnaceMenu.refresh(gameState.inventory);
     if (this.chestMenu.isOpen()) this.chestMenu.refresh();
     // Objetivo: só depois do tutorial (o painel dele já ocupa a tela) e enquanto a campanha não acabou.
     // O objetivo da água sai sozinho quando o regador é enchido (no poço da Vila ou da Fazenda).
     if (gameState.waterObjective && gameState.inventory.getWateringCanCharges() > 0) gameState.waterObjective = false;
-    const objectives = [gameState.waterObjective ? WATER_OBJECTIVE_TEXT : null, describeObjective(), describeStoryObjective()].filter((line): line is string => line !== null);
+    // O de conhecer o Vilarejo não aparece junto com o da água (que já manda o jogador pra lá).
+    const villageObjective = !gameState.villageVisited && !gameState.waterObjective ? VILLAGE_OBJECTIVE_TEXT : null;
+    const objectives = [describeHordeObjective(), gameState.waterObjective ? WATER_OBJECTIVE_TEXT : null, villageObjective, describeObjective(), describeStoryObjective()].filter((line): line is string => line !== null);
     this.questTracker.refresh(gameState.tutorialCompleted && objectives.length > 0 ? objectives.map((line) => `• ${line}`).join('\n') : null);
   }
 
   update(): void {
     if (isDialogueOpen()) dialogueSeenOpenAt = Date.now(); // Ver `escapeTogglesPause`.
-    if (this.furnaceMenu.isOpen()) this.collectSmelted(); // Com a tela da Fornalha aberta, as barras prontas caem na Bolsa na hora.
+    this.collectSmelted(); // As barras prontas caem na Bolsa na hora, em qualquer cena.
+    this.showSlotNotices();
+    // A dica do regador vazio só na Fazenda e fora da horda (`tutorial.setHintAllowed`): em outra cena ela espera, sem travar nada.
+    tutorial.setHintAllowed(this.scene.isActive(MAIN_SCENE_KEY) && !gameState.horde.active);
+    this.hotbar.setHidden(isInventoryOpen()); // Com o caderno aberto, a Hotbar aparece em cima dele (no estilo do livro).
     this.refresh();
   }
 }

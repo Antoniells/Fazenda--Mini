@@ -4,8 +4,8 @@ import { SMELT_MINUTES, SmeltJob, getSmeltingRecipe } from '../data/smelting';
 
 /**
  * A FILA da Fornalha (`data/smelting.ts`): escolher uma barra na tela dela gasta os materiais AGORA e entra na fila; cada barra leva `SMELT_MINUTES` de relógio do jogo, uma depois da outra.
- * O tempo é o do relógio do jogo (dias * 1440 + minutos do dia), então a fila anda em qualquer cena e dormir adianta tudo — nada precisa "rodar". A barra pronta espera na Fornalha
- * até o jogador abrir a tela dela, quando `collectFinished` a entrega. Vai pro save (`gameState.smelting`).
+ * O tempo é o do relógio do jogo (dias * 1440 + minutos do dia), então a fila anda em qualquer cena e dormir adianta tudo — nada precisa "rodar". A barra pronta vai sozinha
+ * pra Bolsa (a `UIScene` chama `collectFinished` a cada frame, em qualquer cena). Vai pro save (`gameState.smelting`).
  */
 
 /** Minutos de relógio do jogo desde o dia 1, 00:00. */

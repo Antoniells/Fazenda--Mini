@@ -3,7 +3,7 @@ import { TOOL_PROGRESSION } from './toolProgression';
 import { COPPER_BAR, IRON, GOLD_BAR } from './resources';
 
 /**
- * As FERRAMENTAS de progressão (Machado e Picareta de Cobre/Ferro/Ouro) se compram direto no Ferreiro (`systems/vendorShops.ts`): além das moedas, cada uma exige
+ * As FERRAMENTAS de progressão (Machado, Picareta e Regador de Cobre/Ferro/Ouro) se compram direto no Ferreiro (`systems/vendorShops.ts`): além das moedas, cada uma exige
  * `TOOL_BARS_REQUIRED` barras do metal dela (feitas na Fornalha, `data/smelting.ts`, a partir do minério da Pedreira). A progressão continua linear (`data/toolProgression.ts`):
  * só se compra o tier seguinte a quem tem o anterior, e a ferramenta nova SUBSTITUI a antiga no mesmo slot (`Inventory.upgradeTool`).
  */
@@ -25,9 +25,9 @@ const TIERS: Array<{ tier: number; price: number; barId: string }> = [
   { tier: 3, price: 1200, barId: GOLD_BAR.id },
 ];
 
-/** As 6 ofertas (agrupadas por tier: Machado e Picareta de cada metal, do mais barato ao mais caro). */
+/** As 9 ofertas (agrupadas por tier: Machado, Picareta e Regador de cada metal, do mais barato ao mais caro). */
 export const TOOL_OFFERS: ToolOffer[] = TIERS.flatMap(({ tier, price, barId }) =>
-  (['axe', 'pickaxe'] as const).map((family): ToolOffer => ({ toolId: TOOL_PROGRESSION[family][tier], price, barId, barAmount: TOOL_BARS_REQUIRED })),
+  (['axe', 'pickaxe', 'water'] as const).map((family): ToolOffer => ({ toolId: TOOL_PROGRESSION[family][tier], price, barId, barAmount: TOOL_BARS_REQUIRED })),
 );
 
 export function getToolOffer(toolId: string): ToolOffer | undefined {

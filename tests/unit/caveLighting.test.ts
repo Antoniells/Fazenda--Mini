@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { cavePenumbraColor } from '../../src/systems/caveLighting';
-import { CAVE_PENUMBRA_BOTTOM, CAVE_PENUMBRA_TOP } from '../../src/data/lighting';
+import { caveAmbientColor } from '../../src/systems/caveLighting';
+import { CAVE_AMBIENT_BOTTOM, CAVE_AMBIENT_TOP } from '../../src/data/lighting';
 
 const brightness = (color: number): number => ((color >> 16) & 0xff) + ((color >> 8) & 0xff) + (color & 0xff);
 
-describe('penumbra das Cavernas', () => {
+describe('luz ambiente das Cavernas', () => {
   it('vai do tom do 1º andar ao do último, escurecendo a cada andar', () => {
-    expect(cavePenumbraColor(1)).toBe(CAVE_PENUMBRA_TOP);
-    expect(cavePenumbraColor(100)).toBe(CAVE_PENUMBRA_BOTTOM);
-    for (let floor = 2; floor <= 100; floor++) expect(brightness(cavePenumbraColor(floor))).toBeLessThanOrEqual(brightness(cavePenumbraColor(floor - 1)));
+    expect(caveAmbientColor(1)).toBe(CAVE_AMBIENT_TOP);
+    expect(caveAmbientColor(100)).toBe(CAVE_AMBIENT_BOTTOM);
+    for (let floor = 2; floor <= 100; floor++) expect(brightness(caveAmbientColor(floor))).toBeLessThanOrEqual(brightness(caveAmbientColor(floor - 1)));
   });
 
-  it('é penumbra, não breu: nem o fundo fica abaixo de ~35% de luz', () => {
-    expect(brightness(cavePenumbraColor(100)) / (3 * 255)).toBeGreaterThan(0.35);
+  it('é penumbra, não breu: o fundo ainda tem luz ambiente', () => {
+    expect(brightness(caveAmbientColor(100))).toBeGreaterThan(0);
+    expect(brightness(caveAmbientColor(100)) / (3 * 255)).toBeGreaterThan(0.15);
   });
 });

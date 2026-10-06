@@ -7,9 +7,9 @@ import { isWorldAtPeace } from './story';
 import { canScheduleFinalNight, describeReward, getCurrentQuest, getQuestStatus, scheduleFinalNight, turnInCurrentQuest } from './campaign';
 import { save as saveGame } from './saveManager';
 import { playEffect } from './soundEffects';
-import { UNLOCK_SOUND } from '../data/audio';
+import { QUEST_DONE_SOUND } from '../data/audio';
 import { HORDE_START_HOUR } from '../data/horde';
-import { getCurrentRequest, getRequestStatus, turnInRequest } from './requests';
+import { getCurrentRequest, getRequestStatus, skipRequest, turnInRequest } from './requests';
 import { getPortrait, pickNpcLine } from './npcLines';
 
 /** O que a conversa precisa da cena: o painel da loja (dos moradores que vendem) e um jeito de tocar som. */
@@ -24,9 +24,9 @@ const COMPLETED_LINES: Record<NpcId, string[]> = {
   blacksmith: ['A Fazenda está salva graças a você! A forja nunca esteve tão animada.', 'Se precisar de um fio novo na lâmina, é só chamar.'],
   banker: ['A lenda da Fazenda! Meu forno e eu agradecemos.', 'Continue prosperando — o Vilarejo inteiro torce por você (e come o meu pão).'],
   supplier: ['Você salvou a Fazenda e ainda arruma tempo pra plantar? Que orgulho!', 'Sementes novas chegaram: passe na loja quando quiser.'],
-  carpenter: ['Uma fazenda salva merece obra nova! Quando quiser construir, me procure.', 'Bom trabalho, herói. A madeira aqui é por minha conta... quase.'],
-  pirate: ['Arr! Um verdadeiro herói de terra firme. Quem diria!', 'Quando quiser navegar de novo, o convés é seu, marujo.'],
-  mermaid: ['Ouvi dizer que a Fazenda foi salva! Até as ondas comemoraram.', 'Volte sempre à praia, herói. O mar nunca esquece quem protege a terra.'],
+  carpenter: ['Uma fazenda salva merece obra nova! Quando quiser construir, me procure.', 'Que trabalho bem feito! A madeira aqui é por minha conta... quase.'],
+  pirate: ['Arr! Uma lenda de terra firme. Quem diria!', 'Quando quiser navegar de novo, o convés é seu, marujo.'],
+  mermaid: ['Ouvi dizer que a Fazenda foi salva! Até as ondas comemoraram.', 'Volte sempre à praia. O mar nunca esquece quem protege a terra.'],
 };
 
 function open(scene: Phaser.Scene, payload: DialoguePayload): void {
@@ -46,6 +46,9 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
   const def = NPCS[id];
   const { scene } = context;
   const quest = getCurrentQuest();
+  // Primeira conversa com este morador? Só nela ele se apresenta (`QuestDefinition.introLead`).
+  const firstMeeting = !gameState.metNpcs.includes(id);
+  if (firstMeeting) gameState.metNpcs.push(id);
 
   const base = { speaker: def.name, subtitle: def.title, portrait: getPortrait(id) };
   const shopAction: DialogueAction | null =
@@ -70,7 +73,7 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
   if (quest.giver !== id) {
     const giver = NPCS[quest.giver];
     const line = pickNpcLine(id);
-    open(scene, { ...base, portrait: getPortrait(id, line.expression), text: `${line.text}\n\nAh, e ${giver.name} (${giver.title}) está procurando por você: ele tem um pedido.`, actions: withShop([]) });
+    open(scene, { ...base, portrait: getPortrait(id, line.expression), text: `${line.text}\n\nAh, e ${giver.name} (${giver.title}) tem uma missão pra você.`, actions: withShop([]) });
     return;
   }
 
@@ -82,7 +85,7 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
   if (isFinalNightQuest(quest)) {
     const actions: DialogueAction[] = [];
     if (canScheduleFinalNight()) {
-      actions.push({ label: 'Estou pronto!', onSelect: () => confirmFinalNight(context, id) });
+      actions.push({ label: 'Pode marcar!', onSelect: () => confirmFinalNight(context, id) });
     }
     // Depois do fim da história: não há mais Noite Final, e o morador entrega a recompensa assim mesmo.
     if (status.ready) actions.push({ label: 'Entregar', onSelect: () => deliver(context, id) });
@@ -92,7 +95,7 @@ export function talkToNpc(id: NpcId, context: NpcTalkContext): void {
 
   const actions: DialogueAction[] = [];
   if (status.ready) actions.push({ label: 'Entregar', onSelect: () => deliver(context, id) });
-  open(scene, { ...base, text: `${ACTS[quest.act].title}\n${quest.intro}`, details, actions: withShop(actions) });
+  open(scene, { ...base, text: `${ACTS[quest.act].title}\n${firstMeeting ? quest.introLead ?? '' : ''}${quest.intro}`, details, actions: withShop(actions) });
 }
 
 /** Mostra o pedido do dia do morador (ou o "volte amanhã") com o progresso e o botão de entregar. */
@@ -109,7 +112,25 @@ function showRequest(context: NpcTalkContext, id: NpcId): void {
   details.push(`Recompensa: ${describeReward(request.reward) || '—'}`);
   const actions: DialogueAction[] = [];
   if (status.ready) actions.push({ label: 'Entregar', onSelect: () => deliverRequest(context, id) });
+  actions.push({ label: 'Hoje não', onSelect: () => declineRequest(context, id) });
   open(context.scene, { ...base, text: `Pedido: ${request.title}\n${request.text}`, details, actions });
+}
+
+/** "Hoje não": dispensa o pedido do dia (sem recompensa); amanhã o morador pede outra coisa. */
+function declineRequest(context: NpcTalkContext, id: NpcId): void {
+  if (!skipRequest(id)) {
+    showRequest(context, id);
+    return;
+  }
+  saveGame();
+  const def = NPCS[id];
+  open(context.scene, {
+    speaker: def.name,
+    subtitle: def.title,
+    portrait: getPortrait(id),
+    text: 'Sem problema! Amanhã eu penso em outra coisa pra te pedir.',
+    actions: [],
+  });
 }
 
 /** Entrega o pedido do dia e mostra a recompensa. */
@@ -119,7 +140,7 @@ function deliverRequest(context: NpcTalkContext, id: NpcId): void {
     showRequest(context, id); // O estado mudou desde que abriu: reabre com o real.
     return;
   }
-  playEffect(context.scene, UNLOCK_SOUND);
+  playEffect(context.scene, QUEST_DONE_SOUND);
   saveGame();
   const def = NPCS[id];
   open(context.scene, {
@@ -140,7 +161,7 @@ function deliver(context: NpcTalkContext, id: NpcId): void {
     talkToNpc(id, context); // Mudou desde que abriu (ex.: gastou o que precisava): reabre com o estado real.
     return;
   }
-  playEffect(scene, UNLOCK_SOUND);
+  playEffect(scene, QUEST_DONE_SOUND);
   saveGame();
 
   const def = NPCS[id];
@@ -161,7 +182,7 @@ function deliver(context: NpcTalkContext, id: NpcId): void {
   });
 }
 
-/** "Estou pronto!": marca a Noite Final (hoje, se ainda dá tempo; senão amanhã) e avisa. */
+/** "Pode marcar!": marca a Noite Final (hoje, se ainda dá tempo; senão amanhã) e avisa. */
 function confirmFinalNight(context: NpcTalkContext, id: NpcId): void {
   const day = scheduleFinalNight();
   saveGame();

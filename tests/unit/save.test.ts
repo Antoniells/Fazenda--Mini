@@ -43,6 +43,7 @@ describe('save da história', () => {
     delete data.enchants;
     delete data.wizardDelivered;
     delete data.sanctuary;
+    delete data.villageVisited;
     memoryStorage.set(key, JSON.stringify(data));
 
     expect(load(0)).toBe(true);
@@ -50,5 +51,16 @@ describe('save da história', () => {
     expect(gameState.enchants).toEqual([]);
     expect(gameState.wizardDelivered).toEqual([]);
     expect(gameState.sanctuary.plantedAt).toBeNull();
+    expect(gameState.villageVisited).toBe(true); // Quem já jogava conhece o Vilarejo: sem o objetivo de conhecê-lo.
+  });
+
+  it('partida nova ainda não conhece o Vilarejo, e a visita vai pro save', () => {
+    expect(gameState.villageVisited).toBe(false);
+    gameState.villageVisited = true;
+    save(0);
+    freshGame();
+    expect(gameState.villageVisited).toBe(false);
+    expect(load(0)).toBe(true);
+    expect(gameState.villageVisited).toBe(true);
   });
 });

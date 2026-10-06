@@ -23,7 +23,6 @@ import {
   type LightSourceDefinition,
   type LightSourcePlacement,
 } from '../data/lighting';
-import { SHADOW_FRAME, SHADOW_FRAME_NAME, SHADOW_PATH } from '../data/effects';
 import { TILE_SIZE } from '../data/tiles';
 import { DISPLAY_SCALE } from './mapBuilder';
 import { registerFrame } from './externalMapBuilder';
@@ -31,21 +30,9 @@ import { createGroundShadow } from './shadow';
 import { lightIntensityAt } from './ambientLight';
 import { POP_TEXT_DEPTH } from './floatingText';
 
-/** Brilho das fontes de luz: acima do véu da luz ambiente (`DayNightOverlay`, `POP_TEXT_DEPTH + 1`) — é ele que "fura" a escuridão. */
+/** Brilhos em ADD (o vidro/a chama acesos, as estrelinhas dos veios): acima de qualquer objeto do mundo. Não recebem a luz da cena — brilham por conta própria. */
 export const LIGHT_GLOW_DEPTH = POP_TEXT_DEPTH + 2;
 
-/**
- * Mesma folha `Tileset/Shadow.png` da sombra dos objetos (a mancha redonda), carregada uma 2ª vez com filtro LINEAR: ampliada ~20x,
- * a mancha vira um círculo de borda suave (com o filtro do jogo, "pixel art", viraria um disco de degraus enormes). O brilho é a
- * mancha em preenchimento sólido quente (`TintModes.FILL`: a mancha original é escura, o alfa dela vira a forma da luz) + blend ADD — nada desenhado por código.
- */
-const GLOW_KEY = 'light-glow';
-/** Anéis do brilho (fração do raio, fração da opacidade): somados em ADD, dão o centro mais forte e a borda fraca. */
-const GLOW_RINGS: Array<[number, number]> = [
-  [1, 0.7],
-  [0.66, 0.9],
-  [0.33, 1.2],
-];
 /** Abaixo desta intensidade a fonte conta como apagada (sprite apagado, sem brilho). */
 const OFF_EPSILON = 0.02;
 
@@ -54,10 +41,11 @@ interface LightSource {
   row: number;
   definition: LightSourceDefinition;
   phase: number;
-  glow: Phaser.GameObjects.Image[];
-  /** Escala base de cada anel do brilho (a "respiração" multiplica por cima dela). */
-  glowScales: number[];
-  /** Peça que muda de quadro (lampião/tocha) e a cópia dela em ADD acima do véu — a parte acesa "brilha" no escuro. */
+  /** A luz de verdade (iluminação nativa do Phaser 4): ilumina o chão e o que estiver em volta. */
+  light: Phaser.GameObjects.Light;
+  /** Raio base da luz (a "respiração" multiplica por cima dele). */
+  baseRadius: number;
+  /** Peça que muda de quadro (lampião/tocha) e a cópia dela em ADD por cima — o vidro/a chama acesos "brilham" no escuro. */
   lit: Phaser.GameObjects.Image;
   emissive: Phaser.GameObjects.Image;
   litFrames: number[];
@@ -67,44 +55,21 @@ interface LightSource {
   offTint?: number;
 }
 
-/**
- * Os anéis de um brilho (a mancha de `Shadow.png` em ADD, `GLOW_RINGS`) centrados em (x, y), de raio `radiusPx` e cor `color` — nascem
- * escondidos; quem usa liga e ajusta o alfa (`alpha * GLOW_RING_ALPHAS[i]`). Usado pelos postes/tochas e pela luz das Cavernas.
- */
-export function addGlowRings(scene: Phaser.Scene, x: number, y: number, radiusPx: number, color: number): { images: Phaser.GameObjects.Image[]; scales: number[] } {
-  const glowTexture = scene.textures.get(GLOW_KEY);
-  glowTexture.setFilter(Phaser.Textures.FilterMode.LINEAR);
-  if (!glowTexture.has(SHADOW_FRAME_NAME)) glowTexture.add(SHADOW_FRAME_NAME, 0, SHADOW_FRAME.x, SHADOW_FRAME.y, SHADOW_FRAME.width, SHADOW_FRAME.height);
-  const images: Phaser.GameObjects.Image[] = [];
-  const scales: number[] = [];
-  for (const [radiusFraction] of GLOW_RINGS) {
-    const glow = scene.add.image(x, y, GLOW_KEY, SHADOW_FRAME_NAME);
-    const baseScale = (radiusPx * 2 * radiusFraction) / SHADOW_FRAME.width;
-    glow.setScale(baseScale).setTint(color).setTintMode(Phaser.TintModes.FILL).setBlendMode(Phaser.BlendModes.ADD).setDepth(LIGHT_GLOW_DEPTH).setVisible(false);
-    images.push(glow);
-    scales.push(baseScale);
-  }
-  return { images, scales };
-}
-
-/** Opacidade relativa de cada anel do brilho (o mesmo índice de `addGlowRings`). */
-export const GLOW_RING_ALPHAS: readonly number[] = GLOW_RINGS.map(([, alpha]) => alpha);
-
 function ensureSpritesheet(scene: Phaser.Scene, key: string, path: string, frameWidth: number, frameHeight: number): void {
   if (!scene.textures.exists(key)) scene.load.spritesheet(key, encodeURI(`/${path}`), { frameWidth, frameHeight });
 }
 
-/** Carrega as artes de poste, tocha e brilho — chamado no `preload` da cena que usa `LightSourceSystem`. */
+/** Carrega as artes de poste e tocha — chamado no `preload` da cena que usa `LightSourceSystem`. */
 export function preloadLightSources(scene: Phaser.Scene): void {
   if (!scene.textures.exists(LAMP_POLE_KEY)) scene.load.image(LAMP_POLE_KEY, encodeURI(`/${LAMP_POLE_PATH}`));
   ensureSpritesheet(scene, LAMP_LANTERN_KEY, LAMP_LANTERN_PATH, LAMP_LANTERN_FRAME_SIZE, LAMP_LANTERN_FRAME_SIZE);
   ensureSpritesheet(scene, TORCH_KEY, TORCH_PATH, TORCH_FRAME_WIDTH, TORCH_FRAME_HEIGHT);
-  if (!scene.textures.exists(GLOW_KEY)) scene.load.image(GLOW_KEY, encodeURI(`/${SHADOW_PATH}`));
 }
 
 /**
  * Fontes de luz do mapa (postes e tochas): cada uma é um sprite com dois estados — apagado (de dia) e aceso (à noite: chama/vidro
- * animados e um brilho quente por cima da escuridão). Ligam e desligam SOZINHAS pela hora do relógio (`lightIntensityAt`, janelas em
+ * animados) e uma LUZ de verdade (iluminação nativa do Phaser 4) que ilumina o chão em volta — a escuridão vem da luz ambiente da cena
+ * (`systems/dayNightOverlay.ts`). Ligam e desligam SOZINHAS pela hora do relógio (`lightIntensityAt`, janelas em
  * `data/lighting.ts`): acendem no anoitecer e apagam ao amanhecer, com uma rampa suave no brilho. A base de cada uma ocupa a célula
  * (`blockedCells` — a cena soma ao grid). Uma cena cria um sistema, `add`a as fontes (ou passa uma lista) e chama `update` a cada
  * quadro com a hora do dia.
@@ -117,8 +82,6 @@ export class LightSourceSystem {
     private readonly scene: Phaser.Scene,
     placements: LightSourcePlacement[] = [],
   ) {
-    const glowTexture = scene.textures.get(GLOW_KEY);
-    glowTexture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     for (const placement of placements) this.add(placement);
   }
 
@@ -145,14 +108,13 @@ export class LightSourceSystem {
       extras = { litFrames: TORCH_LIT_FRAMES, frameMs: TORCH_FRAME_MS, offFrame: TORCH_OFF_FRAME };
     }
     lit.setScale(DISPLAY_SCALE);
-    // Cópia em ADD acima do véu: só aparece acesa, e faz o vidro/a chama brilharem no escuro (o original fica escurecido pela luz ambiente).
+    // Cópia em ADD por cima: só aparece acesa, e faz o vidro/a chama brilharem no escuro (o original fica escurecido pela luz ambiente).
     const emissive = scene.add.image(lit.x, lit.y, lit.texture.key, lit.frame.name);
     emissive.setOrigin(lit.originX, lit.originY).setScale(DISPLAY_SCALE).setBlendMode(Phaser.BlendModes.ADD).setDepth(LIGHT_GLOW_DEPTH).setVisible(false);
-    const source: LightSource = { col: placement.col, row: placement.row, definition, phase, glow: [], glowScales: [], lit, emissive, ...extras };
-
-    const rings = addGlowRings(scene, x, y + definition.glowOffsetY * DISPLAY_SCALE, definition.glowRadiusCells * tilePx, definition.glowColor);
-    source.glow.push(...rings.images);
-    source.glowScales.push(...rings.scales);
+    // A luz nasce apagada (intensidade 0) e acende pela hora (`update`).
+    const baseRadius = definition.glowRadiusCells * tilePx;
+    const light = scene.lights.addLight(x, y + definition.glowOffsetY * DISPLAY_SCALE, baseRadius, definition.glowColor, 0);
+    const source: LightSource = { col: placement.col, row: placement.row, definition, phase, light, baseRadius, lit, emissive, ...extras };
 
     this.sources.push(source);
   }
@@ -185,11 +147,8 @@ export class LightSourceSystem {
       }
       source.emissive.setFrame(frame).setVisible(on).setAlpha(EMISSIVE_ALPHA * intensity * flicker * (0.75 + 0.25 * breatheAlpha));
 
-      source.glow.forEach((glow, index) => {
-        glow.setVisible(on);
-        glow.setAlpha(definition.glowAlpha * GLOW_RINGS[index][1] * intensity * flicker * breatheAlpha);
-        glow.setScale(source.glowScales[index] * breatheScale);
-      });
+      source.light.setIntensity(on ? definition.lightIntensity * intensity * flicker * breatheAlpha : 0);
+      source.light.setRadius(source.baseRadius * breatheScale);
     }
   }
 }

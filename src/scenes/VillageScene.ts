@@ -9,6 +9,7 @@ import { isDialogueOpen, isInventoryOpen } from './UIScene';
 import { popText } from '../systems/floatingText';
 import { villageLayout } from '../data/maps/villageLayout';
 import { buildVillage, preloadVillage } from '../systems/villageBuilder';
+import { buildShopSigns, preloadShopSigns, shopSignBlockedCells } from '../systems/villageSigns';
 import { NpcSystem, isWorkingNow, preloadNpcs, workingHoursText } from '../systems/npcSystem';
 import { NPCS, VILLAGE_NPC_IDS, NpcId } from '../data/npcs';
 import { SHOP_INTERIOR_BY_NPC } from '../data/maps/shopInteriors';
@@ -90,12 +91,13 @@ export class VillageScene extends ExternalMapScene {
       dirtZone: villageDirtZone,
       // A Fazenda a alcança pela ponte LESTE, então a de volta fica a OESTE.
       returnDirection: 'west',
-      obstacleCells: villageBlockedCells(),
+      obstacleCells: [...villageBlockedCells(), ...shopSignBlockedCells()], // (as pernas das placas das lojas também)
     });
   }
 
   protected loadMapAssets(): void {
     preloadVillage(this);
+    preloadShopSigns(this);
     preloadNpcs(this, VILLAGE_NPC_IDS);
     preloadLightSources(this);
   }
@@ -103,9 +105,11 @@ export class VillageScene extends ExternalMapScene {
   protected buildMapContent(ctx: { tilePx: number; grid: WalkableGrid; interactions: InteractionRegistry; player: Player }): void {
     const { interactions, player } = ctx;
     this.isEnteringShop = false; // O Phaser reaproveita esta instância entre `scene.start`.
+    gameState.villageVisited = true; // Sai da lista o objetivo "conhecer o Vilarejo".
 
     // O Phaser reaproveita esta instância entre `scene.start`: recomeça a lista de árvores a cada entrada.
     this.trees = buildVillage(this).trees;
+    buildShopSigns(this); // A placa de cada loja, ao lado da porta: de longe já se sabe o que a casa vende.
 
     // Postes de luz: acendem à noite e apagam ao amanhecer (`update`); a base de cada um bloqueia a célula (antes dos moradores, que andam pelo grid).
     this.lightSources = new LightSourceSystem(this, VILLAGE_LIGHT_SOURCES);

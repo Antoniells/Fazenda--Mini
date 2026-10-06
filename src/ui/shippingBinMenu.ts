@@ -304,7 +304,8 @@ export class ShippingBinMenu {
     this.inventory.addCoins(coins);
     console.log(`Vendido: ${items} ite${items === 1 ? 'm' : 'ns'} por ${coins} moedas (saldo: ${this.inventory.getCoins()}).`);
     this.onSold(coins, items);
-    this.render();
+    // Vendido, o menu fecha: antes ficava aberto segurando o jogador enquanto o relógio corria (o playtest perdeu 40 min de jogo assim).
+    this.close();
   }
 
   private showDefaultInfo(): void {

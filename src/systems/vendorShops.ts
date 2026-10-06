@@ -26,6 +26,8 @@ import {
   TAB_FRAME_TOOLS_LIGHT,
 } from '../data/ui';
 import { getToolUpgradeBlock, previousToolName } from './toolUpgrade';
+import { getToolTierInfo } from '../data/toolProgression';
+import { describeWateringCan } from '../data/wateringCan';
 import { buyChicken } from './animals';
 import { ownsVillageShopItem, purchaseVillageShopItem } from './villageShop';
 import { popText } from './floatingText';
@@ -36,6 +38,7 @@ import { UPGRADE_TRACKS, UPGRADE_TRACK_IDS, UpgradeTrack, maxUpgradeLevel } from
 import { HOUSE_LEVELS } from '../data/houseLevels';
 import { FENCE_SKINS } from '../data/fenceSkins';
 import { nextUpgradeStep, purchaseUpgrade, upgradeBlocker, upgradeLevel } from './farmUpgrades';
+import { orderSeed, pendingSeedOrders } from './seedOrders';
 
 /**
  * As LOJAS dos vendedores do Vilarejo (cada morador que `sells` em `data/npcs.ts`), no mesmo painel de livro do `ShopMenu`:
@@ -116,7 +119,7 @@ const toolItems = (): ShopItem[] => [
       id: tool.id,
       category: 'tools',
       name: tool.name,
-      description: `Substitui ${previousToolName(tool.id)} no mesmo slot.`,
+      description: `${offer.toolId.startsWith('water') ? `${describeWateringCan(getToolTierInfo(tool.id)?.tier ?? 0)} ` : ''}Substitui ${previousToolName(tool.id)} no mesmo slot.`,
       textureKey: tool.textureKey,
       iconFrame: tool.iconFrame,
       price: offer.price,
@@ -403,5 +406,23 @@ export function createVendorShop(scene: Phaser.Scene, id: VendorId, inventory: I
     id === 'carpenter' ? carpenterActions(scene, player, hooks, () => menu.refresh(inventory.getCoins())) : undefined,
     requirements,
   );
+  return menu;
+}
+
+/**
+ * A ENCOMENDA DE SEMENTES da Lia pela Caixa de Correio da Fazenda (`systems/seedOrders.ts`): o mesmo livro da loja, só com a aba de
+ * Sementes e os mesmos preços — a compra é paga na hora e as sementes chegam numa carta na manhã seguinte. Quem abre/fecha é a Fazenda.
+ */
+export function createSeedOrderShop(scene: Phaser.Scene, inventory: Inventory, player: Player): ShopMenu {
+  ensureTabRibbons(scene);
+  const items = seedItems().map((item) => ({ ...item, name: `${item.name} (encomenda)`, description: `Chega amanhã cedo, numa carta da Lia. ${item.description}` }));
+  let menu: ShopMenu;
+  menu = new ShopMenu(scene, [tab('agriculture', ALL_CROPS_ICONS_KEY, CARROT.seedFrameName, TAB_FRAME_AGRICULTURE, TAB_FRAME_AGRICULTURE_LIGHT)], items, (itemId) => {
+    if (orderSeed(itemId, inventory)) {
+      playEffect(scene, SPEND_MONEY_SOUND);
+      popText(scene, player.sprite.x, player.sprite.y - 44, `Encomendado! Chega amanhã (${pendingSeedOrders()})`, { color: '#b8f5a0', fontSize: 14 });
+    }
+    menu.refresh(inventory.getCoins());
+  });
   return menu;
 }

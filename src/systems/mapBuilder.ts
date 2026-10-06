@@ -18,6 +18,8 @@ import {
   BRIDGE_HORIZONTAL_FRAME,
   BRIDGE_VERTICAL_WALL_TILE_FRAME,
   BRIDGE_VERTICAL_POST_FRAME,
+  GRASS_FLAT_TILE_INDEX,
+  GRASS_FLAT_DARK_TILE_INDEX,
 } from '../data/tiles';
 import { currentHouseLevel, fenceSkin } from './upgradeLevels';
 import { addBuildingShadows, createGroundShadow } from './shadow';
@@ -25,6 +27,7 @@ import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
 import { GROUND_TILESETS } from './groundTilesets';
 import { buildWaterAutotile } from './waterAutotile';
+import { attachGroundPatches, buildGroundPatches } from './groundPatches';
 import { registerSway } from './foliageSway';
 import type { WaterStyleId } from '../data/tiles';
 
@@ -79,10 +82,10 @@ export const BIOME_TINTS: Partial<Record<BiomeId, number>> = {
  * (`farmMap.expansions`), que já nascem cobertos de grama mesmo antes de
  * comprados (ver `MainScene.create`).
  *
- * Cada célula usa `pickGroundTileVariant` (com coordenadas ABSOLUTAS do
- * mundo, não relativas a este trecho) para decidir sua variante visual —
- * melhoria de QoL visual (Fase 9) pra reduzir a repetição perceptível do
- * mesmo tile, sem afetar grid/colisão/área cultivável. Se `dirtZone` for
+ * A grama é a clara (`pickGroundTileVariant`) e a variação de tom vem das
+ * manchas orgânicas da grama escura (`systems/groundPatches.ts`, coordenadas
+ * ABSOLUTAS do mundo), numa camada por cima — sem afetar grid/colisão/área
+ * cultivável. Se `dirtZone` for
  * passado (só o núcleo tem, ver `buildFarmGround`), as células que fazem
  * parte do caminho/manchas de terra (`systems/dirtPaths.ts`) substituem a
  * grama pelo tile de terra correto (canto/borda/preenchimento), escolhido
@@ -117,16 +120,24 @@ function buildAuthoredGroundChunk(
   const tile = tileSize * DISPLAY_SCALE;
   const layer = tilemap.createBlankLayer('ground', tilesets, originCol * tile, originRow * tile) as Phaser.Tilemaps.TilemapLayer;
 
+  // Grama plana: os dois tons pintados no editor viram a grama clara (o tom escuro solto era um quadrado de borda reta) — o escuro
+  // volta em manchas orgânicas, na camada de `buildGroundPatches`. O dado autorado não muda (detalhes, poeira e recursos leem ele).
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const gid = authoredGround[row]?.[col];
-      if (gid !== undefined) layer.putTileAt(gid, col, row);
+      if (gid !== undefined) layer.putTileAt(gid === GRASS_FLAT_DARK_TILE_INDEX ? GRASS_FLAT_TILE_INDEX : gid, col, row);
     }
   }
 
   layer.setScale(DISPLAY_SCALE);
   layer.setDepth(-1);
   if (tint !== undefined) layer.setTint(tint);
+
+  const isGrass = (worldCol: number, worldRow: number): boolean => {
+    const gid = authoredGround[worldRow - originRow]?.[worldCol - originCol];
+    return gid === GRASS_FLAT_TILE_INDEX || gid === GRASS_FLAT_DARK_TILE_INDEX;
+  };
+  attachGroundPatches(layer, buildGroundPatches(scene, tileSize, originCol, originRow, cols, rows, isGrass, DISPLAY_SCALE, tint));
 
   // Água: as células pintadas com água (lago/mar) ganham o autotile animado por cima do chão — bordas
   // escolhidas pelos vizinhos, não pelo tile que foi pintado à mão (ver `systems/waterAutotile.ts`).
@@ -191,6 +202,9 @@ export function buildGroundChunk(
   // Sempre atrás de qualquer elemento ordenado por profundidade (árvores, personagem).
   layer.setDepth(-1);
   if (tint !== undefined) layer.setTint(tint);
+
+  const isGrass = (worldCol: number, worldRow: number): boolean => groundData[worldRow - originRow]?.[worldCol - originCol] === GRASS_FLAT_TILE_INDEX;
+  attachGroundPatches(layer, buildGroundPatches(scene, tileSize, originCol, originRow, cols, rows, isGrass, DISPLAY_SCALE, tint));
 
   return layer;
 }

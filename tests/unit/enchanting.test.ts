@@ -44,3 +44,13 @@ describe('encantamentos', () => {
     expect(smeltingInputs(getSmeltingRecipe('smelt-iron')!).fuelId).toBe('coal');
   });
 });
+
+describe('Fôlego (habilidade)', () => {
+  beforeEach(freshGame);
+
+  it('soma 1 de defesa por nível à da armadura', () => {
+    const base = getPlayerDefense();
+    gameState.skills.ranks.stamina = 3;
+    expect(getPlayerDefense()).toBe(base + 3);
+  });
+});
