@@ -5,7 +5,7 @@ import { currentHouseLevel } from './upgradeLevels';
 import { DECORATIONS } from '../data/decorations';
 import { UPGRADE_TRACKS, UpgradeStep, UpgradeTrack, maxUpgradeLevel } from '../data/upgrades';
 import { gameState } from './gameState';
-import { Inventory } from './inventory';
+import { BASE_UNLOCKED_SLOTS, INVENTORY_SIZE, Inventory } from './inventory';
 import { resourceNodeRegistry } from './resourceNodeRegistry';
 import { FARM_RESOURCES_KEY, resetFarmResourceCaches } from './farmResources';
 
@@ -17,6 +17,7 @@ import { FARM_RESOURCES_KEY, resetFarmResourceCaches } from './farmResources';
  * - Casa (`data/houseLevels.ts`): `farmMap.housePosition`/`houseDoorPosition` (a arte é posicionada a partir da porta) e o cômodo de dentro (`houseMap`, saída no meio da parede de baixo).
  * - Plantio (`PLOT_LEVELS`): `farmMap.farmlandArea` (a cerca e todo o resto derivam dela) e as parcelas novas em `gameState.farmland`.
  * - Cerca (`data/fenceSkins.ts`): só o nível; quem desenha e dá vida às cercas lê `fenceSkin()`.
+ * - Bolsa: quantos slots do `gameState.inventory` estão destrancados (`Inventory.setUnlockedSlotCount`).
  */
 
 /** As áreas da lavoura, por nível (0 = a original do mapa). Ficam dentro da grama da propriedade: a leste a estrada (colunas 32-34) e ao sul o caminho de terra (linha 26) limitam. */
@@ -56,6 +57,7 @@ export function applyUpgrades(): void {
   farmMap.farmlandArea = cellsOf(PLOT_LEVELS[clampLevel('plot', gameState.upgrades.plot)]);
   gameState.farmland.addCells(farmMap.farmlandArea);
   resetFarmResourceCaches();
+  gameState.inventory.setUnlockedSlotCount(clampLevel('bag', gameState.upgrades.bag) > 0 ? INVENTORY_SIZE : BASE_UNLOCKED_SLOTS);
 }
 
 /** Devolve `farmMap`/`houseMap` aos dados originais (o editor de mapas nunca deve enxergar as melhorias de uma partida). */

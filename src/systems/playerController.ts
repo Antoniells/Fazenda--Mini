@@ -13,6 +13,9 @@ import { playEffect } from './soundEffects';
 import { SWORD_SWING_SOUND } from '../data/audio';
 import { swordDamage } from './enchanting';
 
+/** Janela do golpe guardado: Espaço apertado até isto antes do fim do golpe atual engata o próximo (`attackBufferedAt`). */
+const ATTACK_BUFFER_MS = 160;
+
 /**
  * Alvo pendente de interação: `standCol/standRow` é a célula andável para
  * onde o personagem está indo, `targetCol/targetRow` é a célula onde a
@@ -74,6 +77,12 @@ export class PlayerController {
   private readonly tilePx: number;
   private readonly interactions: InteractionRegistry;
   private pendingInteraction: PendingInteraction | null = null;
+  /**
+   * GOLPE GUARDADO (ideia do hitstop, `reference-projects/hitstop`): Espaço apertado com o personagem ocupado (no meio de outro golpe)
+   * fica anotado aqui (`scene.time.now`) e dispara assim que ele fica livre — se o aperto foi até `ATTACK_BUFFER_MS` antes disso. Antes o
+   * aperto era jogado fora e a espada "travava" pra quem apertava várias vezes.
+   */
+  private attackBufferedAt: number | null = null;
   private readonly scene: Phaser.Scene;
   private lastCol: number;
   private lastRow: number;
@@ -174,7 +183,12 @@ export class PlayerController {
    * se a cena não tiver registrado nenhum).
    */
   private handleAttackKey(): void {
-    if (this.player.isBusy() || this.inputInterceptors.some((interceptor) => interceptor.isActive())) return;
+    if (this.inputInterceptors.some((interceptor) => interceptor.isActive())) return;
+    if (this.player.isBusy()) {
+      this.attackBufferedAt = this.scene.time.now; // Guarda: sai quando o golpe atual terminar (`update`).
+      return;
+    }
+    this.attackBufferedAt = null;
 
     const selected = gameState.inventory.getSelectedSlot();
     const weapon = selected?.category === 'tool' ? WEAPONS[selected.id] : undefined;
@@ -325,6 +339,12 @@ private canWalkTo(col: number, row: number): boolean {
   }
 
   update(time: number, delta: number): void {
+    // O golpe guardado sai assim que o personagem fica livre — só se o aperto foi recente (senão foi um aperto perdido lá no começo).
+    if (this.attackBufferedAt !== null && !this.player.isBusy()) {
+      const recent = this.scene.time.now - this.attackBufferedAt <= ATTACK_BUFFER_MS;
+      this.attackBufferedAt = null;
+      if (recent) this.handleAttackKey();
+    }
 if (!this.player.isBusy()) {
       
       // Verifica se o jogador apertou a setinha OU a respectiva tecla WASD

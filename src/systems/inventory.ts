@@ -54,6 +54,14 @@ export const STORAGE_SIZE = 30;
 export const INVENTORY_SIZE = HOTBAR_SIZE + STORAGE_SIZE;
 
 /**
+ * Os 2 últimos andares do caderno (12 slots) começam TRANCADOS: a melhoria "Bolsa maior" do Marceneiro (linha `bag` de
+ * `data/upgrades.ts`) destranca. Slot trancado não recebe item nenhum (ganhar, comprar, arrastar); um item que já estava nele (save de antes
+ * da trava) vai pra um slot livre ao carregar — e, se não couber, fica onde está até o jogador tirar.
+ */
+export const LOCKED_BAG_SLOTS = 12;
+export const BASE_UNLOCKED_SLOTS = INVENTORY_SIZE - LOCKED_BAG_SLOTS;
+
+/**
  * Estrutura mínima para guardar o resultado de colheitas, o estoque de
  * sementes (compradas na Loja, consumidas ao plantar), o estoque de
  * decorações/construções (compradas na Loja, consumidas ao posicionar,
@@ -131,6 +139,8 @@ export class Inventory {
    * arrastar/reorganizar ainda, as ferramentas não saem desses slots.
    */
   private readonly slots: Array<SlotRef | null> = new Array(INVENTORY_SIZE).fill(null);
+  /** Quantos slots (a contar do 1º) estão destrancados — ver `LOCKED_BAG_SLOTS`. Não vai no save do inventário: sai do nível da melhoria. */
+  private unlockedSlots = BASE_UNLOCKED_SLOTS;
   private selectedHotbarIndex = 0;
 
   constructor() {
@@ -309,7 +319,37 @@ export class Inventory {
 
   /** A Bolsa aceita mais desse item? (já tem a pilha, ou existe um slot livre) */
   hasRoomFor(ref: SlotRef): boolean {
-    return this.slots.some((slot) => slot === null || (slot.category === ref.category && slot.id === ref.id));
+    return this.slots.some((slot, index) => this.isFreeSlot(index) || (slot?.category === ref.category && slot.id === ref.id));
+  }
+
+  /** O slot está trancado (`LOCKED_BAG_SLOTS`)? */
+  isSlotLocked(index: number): boolean {
+    return index >= this.unlockedSlots;
+  }
+
+  getUnlockedSlotCount(): number {
+    return this.unlockedSlots;
+  }
+
+  /**
+   * Quantos slots ficam destrancados (o nível da melhoria da Bolsa — `systems/farmUpgrades.ts`). Item parado num slot trancado vai pro
+   * 1º slot livre destrancado (se houver), e os itens que estavam sem slot ("órfãos") ganham os slots que abriram.
+   */
+  setUnlockedSlotCount(count: number): void {
+    this.unlockedSlots = Math.max(BASE_UNLOCKED_SLOTS, Math.min(INVENTORY_SIZE, Math.floor(count)));
+    for (let index = this.unlockedSlots; index < INVENTORY_SIZE; index++) {
+      if (!this.slots[index]) continue;
+      const free = this.slots.findIndex((_slot, target) => this.isFreeSlot(target));
+      if (free === -1) break;
+      this.slots[free] = this.slots[index];
+      this.slots[index] = null;
+    }
+    this.slotOrphanedStock();
+  }
+
+  /** Slot vazio E destrancado (onde um item pode entrar). */
+  private isFreeSlot(index: number): boolean {
+    return this.slots[index] === null && !this.isSlotLocked(index);
   }
 
   /** Tira até `amount` unidades da Bolsa e devolve quantas saíram (nunca mais que o estoque). Zerou: o slot some. Armadura tirada da Bolsa deixa de estar vestida. */
@@ -505,7 +545,7 @@ export class Inventory {
 
   /** Sobra pelo menos um slot livre na Bolsa? (Dar um item sem slot livre o perderia — quem vende algo único confere antes de cobrar.) */
   hasFreeSlot(): boolean {
-    return this.slots.some((slot) => slot === null);
+    return this.slots.some((_slot, index) => this.isFreeSlot(index));
   }
 
   /** Igual a `unlockTool`, mas para a categoria `'armor'` (comprar uma armadura no Ferreiro). */
@@ -560,11 +600,19 @@ export class Inventory {
    * ser reorganizado livremente.
    */
   swapSlots(indexA: number, indexB: number): void {
-    if (indexA === indexB) return;
-    if (indexA < 0 || indexA >= this.slots.length || indexB < 0 || indexB >= this.slots.length) return;
+    if (!this.canSwapSlots(indexA, indexB)) return;
     const temp = this.slots[indexA];
     this.slots[indexA] = this.slots[indexB];
     this.slots[indexB] = temp;
+  }
+
+  /** A troca é possível? Fora dos limites não; e nenhum item pode ENTRAR num slot trancado (sair dele, pra um slot livre, pode). */
+  canSwapSlots(indexA: number, indexB: number): boolean {
+    if (indexA === indexB) return false;
+    if (indexA < 0 || indexA >= this.slots.length || indexB < 0 || indexB >= this.slots.length) return false;
+    if (this.isSlotLocked(indexA) && this.slots[indexB] !== null) return false;
+    if (this.isSlotLocked(indexB) && this.slots[indexA] !== null) return false;
+    return true;
   }
 
   /** Se `category`+`id` ainda não ocupam nenhum slot, ocupa o primeiro vazio (Hotbar antes do resto do Inventário). Chamado ao ganhar sementes/decorações novas. */
@@ -572,7 +620,7 @@ export class Inventory {
     const alreadySlotted = this.slots.some((slot) => slot?.category === category && slot?.id === id);
     if (alreadySlotted) return;
 
-    const emptyIndex = this.slots.findIndex((slot) => slot === null);
+    const emptyIndex = this.slots.findIndex((_slot, index) => this.isFreeSlot(index));
     if (emptyIndex !== -1) this.slots[emptyIndex] = { category, id };
     // Item novo fora da Hotbar (foi pro caderno) ou sem lugar nenhum: a interface avisa (`takeSlotNotices`) — antes a compra "sumia".
     if (notify && (emptyIndex === -1 || emptyIndex >= HOTBAR_SIZE)) this.slotNotices.push({ ref: { category, id }, where: emptyIndex === -1 ? 'full' : 'notebook' });

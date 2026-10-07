@@ -186,7 +186,7 @@ export class FarmResources {
       const key = cellKey(node.col, node.row);
 
       if (node.kind === 'tree') {
-        const visual = buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage, node.species);
+        const visual = buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage, node.species, 'farm');
         this.visuals.set(key, { visual, kind: node.kind, stage: node.stage });
         if (node.stage === 'mature') {
           this.grid.block(node.col, node.row);
@@ -214,7 +214,7 @@ export class FarmResources {
   /** O jogador plantou uma bolota: nasce como broto (e cresce com os dias, como os que brotam sozinhos). */
   plant(col: number, row: number): void {
     resourceNodeRegistry.addNode(FARM_RESOURCES_KEY, { col, row, kind: 'tree', stage: 'sprout' });
-    const visual = buildGrowingTree(this.scene, TILE_SIZE, col, row, 'sprout');
+    const visual = buildGrowingTree(this.scene, TILE_SIZE, col, row, 'sprout', 'pine', 'farm');
     this.visuals.set(cellKey(col, row), { visual, kind: 'tree', stage: 'sprout' });
   }
 

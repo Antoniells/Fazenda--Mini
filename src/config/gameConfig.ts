@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { MainMenuScene } from '../scenes/MainMenuScene';
+import { MenuBackdropScene } from '../scenes/MenuBackdropScene';
 import { CharacterCreationScene } from '../scenes/CharacterCreationScene';
 import { MainScene } from '../scenes/MainScene';
 import { MapEditorScene } from '../scenes/MapEditorScene';
@@ -51,5 +52,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   // UIScene não entra nessa lógica: nunca é a "cena inicial", só é iniciada
   // sob demanda via `scene.launch` (ver `scenes/UIScene.ensureUIScene`),
   // chamado pela MainScene e por cada cena externa assim que criam.
-  scene: [MainMenuScene, CharacterCreationScene, IntroScene, MainScene, MapEditorScene, UIScene, ForestScene, QuarryScene, CaveScene, BeachScene, HouseScene, VillageScene, ShopInteriorScene, CaveFloorScene, HiddenForestScene, FinalCinematicScene, EndingScene],
+  scene: [MainMenuScene, MenuBackdropScene, CharacterCreationScene, IntroScene, MainScene, MapEditorScene, UIScene, ForestScene, QuarryScene, CaveScene, BeachScene, HouseScene, VillageScene, ShopInteriorScene, CaveFloorScene, HiddenForestScene, FinalCinematicScene, EndingScene],
 };

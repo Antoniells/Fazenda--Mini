@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ExternalMapScene, computeArrivalClearance } from './ExternalMapScene';
 import { forestMap } from '../data/maps/forestMap';
-import { BIRCH_TREE_KEY, BIRCH_TREE_PATH, ROCK_KEY, ROCK_PATH, WATER_KEY, WATER_PATH, TILE_SIZE } from '../data/tiles';
+import { BIRCH_TREE_KEY, BIRCH_TREE_PATH, CHERRY_TREE_KEY, CHERRY_TREE_PATH, CHERRY_TREE_FRAME_WIDTH, CHERRY_TREE_FRAME_HEIGHT, ROCK_KEY, ROCK_PATH, WATER_KEY, WATER_PATH, TILE_SIZE } from '../data/tiles';
 import { LEAF_FALL_KEY, LEAF_FALL_PATH, LEAF_FALL_FRAME_SIZE } from '../data/effects';
 import { SLIME_KEY, SLIME_PATH, SLIME_FRAME_SIZE } from '../data/enemies';
 import { buildGrowingTree, buildRock, buildWaterArea, waterAreaCells, buildWildFoliage } from '../systems/externalMapBuilder';
@@ -16,6 +16,9 @@ import { SlimeSpawner } from '../systems/slimeSpawner';
 import { WalkableGrid } from '../systems/grid';
 import { InteractionRegistry } from '../systems/interaction';
 import { waterCellsFromGround } from '../systems/waterCells';
+import { preloadDucks, spawnSwimmingDuck } from '../systems/ducks';
+import { findDuckLanes } from '../systems/duckLanes';
+import { FOREST_DUCKS } from '../data/ducks';
 import { onPlayerStepped } from '../systems/sceneEvents';
 import { Player } from '../entities/Player';
 import { isInventoryOpen } from './UIScene';
@@ -111,6 +114,8 @@ export class ForestScene extends ExternalMapScene {
   protected loadMapAssets(): void {
     if (!this.textures.exists(ROOT_PORTAL.key)) this.load.image(ROOT_PORTAL.key, encodeURI(`/${ROOT_PORTAL.path}`));
     this.load.image(BIRCH_TREE_KEY, encodeURI(`/${BIRCH_TREE_PATH}`));
+    preloadDucks(this);
+    this.load.spritesheet(CHERRY_TREE_KEY, encodeURI(`/${CHERRY_TREE_PATH}`), { frameWidth: CHERRY_TREE_FRAME_WIDTH, frameHeight: CHERRY_TREE_FRAME_HEIGHT });
     this.load.image(ROCK_KEY, encodeURI(`/${ROCK_PATH}`));
     this.load.image(WATER_KEY, encodeURI(`/${WATER_PATH}`));
     // Fase 9 — mecânica de hits: folhas caindo a cada golpe de Machado.
@@ -137,6 +142,10 @@ export class ForestScene extends ExternalMapScene {
 
     const { lakeArea } = forestMap;
     buildWaterArea(this, TILE_SIZE, lakeArea.col0, lakeArea.row0, lakeArea.cols, lakeArea.rows);
+
+    // Patos nadando no lago (só enfeite — `systems/ducks.ts`).
+    const lake = new Set(waterCellsFromGround(forestMap.ground).map(([col, row]) => `${col},${row}`));
+    findDuckLanes((col, row) => lake.has(`${col},${row}`), forestMap.cols, forestMap.rows, FOREST_DUCKS).forEach((lane, index) => spawnSwimmingDuck(this, ctx.tilePx, lane, index));
 
     // Props de decoração ambiente (aba "Decoração" do MapEditorScene, pedido explícito) — puramente visuais, sem colisão.
     buildMapProps(this, TILE_SIZE, forestMap.props ?? []);

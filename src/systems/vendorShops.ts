@@ -34,7 +34,7 @@ import { popText } from './floatingText';
 import { playEffect } from './soundEffects';
 import { SELL_SOUND, SPEND_MONEY_SOUND } from '../data/audio';
 import type { NpcId } from '../data/npcs';
-import { UPGRADE_TRACKS, UPGRADE_TRACK_IDS, UpgradeTrack, maxUpgradeLevel } from '../data/upgrades';
+import { BAG_ICON_FRAME, BAG_ICON_KEY, UPGRADE_TRACKS, UPGRADE_TRACK_IDS, UpgradeTrack, maxUpgradeLevel } from '../data/upgrades';
 import { HOUSE_LEVELS } from '../data/houseLevels';
 import { FENCE_SKINS } from '../data/fenceSkins';
 import { nextUpgradeStep, purchaseUpgrade, upgradeBlocker, upgradeLevel } from './farmUpgrades';
@@ -128,10 +128,10 @@ const toolItems = (): ShopItem[] => [
   }),
 ];
 
-/** Id dos itens da aba Melhorias: `upgrade-house`, `upgrade-plot`, `upgrade-fence`. */
+/** Id dos itens da aba Melhorias: `upgrade-house`, `upgrade-plot`, `upgrade-fence`, `upgrade-bag`. */
 const UPGRADE_ID_PREFIX = 'upgrade-';
 
-/** O ícone de cada melhoria (mostra o que a compra traz): a arte da casa/cerca do PRÓXIMO nível (a do último, se já está no máximo) e, no plantio, a cenoura. */
+/** O ícone de cada melhoria (mostra o que a compra traz): a arte da casa/cerca do PRÓXIMO nível (a do último, se já está no máximo), no plantio a cenoura e na Bolsa a bolsa. */
 function upgradeIcon(track: UpgradeTrack): { textureKey: string; iconFrame: string | number } {
   const level = Math.min(upgradeLevel(track) + 1, maxUpgradeLevel(track));
   if (track === 'house') {
@@ -139,10 +139,11 @@ function upgradeIcon(track: UpgradeTrack): { textureKey: string; iconFrame: stri
     return { textureKey: house.textureKey, iconFrame: house.frame?.name ?? '__BASE' };
   }
   if (track === 'fence') return { textureKey: FENCE_SKINS[level].textureKey, iconFrame: FENCE_SKINS[level].edgeTop };
+  if (track === 'bag') return { textureKey: BAG_ICON_KEY, iconFrame: BAG_ICON_FRAME };
   return { textureKey: ALL_CROPS_ICONS_KEY, iconFrame: CARROT.cropFrameName };
 }
 
-/** Preenche (ou atualiza, no lugar) as 3 melhorias com o degrau que vem agora — no nível máximo ficam com o último degrau, como "Já possui". */
+/** Preenche (ou atualiza, no lugar) as melhorias com o degrau que vem agora — no nível máximo ficam com o último degrau, como "Já possui". */
 function syncUpgradeItems(items: ShopItem[]): void {
   for (const item of items) {
     if (!item.id.startsWith(UPGRADE_ID_PREFIX)) continue;

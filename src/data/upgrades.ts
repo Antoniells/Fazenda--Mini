@@ -7,12 +7,19 @@ import { COPPER_BAR, IRON, STONE, WOOD } from './resources';
  * - `house`: a CASA do jogador — 3 estados (`data/houseLevels.ts`): a casinha laranja do começo, a casa do meio e a casa final. Cada um troca a arte na Fazenda e amplia o interior.
  * - `plot`: o espaço do PLANTIO — a lavoura cresce em 3 etapas (`data/plotLevels.ts`), a cerca acompanhando.
  * - `fence`: o material da CERCA da lavoura — Madeira, Pedra e Ferro (`data/fenceSkins.ts`), cada um aguentando mais golpes da horda.
+ * - `bag`: a BOLSA — destranca os 2 últimos andares do caderno (`LOCKED_BAG_SLOTS` em `systems/inventory.ts`).
  *
  * Quem aplica os níveis ao mundo é `systems/farmUpgrades.ts`.
  */
-export type UpgradeTrack = 'house' | 'plot' | 'fence';
+/** O ícone da melhoria da Bolsa na loja: a bolsa marrom (1º quadro) de `Icons/RPG icons/Extras/Bags.png` (7 bolsas de 16 x 16). Carregado pela `MainScene`. */
+export const BAG_ICON_KEY = 'rpg-bags';
+export const BAG_ICON_PATH = 'Icons/RPG icons/Extras/Bags.png';
+export const BAG_ICON_FRAME_SIZE = 16;
+export const BAG_ICON_FRAME = 0;
 
-export const UPGRADE_TRACK_IDS: UpgradeTrack[] = ['house', 'plot', 'fence'];
+export type UpgradeTrack = 'house' | 'plot' | 'fence' | 'bag';
+
+export const UPGRADE_TRACK_IDS: UpgradeTrack[] = ['house', 'plot', 'fence', 'bag'];
 
 export interface UpgradeMaterial {
   /** Id de `data/resources.ts`. */
@@ -63,6 +70,13 @@ export const UPGRADE_TRACKS: Record<UpgradeTrack, UpgradeTrackDefinition> = {
       { name: 'Cerca de Ferro', description: 'Grades de ferro: a cerca mais resistente.', price: 2000, materials: [{ resourceId: IRON.id, amount: 8 }, { resourceId: STONE.id, amount: 30 }] },
     ],
   },
+  bag: {
+    id: 'bag',
+    name: 'Bolsa',
+    steps: [
+      { name: 'Bolsa maior', description: 'Mais 12 espaços na Bolsa: os dois últimos andares do caderno.', price: 500, materials: [{ resourceId: WOOD.id, amount: 30 }] },
+    ],
+  },
 };
 
 /** Nível atual de cada linha (0 = o do começo). Vai pro save. */
@@ -70,16 +84,18 @@ export interface UpgradesState {
   house: number;
   plot: number;
   fence: number;
+  /** Ausente em saves de antes da Bolsa trancada (vale 0). */
+  bag: number;
 }
 
 /** Partida nova: a casinha do começo, a lavoura e a cerca originais. */
 export function createUpgradesState(): UpgradesState {
-  return { house: 0, plot: 0, fence: 0 };
+  return { house: 0, plot: 0, fence: 0, bag: 0 };
 }
 
 /** Save anterior às melhorias: o jogo já tinha a casa de sempre (nível 1 da casa), a lavoura e a cerca originais. */
 export function createLegacyUpgradesState(): UpgradesState {
-  return { house: 1, plot: 0, fence: 0 };
+  return { house: 1, plot: 0, fence: 0, bag: 0 };
 }
 
 export function maxUpgradeLevel(track: UpgradeTrack): number {

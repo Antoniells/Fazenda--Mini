@@ -5,6 +5,7 @@ import { playEffect } from '../systems/soundEffects';
 import { ENEMY_DEFEATED_SOUND } from '../data/audio';
 import { SoundEffectDef } from '../data/audio';
 import { popText } from '../systems/floatingText';
+import { impact } from '../systems/impact';
 
 /** Atributos base de qualquer inimigo (Fase 8 — Combate) — cada subclasse concreta define os próprios valores. */
 export interface EnemyStats {
@@ -99,7 +100,8 @@ export abstract class Enemy {
     this.playHitFlash();
     // Número de dano subindo da cabeça (como no Terraria) + tremidinha da câmera: o golpe "pesa". A mordida do pet só mostra o número (cor diferente) — sacudir a tela a cada mordida cansaria.
     popText(this.scene, this.sprite.x, this.sprite.y - 34, `-${amount}`, source === 'pet' ? { color: '#bfe6ff', fontSize: 15 } : { color: '#ffe27a', fontSize: 18 });
-    if (source === 'player') this.scene.cameras.main.shake(70, 0.003);
+    // O pacote de impacto (`systems/impact.ts`): congela um instante, sacode e empurra a câmera na direção do golpe — mais forte no que mata.
+    if (source === 'player') impact(this.scene, { strength: this.hp <= 0 ? 0.9 : 0.45, dirX: knockbackDx, dirY: knockbackDy, x: this.sprite.x, y: this.sprite.y - 20 });
     if (this.stats.hitSound) playEffect(this.scene, this.stats.hitSound);
 
     if (this.hp <= 0) {

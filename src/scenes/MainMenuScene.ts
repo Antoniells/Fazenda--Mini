@@ -5,8 +5,6 @@ import {
   INVENTORY_PANEL_FRAME_NAME,
   INVENTORY_PANEL_RECT,
   INVENTORY_PANEL_BORDER,
-  MENU_BACKGROUND_KEY,
-  MENU_BACKGROUND_PATH,
   MENU_UI_KEY,
   MENU_UI_PATH,
   MENU_PART_FRAMES,
@@ -24,6 +22,7 @@ import { ensureLayerFrame, preloadLayerStack } from '../systems/layeredArt';
 import { PLAYER_PORTRAIT_FACE, playerPortraitKey, playerPortraitStack, portraitKeyFor } from '../data/playerPortrait';
 import { preloadCharacterLook } from '../systems/characterComposer';
 import { CHARACTER_IDS, DEFAULT_CHARACTER_ID } from '../data/player';
+import { showMenuBackdrop } from './MenuBackdropScene';
 
 export const MAIN_MENU_SCENE_KEY = 'MainMenuScene';
 const MAIN_SCENE_KEY = 'MainScene';
@@ -136,7 +135,6 @@ export class MainMenuScene extends Phaser.Scene {
     // Auto-suficiente: esta cena pode ser a primeira a rodar no boot do
     // jogo (nunca depende de `MainScene.preload()` já ter carregado nada).
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
-    this.load.image(MENU_BACKGROUND_KEY, encodeURI(`/${MENU_BACKGROUND_PATH}`));
     this.load.image(MENU_UI_KEY, encodeURI(`/${MENU_UI_PATH}`));
     this.load.image(CLOSE_BUTTON_SHEET_KEY, encodeURI(`/${CLOSE_BUTTON_SHEET_PATH}`));
     // Efeitos sonoros (poucos KB): o cache de áudio é global, então basta carregar aqui uma vez pro jogo todo.
@@ -177,8 +175,7 @@ export class MainMenuScene extends Phaser.Scene {
     }
 
     // Arte em alta resolução reduzida por escala fracionária: o `pixelArt: true`
-    // global (filtro NEAREST) serrilharia tudo — estas duas texturas usam LINEAR.
-    this.textures.get(MENU_BACKGROUND_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    // global (filtro NEAREST) serrilharia tudo — esta textura usa LINEAR.
     this.textures.get(MENU_UI_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
 
     // Ponteiro do jogo (seta do HUD.png) — vale pro jogo inteiro; a folha de ícones já foi carregada no `preload` desta cena.
@@ -199,12 +196,9 @@ export class MainMenuScene extends Phaser.Scene {
 
   // --- Fundo -------------------------------------------------------------
 
-  /** Fazenda estática cobrindo a tela toda (escala "cover": preenche as duas dimensões, cortando o excesso nas bordas em vez de deixar faixas vazias). */
+  /** A fazendinha animada por baixo do menu (`scenes/MenuBackdropScene.ts`, uma cena própria) — no lugar da antiga imagem parada. */
   private buildBackground(): void {
-    const background = this.add.image(this.scale.width / 2, this.scale.height / 2, MENU_BACKGROUND_KEY);
-    const scale = Math.max(this.scale.width / background.width, this.scale.height / background.height);
-    background.setScale(scale);
-    background.setDepth(0);
+    showMenuBackdrop(this);
   }
 
   // --- Tela principal (Logo + Iniciar / Configurações / Sair) --------------

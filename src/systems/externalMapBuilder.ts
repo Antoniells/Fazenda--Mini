@@ -9,6 +9,9 @@ import {
   BIRCH_TREE_KEY,
   BIRCH_TREE_FRAME_NAME,
   BIRCH_TREE_FRAME,
+  CHERRY_TREE_KEY,
+  CHERRY_TREE_FRAMES,
+  LEAFY_TREE_MATURE_FRAME,
   ROCK_KEY,
   ROCK_FRAME_1,
   ROCK_FRAME_2,
@@ -27,6 +30,7 @@ import { TreeStage, TreeSpecies } from './resourceNodeRegistry';
 import { WalkableGrid } from './grid';
 import { registerSway } from './foliageSway';
 import { hash2D } from './groundVariation';
+import { treeLookAt, type TreePlace } from './treeVariety';
 import { GRASS_DETAILS } from '../data/grassDetails';
 import { registerGrassDetailFrames, placeGrassDetail, GrassTuftMap } from './grassDetails';
 
@@ -92,18 +96,25 @@ let tree: Phaser.GameObjects.Image;
  * baixa). Usada tanto pelo respawn selvagem (`ForestScene`) quanto por
  * bolotas plantadas na Fazenda (`systems/treePlanting.ts`). `species: 'birch'`
  * (Floresta) só tem a arte adulta — ignora `stage` e usa sempre o frame da
- * bétula.
+ * bétula. Um pinheiro numa célula de cerejeira ou de árvore verde (`systems/treeVariety.ts`, `place` diz onde: a verde é só da Fazenda) usa a
+ * folha da cerejeira, com broto e muda próprios.
  */
-export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, stage: TreeStage, species: TreeSpecies = 'pine'): WorldResourceVisual {
+export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, stage: TreeStage, species: TreeSpecies = 'pine', place: TreePlace = 'forest'): WorldResourceVisual {
   registerFrame(scene, PINE_TREE_KEY, { name: PINE_SPROUT_FRAME_NAME, rect: PINE_SPROUT_FRAME });
   registerFrame(scene, PINE_TREE_KEY, { name: PINE_YOUNG_FRAME_NAME, rect: PINE_YOUNG_FRAME });
 
   let textureKey = PINE_TREE_KEY;
-  let frameName = stage === 'sprout' ? PINE_SPROUT_FRAME_NAME : stage === 'young' ? PINE_YOUNG_FRAME_NAME : PINE_TREE_FRAME_NAME;
+  let frameName: string | number = stage === 'sprout' ? PINE_SPROUT_FRAME_NAME : stage === 'young' ? PINE_YOUNG_FRAME_NAME : PINE_TREE_FRAME_NAME;
   if (species === 'birch') {
     registerFrame(scene, BIRCH_TREE_KEY, { name: BIRCH_TREE_FRAME_NAME, rect: BIRCH_TREE_FRAME });
     textureKey = BIRCH_TREE_KEY;
     frameName = BIRCH_TREE_FRAME_NAME;
+  } else {
+    const look = treeLookAt(col, row, place);
+    if (look !== 'pine' && scene.textures.exists(CHERRY_TREE_KEY)) {
+      textureKey = CHERRY_TREE_KEY;
+      frameName = look === 'leafy' && stage === 'mature' ? LEAFY_TREE_MATURE_FRAME : CHERRY_TREE_FRAMES[stage];
+    }
   }
 
   const tile = tileSize * DISPLAY_SCALE;

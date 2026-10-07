@@ -36,6 +36,7 @@ Avaliado por tamanho real de código, estado, licença e se o README bate com o 
 | **Armprod Valley** (`farming/`) | Godot 4 / C# (não é Unity) | 15 scripts, ~1,5 mil linhas | sem licença | ativo | **C — pontual**: minigame de pesca com barra (`FishBar.cs`), save por célula (`TileSaveData`). |
 | **jam-ready-assets** (`graphics/`) | catálogo de assets | 129 mil arquivos em 330 pacotes (só nomes e licenças: a arte fica no Git LFS e não foi baixada) | por pacote (`License.txt`) — maioria CC0 (Kenney) | ativo | **Catálogo**: bom pra ÁUDIO (CC0) e utilitários; arte quase toda de outro estilo. Baixar um pacote: `git lfs pull --include "<pacote>/**"` dentro da pasta. |
 | **free-game-dev-resources** (`audio/`) | índice (README) | 155 links | sem licença | ativo | **C — índice**: ferramentas, bibliotecas de áudio, fontes, shaders. Lugar pra procurar, não pra estudar código. |
+| **hitstop** (`gamefeel/`) | motor próprio em Canvas 2D / TS (não é Phaser) | ação 2D estilo Hollow Knight: motor + jogo + editores | sem licença | ativo | **B — sensação de impacto**: `docs/game-feel.md` e `src/engine/feel/feel.ts` (congelamento no golpe, tremor por trauma², empurrão de câmera, tudo de uma intensidade só), golpe guardado no `player.ts`, ímã de coleta no `pickup.ts`. Já aplicado em `systems/impact.ts`. As partículas de lá são retângulos desenhados por código (proibido aqui). |
 | ~~GreenValley~~ | — | **nenhum** (só 5 arquivos .md) | — | — | **Descartado**: a descrição ("tudo em Canvas 2D") não tem código por trás. |
 
 ## Por sistema
@@ -88,6 +89,7 @@ Avaliado por tamanho real de código, estado, licença e se o README bate com o 
 - **FarmSim** `scenes/components/hit_component.gd`, `hurt_component.gd`, `damage_component.gd` (quem bate × quem apanha separados).
 - **Serfdom** / **FarmSim** máquinas de estado (`Scripts/states/`, `scripts/state_machine/`) — o mesmo padrão serve pra IA.
 - **Phaser** `phaser-examples/public/src/physics/` (sobreposição, corpos).
+- **hitstop** `docs/game-feel.md`, `src/engine/feel/feel.ts` (pacote de impacto: congelamento + tremor por trauma + empurrão de câmera — já aplicado em `systems/impact.ts`), `src/game/actors/player.ts` (golpe guardado, aparar golpes).
 - Lacuna: nenhuma referência de inimigo com perseguição/ataque elaborados.
 
 ### 🌦️ Clima e 🌅 tempo

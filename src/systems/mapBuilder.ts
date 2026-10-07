@@ -9,6 +9,9 @@ import {
   FENCE_EDGE_H_INDEX,
   FENCE_EDGE_V_INDEX,
   PINE_TREE_KEY,
+  CHERRY_TREE_KEY,
+  CHERRY_TREE_FRAMES,
+  LEAFY_TREE_MATURE_FRAME,
   PINE_TREE_FRAME_NAME,
   SHIPPING_BIN_KEY,
   SHIPPING_BIN_FRAME_NAME,
@@ -25,6 +28,7 @@ import { currentHouseLevel, fenceSkin } from './upgradeLevels';
 import { addBuildingShadows, createGroundShadow } from './shadow';
 import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
+import { treeLookAt } from './treeVariety';
 import { GROUND_TILESETS } from './groundTilesets';
 import { buildWaterAutotile } from './waterAutotile';
 import { attachGroundPatches, buildGroundPatches } from './groundPatches';
@@ -521,7 +525,12 @@ export function buildFarmDecorations(
     const shadow = createGroundShadow(scene, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
     shadow.setDepth(STATIC_SHADOW_DEPTH);
 
-    const tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
+    // De vez em quando, uma cerejeira florida ou a árvore verde no lugar do pinheiro (`systems/treeVariety.ts`).
+    const look = scene.textures.exists(CHERRY_TREE_KEY) ? treeLookAt(col, row, 'farm') : 'pine';
+    const tree =
+      look === 'pine'
+        ? scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME)
+        : scene.add.image(x, y, CHERRY_TREE_KEY, look === 'leafy' ? LEAFY_TREE_MATURE_FRAME : CHERRY_TREE_FRAMES.mature);
     tree.setOrigin(0.5, 1);
     tree.setScale(DISPLAY_SCALE);
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra
@@ -597,7 +606,9 @@ export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.
     const { name, rect } = level.frame;
     if (!texture.has(name)) texture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
   }
-  const house = scene.add.image(col0 * tile + level.offset.x, row0 * tile + level.offset.y, level.textureKey, level.frame?.name);
+  // Quadro SEMPRE explícito: sem nome, o Phaser usa o "primeiro quadro" da textura — que vira o 1º recorte acrescentado a ela (os
+  // remendos logo abaixo). Na 2ª vez que a Fazenda abria, a casa saía como a faixa de parede de um remendo e "sumia".
+  const house = scene.add.image(col0 * tile + level.offset.x, row0 * tile + level.offset.y, level.textureKey, level.frame?.name ?? '__BASE');
   house.setOrigin(0, 0);
   house.setScale(DISPLAY_SCALE);
   // Profundidade na última fileira sólida da arte (o jogador passa atrás do telhado e na frente da porta).

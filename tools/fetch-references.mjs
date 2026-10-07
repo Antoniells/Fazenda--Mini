@@ -22,6 +22,7 @@ const REFERENCES = [
   { dir: 'farming/ArmprodValley', repo: 'armprod/ArmprodValley' },
   { dir: 'graphics/jam-ready-assets', repo: 'series-ai/jam-ready-assets', env: { GIT_LFS_SKIP_SMUDGE: '1' } },
   { dir: 'audio/free-game-dev-resources', repo: 'jjones26/free-and-open-source-game-dev-resources' },
+  { dir: 'gamefeel/hitstop', repo: 'wrwcmaster/hitstop' },
 ];
 
 const git = (args, cwd, env = {}) => execFileSync('git', args, { cwd, stdio: 'inherit', env: { ...process.env, ...env } });

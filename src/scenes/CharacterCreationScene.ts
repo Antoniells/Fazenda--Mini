@@ -11,8 +11,6 @@ import {
   INVENTORY_LARGE_PANEL_FRAME_NAME,
   INVENTORY_LARGE_PANEL_RECT,
   INVENTORY_LARGE_PANEL_BORDER,
-  MENU_BACKGROUND_KEY,
-  MENU_BACKGROUND_PATH,
 } from '../data/ui';
 import { PROFILE_NAME_MAX_LENGTH } from '../systems/gameState';
 import { CHARACTER_IDS, DEFAULT_CHARACTER_ID, PLAYER_ANIM_FRAMES } from '../data/player';
@@ -24,6 +22,7 @@ import { PET_IDS, DEFAULT_PET_ID, getPetDefinition, getPetTextureKey } from '../
 import { preloadPetPreviews, ensurePetAnimations, petAnimKey } from '../systems/petSprites';
 import { startNewGame, save } from '../systems/saveManager';
 import { INTRO_SCENE_KEY } from './IntroScene';
+import { showMenuBackdrop } from './MenuBackdropScene';
 
 export const CHARACTER_CREATION_SCENE_KEY = 'CharacterCreationScene';
 const MAIN_MENU_SCENE_KEY = 'MainMenuScene';
@@ -56,6 +55,8 @@ const PREVIEW_SCALE = 4;
 const PORTRAIT_SCALE = 2;
 /** Preview do pet (a arte dele é bem menor que a do personagem, então o zoom também). */
 const PET_PREVIEW_SCALE = 3;
+/** Quanto a prévia do pet sobe em relação às setas, pra os pés não encostarem no nome dele. */
+const PET_PREVIEW_LIFT_PX = 18;
 const ARROW_OFFSET_X = 110;
 const ARROW_WIDTH = 46;
 /** Texturas da prévia (redesenhadas a cada troca de peça) e a animação de repouso dela. */
@@ -126,7 +127,6 @@ export class CharacterCreationScene extends Phaser.Scene {
 
   preload(): void {
     // Auto-suficiente, igual `MainMenuScene`: `load.image` ignora keys que já estão no cache.
-    this.load.image(MENU_BACKGROUND_KEY, encodeURI(`/${MENU_BACKGROUND_PATH}`));
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
     this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
     preloadPetPreviews(this);
@@ -181,11 +181,12 @@ export class CharacterCreationScene extends Phaser.Scene {
 
     // Pet: sprite no centro, setas dos lados, nome embaixo.
     const petY = top + 266;
-    this.petSprite = this.add.sprite(rightX, petY, getPetTextureKey(PET_IDS[this.petIndex]), 0);
+    // O bicho fica na parte de baixo do quadro (32 px): centrado na altura das setas, os pés caíam em cima do nome — sobe um pouco.
+    this.petSprite = this.add.sprite(rightX, petY - PET_PREVIEW_LIFT_PX, getPetTextureKey(PET_IDS[this.petIndex]), 0);
     this.petSprite.setScale(PET_PREVIEW_SCALE);
     this.petSprite.setDepth(3);
-    this.petLabel = this.addText(rightX, top + 306, '', 14, INK, 'bold');
-    this.addText(rightX, top + 324, '< >  ou  Shift + ← →: trocar de pet', 11, INK_SOFT);
+    this.petLabel = this.addText(rightX, top + 312, '', 14, INK, 'bold');
+    this.addText(rightX, top + 330, '< >  ou  Shift + ← →: trocar de pet', 11, INK_SOFT);
     this.createButton(rightX - ARROW_OFFSET_X, petY, '<', () => this.selectPet(-1), ARROW_WIDTH);
     this.createButton(rightX + ARROW_OFFSET_X, petY, '>', () => this.selectPet(1), ARROW_WIDTH);
     this.refreshPetPreview(false);
@@ -313,11 +314,9 @@ export class CharacterCreationScene extends Phaser.Scene {
     if (!texture.has(name)) texture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
   }
 
-  /** Mesma fazenda do menu, escurecida (mesmo tratamento da tela de Slots) pra o painel destacar. */
-  private buildBackground(centerX: number, centerY: number): void {
-    const background = this.add.image(centerX, centerY, MENU_BACKGROUND_KEY);
-    background.setScale(Math.max(this.scale.width / background.width, this.scale.height / background.height));
-    background.setDepth(0);
+  /** A mesma fazendinha animada do menu (`scenes/MenuBackdropScene.ts`), escurecida (mesmo tratamento da tela de Slots) pra o painel destacar. */
+  private buildBackground(_centerX: number, _centerY: number): void {
+    showMenuBackdrop(this);
 
     const dim = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.45);
     dim.setOrigin(0, 0);

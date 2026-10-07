@@ -14,6 +14,7 @@ import { RESOURCES } from '../data/resources';
 import { TOOL_TIER_NAMES, TOOL_TIER_POWER, getToolTierInfo } from '../data/toolProgression';
 import Phaser from 'phaser';
 import { enchantMultiplier } from './enchanting';
+import { impact } from './impact';
 
 /** O tier da Picareta selecionada (0 = Madeira … 3 = Ouro); `null` se a ferramenta na mão não é uma Picareta. */
 function selectedPickaxeTier(): number | null {
@@ -76,7 +77,7 @@ export class OreInteractable implements Interactable {
       playEffect(scene, ROCK_BREAK_SOUND);
       const { x, y } = this.visual.sprite;
       const amount = rollDoubleDrop(scene, Phaser.Math.Between(ore.drop[0], ore.drop[1]), x, y - 40);
-      scene.cameras.main.shake(110, 0.004);
+      impact(scene, { strength: 0.3 }); // O veio racha (`systems/impact.ts`).
       awardXp(scene, 'mineSmall', x, y - 16);
       spawnLoot(scene, this.player, x, y, { category: 'resource', id: ore.dropId, amount });
       console.log(`${ore.name} quebrado: +${amount} ${RESOURCES[ore.dropId]?.name ?? ore.dropId}.`);

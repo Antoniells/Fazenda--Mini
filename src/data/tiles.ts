@@ -72,15 +72,15 @@ export const DIRT_BLOB_TOP_LEFT = dirtBlobIndex(8, 8);
 export const DIRT_BLOB_TOP_RIGHT = dirtBlobIndex(11, 8);
 export const DIRT_BLOB_BOTTOM_LEFT = dirtBlobIndex(8, 11);
 export const DIRT_BLOB_BOTTOM_RIGHT = dirtBlobIndex(11, 11);
-export const DIRT_BLOB_TOP_VARIANTS = [dirtBlobIndex(9, 8), dirtBlobIndex(10, 8)];
-export const DIRT_BLOB_BOTTOM_VARIANTS = [dirtBlobIndex(9, 11), dirtBlobIndex(10, 11)];
-export const DIRT_BLOB_LEFT_VARIANTS = [dirtBlobIndex(8, 9), dirtBlobIndex(8, 10)];
-export const DIRT_BLOB_RIGHT_VARIANTS = [dirtBlobIndex(11, 9), dirtBlobIndex(11, 10)];
-// Só o tile 100% limpo (sem nenhum resquício de verde nos cantos, ver
-// comentário acima) — os outros dois candidatos de preenchimento deste
-// grupo têm uma pontinha verde bem no canto, insignificante isolada mas
-// perceptível quando repetida lado a lado no meio de uma mancha grande.
-export const DIRT_BLOB_FILL_VARIANTS = [dirtBlobIndex(10, 10)];
+// Bordas e preenchimento: varredura pixel a pixel (2026-10-07) — em cada lado do grupo, uma das duas peças tem a franja de grama
+// só pela METADE (8 das 16 colunas sem verde: é a peça que encosta no "buraco" do meio do grupo) e, colocada no meio de uma borda
+// reta, deixa a franja quebrada; ficam só as peças de franja contínua. O preenchimento sem NENHUM pixel verde é o (9, 10) — o
+// (10, 10) tem dois raminhos verdes nos cantos que, repetidos lado a lado, viram uma grade de pontinhas verdes no meio da terra.
+export const DIRT_BLOB_TOP_VARIANTS = [dirtBlobIndex(10, 8)];
+export const DIRT_BLOB_BOTTOM_VARIANTS = [dirtBlobIndex(9, 11)];
+export const DIRT_BLOB_LEFT_VARIANTS = [dirtBlobIndex(8, 9)];
+export const DIRT_BLOB_RIGHT_VARIANTS = [dirtBlobIndex(11, 10)];
+export const DIRT_BLOB_FILL_VARIANTS = [dirtBlobIndex(9, 10)];
 
 export const FENCE_TILESET_KEY = 'fence-white';
 export const FENCE_TILESET_PATH = 'Objects/Exterior/Fence and Bridge/White Fence.png';
@@ -326,6 +326,20 @@ export const BIRCH_TREE_KEY = 'birch-tree';
 export const BIRCH_TREE_PATH = 'Objects/Tree/Common/No Shadow/Birch Tree.png';
 export const BIRCH_TREE_FRAME_NAME = 'birch-tree-full';
 export const BIRCH_TREE_FRAME = { x: 96, y: 0, width: 32, height: 48 };
+
+/**
+ * Cerejeira (`Crops/Fruits Tree/Spring/Cherry Tree.png`, 14 quadros de 32 x 48 numa fileira): a árvore rosa RARA da Fazenda e da Floresta
+ * (ver `systems/treeVariety.ts`) e do fundo do menu. A folha traz o crescimento inteiro — semente (0), broto (1), muda (2) e a árvore
+ * adulta em várias fases (3 rosa, 4 rosa florida, 5 com frutas, 6 verde, 7 vermelha, 8 de neve), toco (9-10) e silhuetas brancas (11-13);
+ * usados: broto, muda, a adulta florida e — a árvore verde da Fazenda — a adulta verde. Carregada como spritesheet (a mesma chave em toda cena — o 1º formato carregado é o que fica).
+ */
+export const CHERRY_TREE_KEY = 'cherry-tree';
+export const CHERRY_TREE_PATH = 'Crops/Fruits Tree/Spring/Cherry Tree.png';
+export const CHERRY_TREE_FRAME_WIDTH = 32;
+export const CHERRY_TREE_FRAME_HEIGHT = 48;
+export const CHERRY_TREE_FRAMES = { sprout: 1, young: 2, mature: 4 } as const;
+/** A mesma árvore adulta com a copa verde (a árvore verde da Fazenda, `systems/treeVariety.ts`). */
+export const LEAFY_TREE_MATURE_FRAME = 6;
 
 /**
  * Pedras/rochas decorativas (Floresta/Pedreira): `Exterior/Deep Forest/deep

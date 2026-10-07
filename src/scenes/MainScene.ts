@@ -11,6 +11,10 @@ import {
   TILE_SIZE,
   PINE_TREE_KEY,
   PINE_TREE_PATH,
+  CHERRY_TREE_KEY,
+  CHERRY_TREE_PATH,
+  CHERRY_TREE_FRAME_WIDTH,
+  CHERRY_TREE_FRAME_HEIGHT,
   PINE_TREE_FRAME_NAME,
   PINE_TREE_FRAME,
   PINE_SPROUT_FRAME_NAME,
@@ -55,6 +59,7 @@ import { preloadPet } from '../systems/petSprites';
 import { PetCompanion } from '../systems/petCompanion';
 import { PET_ROAM } from '../data/pets';
 import { CROPS, CARROT, ALL_CROPS_ICONS_KEY, ALL_CROPS_ICONS_PATH } from '../data/crops';
+import { BAG_ICON_FRAME_SIZE, BAG_ICON_KEY, BAG_ICON_PATH } from '../data/upgrades';
 import { ensureGolden } from '../systems/paletteSwap';
 import { DECORATIONS, WELL, DecorationDefinition, MORNING_ANIMATION_HOURS } from '../data/decorations';
 import { HOE, SICKLE, AXE, PICKAXE, HAMMER, COPPER_AXE, COPPER_PICKAXE, IRON_AXE, GOLD_AXE, IRON_PICKAXE, GOLD_PICKAXE, COPPER_WATERING_CAN, IRON_WATERING_CAN, GOLD_WATERING_CAN } from '../data/tools';
@@ -279,6 +284,8 @@ export class MainScene extends Phaser.Scene {
       frameHeight: TILE_SIZE,
     });
     this.load.image(PINE_TREE_KEY, encodeURI(`/${PINE_TREE_PATH}`));
+    // A cerejeira rara no lugar de alguns pinheiros (`systems/treeVariety.ts`) — a Floresta usa a mesma textura.
+    this.load.spritesheet(CHERRY_TREE_KEY, encodeURI(`/${CHERRY_TREE_PATH}`), { frameWidth: CHERRY_TREE_FRAME_WIDTH, frameHeight: CHERRY_TREE_FRAME_HEIGHT });
     this.load.spritesheet(SOIL_TILESET_KEY, encodeURI(`/${SOIL_TILESET_PATH}`), {
       frameWidth: TILE_SIZE,
       frameHeight: TILE_SIZE,
@@ -385,6 +392,7 @@ export class MainScene extends Phaser.Scene {
     this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
     this.load.image(EXTRAS_UI_KEY, encodeURI(`/${EXTRAS_UI_PATH}`));
     this.load.image(SHOP_TAB_RIBBONS_KEY, encodeURI(`/${SHOP_TAB_RIBBONS_PATH}`));
+    this.load.spritesheet(BAG_ICON_KEY, encodeURI(`/${BAG_ICON_PATH}`), { frameWidth: BAG_ICON_FRAME_SIZE, frameHeight: BAG_ICON_FRAME_SIZE }); // Ícone da melhoria da Bolsa (loja do Marceneiro).
     this.load.image(CLOSE_BUTTON_SHEET_KEY, encodeURI(`/${CLOSE_BUTTON_SHEET_PATH}`));
     this.load.image(BACKPACK_ICON_KEY, encodeURI(`/${BACKPACK_ICON_PATH}`));
     // Animais (galinhas): folhas das cores, ícone do ovo (loot/Bolsa/venda) e o ícone da Galinha na Loja.

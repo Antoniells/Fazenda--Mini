@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameState } from './gameState';
 import { save as saveGame } from './saveManager';
 import { finishHordeDefeat } from './horde';
+import { slowMotion } from './impact';
 
 const MAIN_SCENE_KEY = 'MainScene';
 
@@ -15,6 +16,9 @@ export function deathCoinPenalty(coins: number): number {
   return Math.min(coins, Math.max(DEATH_COIN_PENALTY, Math.floor(coins * DEATH_COIN_FRACTION)));
 }
 const FADE_OUT_MS = 700;
+/** Câmera lenta do desmaio: quanto tempo (relógio real) e a que velocidade. */
+const DEATH_SLOWMO_MS = 900;
+const DEATH_SLOWMO_SCALE = 0.35;
 
 /** Dados que a `MainScene` recebe ao acordar depois de desmaiar (ver `MainScene.init`). */
 export interface WakeUpAfterDeath {
@@ -43,6 +47,8 @@ export function handlePlayerDeath(scene: Phaser.Scene): void {
   isHandlingDeath = true;
 
   const camera = scene.cameras.main;
+  // O desmaio em câmera lenta (0,35x por 0,9 s — `systems/impact.ts`): o momento pesa antes de a tela escurecer (o escurecer também anda devagar).
+  slowMotion(scene, DEATH_SLOWMO_MS, DEATH_SLOWMO_SCALE);
   camera.fadeOut(FADE_OUT_MS, 0, 0, 0);
   camera.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
     const coinsLost = deathCoinPenalty(gameState.inventory.getCoins());

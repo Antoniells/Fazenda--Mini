@@ -21,8 +21,11 @@ export interface LootSpec {
 const DROP_SIZE_PX = 22;
 /** Um monte grande (ex.: 14 de madeira) vira no máximo esta quantidade de itens no chão, cada um carregando parte do total. */
 const MAX_STACKS = 6;
-/** Distância (px) do jogador até o item pra ele ser "sugado" pra bolsa. */
-const PICKUP_RADIUS_PX = 48;
+/**
+ * Distância (px) do jogador até o item pra ele ser "sugado" pra bolsa: 2,5 células. Era 48 (1,5 célula) e, com o espalhamento do pulo, o
+ * playtest deixou ~40% das pedras no chão; o ímã do hitstop (estudado em `reference-projects/hitstop`) puxa de ~2,5 tiles.
+ */
+const PICKUP_RADIUS_PX = 80;
 /** Distância (px) em que o item chegou no jogador e vira inventário de verdade. */
 const COLLECT_RADIUS_PX = 14;
 /** Altura (px) do corpo do jogador acima dos pés — pra onde o item voa. */

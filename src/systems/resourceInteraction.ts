@@ -13,6 +13,7 @@ import { popText } from './floatingText';
 import { playEffect, playRandomEffect } from './soundEffects';
 import { AXE_HIT_SOUNDS, TREE_FALL_SOUND, ROCK_HIT_SOUNDS, ROCK_BREAK_SOUND } from '../data/audio';
 import { enchantMultiplier } from './enchanting';
+import { impact } from './impact';
 
 /** Sprite + sombra (opcional) de um recurso no mundo — ambos destruídos juntos ao colher. */
 export interface HarvestableVisual {
@@ -51,6 +52,8 @@ const HIT_SHAKE_DURATION_MS = 40;
 export function playHitReaction(sprite: Phaser.GameObjects.Image): void {
   const scene = sprite.scene;
   const baseX = sprite.x;
+  // Cada golpe de Machado/Picareta congela um instante (~40 ms, sem tremor): a lâmina "encontra" a madeira/pedra (`systems/impact.ts`).
+  impact(scene, { strength: 0.1, noShake: true });
 
   scene.tweens.add({
     targets: sprite,
@@ -172,7 +175,7 @@ export class TreeInteractable implements Interactable {
       const wood = Phaser.Math.Between(12, 16) * doubled;
       const acorns = Phaser.Math.Between(0, 2) * doubled;
       // O loot cai no chão, ao pé da árvore (posição lida ANTES de `clearHarvestedNode` destruir o sprite) — o jogador pega ao chegar perto.
-      scene.cameras.main.shake(140, 0.005); // A árvore cai: a tela sente.
+      impact(scene, { strength: 0.5 }); // A árvore cai: a tela sente (`systems/impact.ts`).
       awardXp(scene, 'chop', x, y - 16);
       spawnLoot(scene, this.player, x, y, { category: 'resource', id: WOOD.id, amount: wood });
       if (acorns > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: ACORN.id, amount: acorns });
@@ -236,7 +239,7 @@ export class RockInteractable implements Interactable {
 
       const rockScene = this.visual.sprite.scene;
       const stone = rollDoubleDrop(rockScene, this.big ? Phaser.Math.Between(8, 10) : Phaser.Math.Between(1, 3), this.visual.sprite.x, this.visual.sprite.y - 40);
-      rockScene.cameras.main.shake(110, 0.004); // A pedra racha.
+      impact(rockScene, { strength: this.big ? 0.45 : 0.3 }); // A pedra racha (`systems/impact.ts`).
       awardXp(rockScene, this.big ? 'mineBig' : 'mineSmall', this.visual.sprite.x, this.visual.sprite.y - 16);
       spawnLoot(this.visual.sprite.scene, this.player, this.visual.sprite.x, this.visual.sprite.y, { category: 'resource', id: STONE.id, amount: stone });
       console.log(`${this.big ? 'Rocha' : 'Pedra'} quebrada: +${stone} Pedra.`);

@@ -286,7 +286,12 @@ interface InventorySlotContent {
   discovered: boolean;
   /** Índice do slot que pode ser arrastado para OUTRO (Fase 9 — drag and drop, pedido explícito do usuário) — só a Mochila usa isso; `undefined` desativa o arrasto (Agricultura é só leitura). */
   slotIndex?: number;
+  /** Slot TRANCADO da Bolsa (`Inventory.isSlotLocked`): moldura escura e o aviso de como destrancar no balão. */
+  locked?: boolean;
 }
+
+/** O balão de um slot trancado vazio. */
+const LOCKED_SLOT_TEXT = 'Trancado: compre a Bolsa maior com o Tomás (Marceneiro)';
 
 /**
  * Tela de Inventário (Fase 8, tecla E), reformulada para usar exatamente o
@@ -906,7 +911,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       // caderno e guardar tira da Hotbar — o item nunca aparece duas vezes.
       const sourceSlot = this.cellSlotIndex[sourceIndex];
       const targetSlot = targetIndex === -1 ? undefined : this.cellSlotIndex[targetIndex];
-      const validDrop = targetIndex !== -1 && targetIndex !== sourceIndex && sourceSlot !== undefined && targetSlot !== undefined;
+      const validDrop = targetIndex !== -1 && targetIndex !== sourceIndex && sourceSlot !== undefined && targetSlot !== undefined && this.currentInventory.canSwapSlots(sourceSlot, targetSlot);
       if (validDrop) this.currentInventory.swapSlots(sourceSlot!, targetSlot!);
 
       // Encaixe válido: tween curto e rápido (já "encaixou"). Inválido:
@@ -958,6 +963,9 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     const onClick = isHotbarSlot ? () => this.onSelectHotbarSlot(slotIndex) : null;
     const ref = inventory.getSlot(slotIndex);
     const visual = ref ? resolveSlotVisual(ref) : null;
+    const locked = inventory.isSlotLocked(slotIndex);
+    // Trancado e vazio: nada entra (sem `slotIndex`, soltar um item aqui não vale).
+    if (locked && (!visual || !ref)) return { textureKey: '', iconFrame: '', badge: '', tint, name: LOCKED_SLOT_TEXT, onClick: null, discovered: true, locked };
     if (!visual || !ref) return { textureKey: '', iconFrame: '', badge: '', tint, name: '', onClick, discovered: true, slotIndex };
 
     const isArmor = ref.category === 'armor';
@@ -980,6 +988,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       onClick: isArmor ? () => inventory.toggleArmor(ref.id) : onClick,
       discovered: true,
       slotIndex,
+      locked,
     };
   }
 
@@ -1063,7 +1072,9 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       // creme — pedido explícito do usuário, mesma folha `inventory.png`,
       // só a fileira de cima em vez da de baixo.
       const isDark = isAgriculture && !!entry && !entry.discovered;
-      slot.frame.setTexture(INVENTORY_PANEL_KEY, isDark ? INVENTORY_SLOT_DARK_FRAME_NAME : INVENTORY_SLOT_FRAME_NAME);
+      // Slot trancado da Bolsa: o mesmo slot escuro, sem o "?" (e, num save de antes da trava, ainda com o item que estiver nele).
+      const isLocked = isBackpack && !!entry?.locked;
+      slot.frame.setTexture(INVENTORY_PANEL_KEY, isDark || isLocked ? INVENTORY_SLOT_DARK_FRAME_NAME : INVENTORY_SLOT_FRAME_NAME);
       slot.frame.setTint(entry ? entry.tint : UNSELECTED_TINT);
       // O drag pode ter movido o ícone pra fora da célula — sempre volta
       // pro lugar fixo antes de decidir o que mostrar nele (ver `dragend`),

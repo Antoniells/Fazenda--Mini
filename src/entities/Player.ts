@@ -14,6 +14,7 @@ import { createGroundShadow } from '../systems/shadow';
 import { playEffect } from '../systems/soundEffects';
 import { HURT_SOUND } from '../data/audio';
 import { getMoveSpeedMultiplier } from '../systems/skills';
+import { impact } from '../systems/impact';
 
 export type Facing = 'down' | 'up' | 'side';
 
@@ -357,7 +358,7 @@ const col = this.col + dCol;
     scene.time.delayedCall(160, () => {
       if (this.sprite.active) this.sprite.clearTint();
     });
-    scene.cameras.main.shake(130, 0.004);
+    impact(scene, { strength: 0.6 }); // Levar dano congela um instante e sacode (`systems/impact.ts`).
     playEffect(scene, HURT_SOUND);
   }
 
