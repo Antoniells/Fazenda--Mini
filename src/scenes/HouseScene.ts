@@ -223,7 +223,7 @@ export class HouseScene extends Phaser.Scene {
     });
 
     // Sons de passo de madeira (a "ponte" é o único piso de tábua do jogo).
-    attachFootstepSounds(this, () => 'bridge');
+    attachFootstepSounds(this, () => 'wood');
 
     // Pisar na porta = sair.
     onPlayerStepped(this, (col, row) => {

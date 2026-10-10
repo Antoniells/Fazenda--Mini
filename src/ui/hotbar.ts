@@ -14,17 +14,29 @@ const ICON_TARGET_PX = 16 * BAR_SCALE * ICON_FILL_RATIO;
 const SELECTED_ICON_FACTOR = 1.3;
 const UNSELECTED_ICON_FACTOR = 0.9;
 const MARGIN_BOTTOM = 40;
+/** Com a barra no TOPO (personagem lá embaixo, `ui/hotbarDock.ts`): mesma margem dos corações e do relógio. */
+const MARGIN_TOP = 20;
+/** Avisos "em cima da Hotbar" com ela no topo nascem ABAIXO dela (o texto sobe ~34 px e para antes de encostar nela). */
+const NOTICE_BELOW_TOP_BAR_PX = 44;
 /** Alfa do fundo da barra (1 = opaco): leve transparência pra a barra não pesar sobre o mundo. Só a imagem de fundo — ícones e contadores seguem opacos. */
 const BAR_ALPHA = 0.8;
 
+/** A barra está no topo agora? (uma Hotbar só, a da `UIScene` — guardado aqui pra `hotbarTopCenter` não depender da instância). */
+let dockedTop = false;
+
+/** Topo da barra (px de tela) na posição de sempre, embaixo — a divisa que `ui/hotbarDock.ts` usa pra decidir quando ela sobe. */
+export function hotbarBottomTopY(scene: Phaser.Scene): number {
+  return scene.scale.height - MARGIN_BOTTOM - HOTBAR_BAR_RECT.height * BAR_SCALE;
+}
+
 /**
- * Centro horizontal e TOPO (px de tela) da barra — pra quem precisa mostrar algo "em cima da Hotbar" sem depender de uma
- * instância (ex.: o aviso de Regador Vazio, `systems/farmlandInteraction.ts`, que roda antes/fora da `UIScene` dona da Hotbar).
- * Mesmas constantes/contas do construtor abaixo — fonte única.
+ * Centro horizontal e ponto (px de tela) pra mostrar um aviso "da Hotbar" sem depender de uma instância (ex.: o aviso de Regador Vazio,
+ * `systems/farmlandInteraction.ts`, que roda antes/fora da `UIScene` dona da Hotbar): o TOPO da barra embaixo; com ela no topo da tela,
+ * logo ABAIXO dela. Mesmas constantes/contas do construtor abaixo — fonte única.
  */
 export function hotbarTopCenter(scene: Phaser.Scene): { x: number; y: number } {
   const barHeight = HOTBAR_BAR_RECT.height * BAR_SCALE;
-  return { x: scene.scale.width / 2, y: scene.scale.height - MARGIN_BOTTOM - barHeight };
+  return { x: scene.scale.width / 2, y: dockedTop ? MARGIN_TOP + barHeight + NOTICE_BELOW_TOP_BAR_PX : hotbarBottomTopY(scene) };
 }
 
 interface HotbarSlotView {
@@ -43,7 +55,8 @@ interface HotbarSlotView {
  * Hotbar (Fase 8): substitui a `SeedBar` — 8 slots sempre visíveis na parte
  * de baixo da tela, mostrando o que estiver em `Inventory.getSlot(0..7)`
  * (ferramentas, sementes ou decorações, ver `data/items.ts`), não só
- * sementes.
+ * sementes. Sobe pro topo da tela enquanto o personagem está lá embaixo (`setDockedTop`, regra em `ui/hotbarDock.ts`), pra não
+ * tampar o chão em volta dele.
  *
  * O fundo é a barra pronta de 8 compartimentos de `Slots.png`
  * (`HOTBAR_BAR_FRAME_NAME`) — uma única imagem, não 8 molduras ladrilhadas
@@ -66,6 +79,7 @@ export class Hotbar {
   private readonly bar: Phaser.GameObjects.Image;
   private readonly hitZones: Phaser.GameObjects.Zone[] = [];
   private hidden = false;
+  private atTop = false;
 
   constructor(scene: Phaser.Scene, onSelect: (index: number) => void, tooltip: Tooltip) {
     this.scene = scene;
@@ -247,6 +261,30 @@ export class Hotbar {
     } else {
       this.lastSelected = -1; // Reaplica o destaque do slot ativo.
     }
+  }
+
+  /**
+   * Leva a barra inteira pro topo da tela (`top`) ou de volta pra baixo. As peças mudam de lugar na hora e o fundo reaparece num
+   * esmaecer curto; o destaque do slot ativo é refeito na nova altura (próximo `refresh`).
+   */
+  setDockedTop(top: boolean): void {
+    if (top === this.atTop) return;
+    this.atTop = top;
+    dockedTop = top;
+    const barHeight = HOTBAR_BAR_RECT.height * BAR_SCALE;
+    const baseY = top ? MARGIN_TOP + barHeight / 2 : this.scene.scale.height - MARGIN_BOTTOM - barHeight / 2;
+
+    this.scene.tweens.killTweensOf(this.bar);
+    this.bar.setY(baseY).setAlpha(0);
+    this.scene.tweens.add({ targets: this.bar, alpha: BAR_ALPHA, duration: 140, ease: 'Sine.easeOut' });
+    for (const zone of this.hitZones) zone.setY(baseY);
+    for (const slot of this.slots) {
+      slot.baseY = baseY;
+      slot.countText.setY(baseY + barHeight / 2 - 2);
+      this.scene.tweens.killTweensOf(slot.icon);
+      slot.icon.setY(baseY);
+    }
+    this.lastSelected = -1;
   }
 
   /** Mostra o nome do item do slot sob o ponteiro; slot vazio não mostra balão. */

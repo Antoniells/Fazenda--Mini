@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import { gameState } from '../systems/gameState';
-import { Hotbar, hotbarTopCenter } from '../ui/hotbar';
+import { Hotbar, hotbarBottomTopY, hotbarTopCenter } from '../ui/hotbar';
+import { shouldDockHotbarTop } from '../ui/hotbarDock';
 import { resolveSlotVisual } from '../data/items';
 import { TimeMoneyHud } from '../ui/timeMoneyHud';
 import { HealthHud } from '../ui/healthHud';
 import { ArmorHud } from '../ui/armorHud';
+import { HungerHud } from '../ui/hungerHud';
 import { WeatherOverlay, WORLD_MENU_OPEN_KEY } from '../ui/weatherOverlay';
 import { SKILLS, SKILLS_TAB_ICON } from '../data/skills';
 import { RAIN_KEY, RAIN_PATH, RAIN_FRAME_SIZE, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
@@ -212,9 +214,13 @@ export function closeChestMenu(): void {
  */
 export class UIScene extends Phaser.Scene {
   private hotbar!: Hotbar;
+  /** A Hotbar está no topo da tela (personagem lá embaixo, `ui/hotbarDock.ts`)? */
+  private hotbarAtTop = false;
   private timeMoneyHud!: TimeMoneyHud;
   private healthHud!: HealthHud;
   private armorHud!: ArmorHud;
+  /** A barra de fome, abaixo dos corações (`ui/hungerHud.ts`). */
+  private hungerHud!: HungerHud;
   private weatherOverlay!: WeatherOverlay;
   private inventoryScreen!: InventoryScreen;
   private furnaceMenu!: FurnaceMenu;
@@ -270,6 +276,8 @@ export class UIScene extends Phaser.Scene {
 
     this.armorHud = new ArmorHud(this);
     this.armorHud.refresh(getPlayerDefense());
+    this.hungerHud = new HungerHud(this);
+    this.hungerHud.refresh(gameState.hunger.getSatiety());
 
     // Mesma mutação central usada pelo teclado/scroll (`requestHotbarSelect`)
     // — clicar num slot da aba Mochila é só mais um jeito de trocar o slot.
@@ -442,6 +450,7 @@ export class UIScene extends Phaser.Scene {
     this.timeMoneyHud.refreshTime(gameState.gameClock.getDay(), gameState.gameClock.getTimeString(), gameState.gameClock.getHours());
     this.healthHud.refresh(gameState.playerHealth.getHp(), gameState.playerHealth.getMaxHp());
     this.armorHud.refresh(getPlayerDefense());
+    this.hungerHud.refresh(gameState.hunger.getSatiety());
     this.weatherOverlay.refresh(gameState.weather.raining);
     this.weatherOverlay.setHiddenForMenu(this.registry.get(WORLD_MENU_OPEN_KEY) === true); // Menu da cena do mapa aberto: a chuva não o cobre.
     if (this.inventoryScreen.isOpen()) this.inventoryScreen.refresh(gameState.inventory);
@@ -456,6 +465,15 @@ export class UIScene extends Phaser.Scene {
     this.questTracker.refresh(gameState.tutorialCompleted && objectives.length > 0 ? objectives.map((line) => `• ${line}`).join('\n') : null);
   }
 
+  /** Os pés do personagem em px de tela: o alvo que a câmera do mapa ativo segue (`systems/cameraSetup.ts`). `null` sem mapa/sem alvo. */
+  private playerScreenY(): number | null {
+    const mapScene = this.scene.manager.getScenes(true).find((scene) => scene.scene.key !== UI_SCENE_KEY && scene.scene.key !== MAIN_MENU_SCENE_KEY);
+    const camera = mapScene?.cameras.main as (Phaser.Cameras.Scene2D.Camera & { _follow?: { y: number } | null }) | undefined;
+    const target = camera?._follow;
+    if (!camera || !target) return null;
+    return camera.y + (target.y - camera.worldView.y) * camera.zoom;
+  }
+
   update(): void {
     if (isDialogueOpen()) dialogueSeenOpenAt = Date.now(); // Ver `escapeTogglesPause`.
     this.collectSmelted(); // As barras prontas caem na Bolsa na hora, em qualquer cena.
@@ -463,6 +481,11 @@ export class UIScene extends Phaser.Scene {
     // A dica do regador vazio só na Fazenda e fora da horda (`tutorial.setHintAllowed`): em outra cena ela espera, sem travar nada.
     tutorial.setHintAllowed(this.scene.isActive(MAIN_SCENE_KEY) && !gameState.horde.active);
     this.hotbar.setHidden(isInventoryOpen()); // Com o caderno aberto, a Hotbar aparece em cima dele (no estilo do livro).
+    // Personagem lá embaixo da tela: a Hotbar sobe pro topo pra não tampar o chão em volta dele. Com o painel do tutorial (que fica no
+    // topo, no centro) ela fica embaixo.
+    const tutorialPanelUp = tutorial.isRunning() || tutorial.isHint();
+    this.hotbarAtTop = shouldDockHotbarTop(this.hotbarAtTop, tutorialPanelUp ? null : this.playerScreenY(), hotbarBottomTopY(this));
+    this.hotbar.setDockedTop(this.hotbarAtTop);
     this.refresh();
   }
 }

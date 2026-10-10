@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { RAIN_KEY, RAIN_FRAMES, SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
+import { RAIN_KEY, RAIN_DROP_FRAMES, SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
 
 /** Escurecimento cinza da tela quando chove (0 = nenhum, 1 = opaco). */
 const RAIN_VEIL_ALPHA = 0.3;
@@ -8,6 +8,8 @@ const FADE_MS = 1500;
 /** Acima do mundo e do véu de dia/noite, abaixo de qualquer HUD (Hotbar/corações começam em depth 1000). */
 const VEIL_DEPTH = 3;
 const RAIN_DEPTH = 4;
+/** Inclinação das gotas (graus, no sentido da queda pra esquerda) — a mesma direção da velocidade delas. */
+const RAIN_TILT_DEGREES = 21;
 
 /**
  * Gotas batendo (`Objects/Props/Sprash.png`, o mesmo respingo azul de regar): a cada `SPLASH_INTERVAL_MS` nascem `SPLASHES_PER_TICK`
@@ -34,8 +36,8 @@ const INDOOR_SCENE_KEYS = ['CaveScene', 'CaveFloorScene', 'HouseScene', 'ShopInt
 
 /**
  * Clima na tela (chuva): um véu cinza-azulado por cima do mundo + partículas
- * de gotas caindo (arte real: `Objects/Props/Water props.png`, 4 riscos de
- * chuva de 16x16 — ver `data/effects.ts`). Vive na `UIScene` (persistente,
+ * de gotas caindo, uma a uma (arte real: os riscos de `Objects/Props/Water props.png`
+ * recortados um por um — ver `RAIN_DROP_FRAMES` em `data/effects.ts`). Vive na `UIScene` (persistente,
  * `scrollFactor` 0), então cobre qualquer mapa sem cada cena precisar
  * conhecer o clima; puramente visual — quem decide se chove é
  * `systems/weather.ts` (sorteio na virada do dia), aqui só se espelha
@@ -67,21 +69,26 @@ export class WeatherOverlay {
     this.veil.setDepth(VEIL_DEPTH);
     this.veil.setAlpha(0);
 
-    // Gotas nascem acima da tela, espalhadas na largura toda (+ folga pra
-    // vento), caem em diagonal pra esquerda e o risco é inclinado pra
-    // acompanhar a queda (ver `rotate`: atan(120/620) ≈ 11°).
+    // Cada gota é UM risco (`RAIN_DROP_FRAMES`, recortados da folha — antes era o quadro inteiro, com três riscos juntos). Nascem acima
+    // da tela, espalhadas na largura toda (+ folga à direita: o vento as leva pra esquerda), caem em diagonal e o risco inclina junto com
+    // a queda: `rotate` = atan(240 / 630) ≈ 21° (a velocidade média de lado sobre a de queda). Quatro por vez (pedido
+    // explícito: um pouco menos que os 6 riscos de antes — 2 quadros x 3 riscos).
+    for (const { name, rect } of RAIN_DROP_FRAMES) {
+      const texture = scene.textures.get(RAIN_KEY);
+      if (!texture.has(name)) texture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+    }
     this.rain = scene.add.particles(0, 0, RAIN_KEY, {
-      frame: RAIN_FRAMES,
-      x: { min: -60, max: width + 160 },
+      frame: RAIN_DROP_FRAMES.map((drop) => drop.name),
+      x: { min: -60, max: width + 360 },
       y: -30,
       lifespan: 1400,
-      speedX: { min: -140, max: -100 },
+      speedX: { min: -260, max: -220 },
       speedY: { min: 560, max: 700 },
-      rotate: 11,
-      scale: { min: 1.6, max: 2.4 },
+      rotate: RAIN_TILT_DEGREES,
+      scale: { min: 2, max: 3 },
       alpha: { start: 0.8, end: 0.5 },
       frequency: 14,
-      quantity: 2,
+      quantity: 4,
       emitting: false,
     });
     this.rain.setScrollFactor(0);

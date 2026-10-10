@@ -9,9 +9,9 @@ import {
   FENCE_EDGE_H_INDEX,
   FENCE_EDGE_V_INDEX,
   PINE_TREE_KEY,
-  CHERRY_TREE_KEY,
-  CHERRY_TREE_FRAMES,
-  LEAFY_TREE_MATURE_FRAME,
+  OAK_TREE_KEY,
+  OAK_TREE_FRAMES,
+  PINK_OAK_MATURE_FRAME,
   PINE_TREE_FRAME_NAME,
   SHIPPING_BIN_KEY,
   SHIPPING_BIN_FRAME_NAME,
@@ -28,7 +28,7 @@ import { currentHouseLevel, fenceSkin } from './upgradeLevels';
 import { addBuildingShadows, createGroundShadow } from './shadow';
 import { pickGroundTileVariant } from './groundVariation';
 import { DirtZone, buildDirtZone, pickDirtBlobTile } from './dirtPaths';
-import { treeLookAt } from './treeVariety';
+import { worldTreeSpeciesAt } from './treeVariety';
 import { GROUND_TILESETS } from './groundTilesets';
 import { buildWaterAutotile } from './waterAutotile';
 import { attachGroundPatches, buildGroundPatches } from './groundPatches';
@@ -525,12 +525,12 @@ export function buildFarmDecorations(
     const shadow = createGroundShadow(scene, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
     shadow.setDepth(STATIC_SHADOW_DEPTH);
 
-    // De vez em quando, uma cerejeira florida ou a árvore verde no lugar do pinheiro (`systems/treeVariety.ts`).
-    const look = scene.textures.exists(CHERRY_TREE_KEY) ? treeLookAt(col, row, 'farm') : 'pine';
+    // De vez em quando, um Carvalho (ou o raro Carvalho Rosa) no lugar do pinheiro (`systems/treeVariety.ts`).
+    const species = scene.textures.exists(OAK_TREE_KEY) ? worldTreeSpeciesAt(col, row) : 'pine';
     const tree =
-      look === 'pine'
+      species === 'pine'
         ? scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME)
-        : scene.add.image(x, y, CHERRY_TREE_KEY, look === 'leafy' ? LEAFY_TREE_MATURE_FRAME : CHERRY_TREE_FRAMES.mature);
+        : scene.add.image(x, y, OAK_TREE_KEY, species === 'pink-oak' ? PINK_OAK_MATURE_FRAME : OAK_TREE_FRAMES.mature);
     tree.setOrigin(0.5, 1);
     tree.setScale(DISPLAY_SCALE);
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra

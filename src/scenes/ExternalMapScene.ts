@@ -18,6 +18,7 @@ import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
 import { InteractionRegistry } from '../systems/interaction';
 import { attachFootstepSounds } from '../systems/soundEffects';
+import { groundSurfaceOfGid } from '../systems/groundSurface';
 import { attachFootDust, isDirtGround } from '../systems/grassDust';
 import { onPlayerStepped } from '../systems/sceneEvents';
 import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
@@ -285,7 +286,9 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // mais larga que 1 tile, então precisa do mesmo "túnel" invisível.
     if (!this.config.hideReturnBridge) for (const [col, row] of bridgeRailingCells(returnBridge)) grid.block(col, row);
 
-    attachFootstepSounds(this, (col, row) => (col === bridgeCell.col && row === bridgeCell.row ? 'bridge' : 'grass'));
+    // Passos pelo chão (`systems/groundSurface.ts`): a ponte de volta (de pedra) soa como pedra; o resto, pela arte do chão autorado.
+    const bridgeCells = new Set([[bridgeCell.col, bridgeCell.row], ...this.bridgeWalkway].map(([col, row]) => `${col},${row}`));
+    attachFootstepSounds(this, (col, row) => (bridgeCells.has(`${col},${row}`) ? 'stone' : groundSurfaceOfGid(this, this.config.ground?.[row]?.[col])));
 
     // 2. Escuta quando o jogador pisa na célula da ponte para acionar a viagem
     onPlayerStepped(this, (col, row) => {

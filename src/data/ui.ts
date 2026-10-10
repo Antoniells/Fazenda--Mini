@@ -339,6 +339,14 @@ export const HEART_HALF_FRAME = { name: 'heart-half', rect: { x: 16, y: 16, widt
 export const HEART_EMPTY_FRAME = { name: 'heart-empty', rect: { x: 32, y: 16, width: 16, height: 16 } };
 
 /**
+ * A BARRA DE FOME (`ui/hungerHud.ts`), da mesma folha: a moldura VAZIA da barra verde com o raio (42 x 9) e, por cima, a faixa verde da
+ * barra CHEIA (26 x 3, x 6-31 e y 104-106 — varredura pixel a pixel), deslocada (3, 3) da moldura e recortada pela saciedade.
+ */
+export const HUNGER_BAR_FRAME = { name: 'hunger-bar-empty', rect: { x: 147, y: 101, width: 42, height: 9 } };
+export const HUNGER_FILL_FRAME = { name: 'hunger-bar-fill', rect: { x: 6, y: 104, width: 26, height: 3 } };
+export const HUNGER_FILL_OFFSET = { x: 3, y: 3 };
+
+/**
  * Menu Principal (`MainMenuScene`): fundo estático da fazenda + UMA folha de peças (`menu_parts.webp`, 1536x1024, com
  * canal alfa) com o logo, a coroa de folhas (semicírculo que fica ATRÁS do logo), as 3 placas de madeira dos botões
  * (vazias — o texto "Iniciar"/"Configurações"/"Sair" é escrito pela cena) e uma placa dourada vazia, que é o destaque do

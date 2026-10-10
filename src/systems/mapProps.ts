@@ -5,6 +5,14 @@ import { DISPLAY_SCALE } from './mapBuilder';
 
 const PROPS_BY_ID = new Map(MAP_PROPS.map((prop) => [prop.id, prop]));
 
+/** Um prop desenhado (a coleta com a Foice — `systems/forage.ts` — usa os que são plantas). */
+export interface PlacedMapProp {
+  col: number;
+  row: number;
+  propId: string;
+  image: Phaser.GameObjects.Image;
+}
+
 /** Props `flat` (deitados no chão, ex.: tronco caído): acima do chão (-1), da água e da terra arada (-0.5) e abaixo de qualquer coisa ordenada por Y (personagem, pet, árvores, props com volume). */
 const FLAT_PROP_DEPTH = -0.4;
 
@@ -26,9 +34,10 @@ export function registerMapPropFrames(scene: Phaser.Scene): void {
  * pra o jogador poder passar na frente/atrás corretamente — exceto os props
  * `flat` (tronco caído), que ficam no chão, atrás de todos (`FLAT_PROP_DEPTH`).
  */
-export function buildMapProps(scene: Phaser.Scene, tileSize: number, props: Array<[number, number, string]>): void {
+export function buildMapProps(scene: Phaser.Scene, tileSize: number, props: Array<[number, number, string]>): PlacedMapProp[] {
   registerMapPropFrames(scene);
   const tile = tileSize * DISPLAY_SCALE;
+  const placed: PlacedMapProp[] = [];
 
   for (const [col, row, propId] of props) {
     const def = PROPS_BY_ID.get(propId);
@@ -40,5 +49,7 @@ export function buildMapProps(scene: Phaser.Scene, tileSize: number, props: Arra
     view.setOrigin(0.5, 1);
     view.setScale(DISPLAY_SCALE);
     view.setDepth(def.flat ? FLAT_PROP_DEPTH : y);
+    placed.push({ col, row, propId, image: view });
   }
+  return placed;
 }

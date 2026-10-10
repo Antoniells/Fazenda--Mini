@@ -31,6 +31,9 @@ async function chooseStoryMilestone(page: Page, index: number): Promise<void> {
 
 test('o tour passa por todas as cenas sem erros', async ({ page }) => {
   const errors = await startTestGame(page);
+  // Um dia a mais antes do tour: a virada faz brotar árvores na Floresta, e a 1ª visita com broto já quebrou a cena (tela escura, sem andar).
+  await page.getByRole('button', { name: '+1 dia', exact: true }).click();
+  await expect(hackLog(page)).toContainText('+1 dia(s)');
   await page.getByRole('button', { name: 'Ferramentas/armas/armaduras' }).click();
   await page.getByRole('button', { name: /^Iniciar/ }).click();
   await expect(hackLog(page)).toContainText('Tour terminado', { timeout: 180_000 });

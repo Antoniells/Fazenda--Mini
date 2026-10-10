@@ -18,11 +18,11 @@ import {
   MENU_WATERFALL,
 } from '../data/menuBackdrop';
 import {
-  CHERRY_TREE_FRAME_HEIGHT,
-  CHERRY_TREE_FRAME_WIDTH,
-  CHERRY_TREE_FRAMES,
-  CHERRY_TREE_KEY,
-  CHERRY_TREE_PATH,
+  OAK_TREE_FRAME_HEIGHT,
+  OAK_TREE_FRAME_WIDTH,
+  OAK_TREE_KEY,
+  OAK_TREE_PATH,
+  PINK_OAK_MATURE_FRAME,
   GRASS_FLAT_TILE_INDEX,
   GRASS_TILESET_KEY,
   GRASS_TILESET_PATH,
@@ -62,6 +62,7 @@ import { Player } from '../entities/Player';
 import { preloadPlayerSprites } from '../systems/playerSprites';
 import { preloadDucks, spawnSwimmingDuck } from '../systems/ducks';
 import { findDuckLanes } from '../systems/duckLanes';
+import { buildWaterfall, preloadWaterfall } from '../systems/waterfall';
 
 export const MENU_BACKDROP_SCENE_KEY = 'MenuBackdropScene';
 
@@ -70,7 +71,6 @@ const OWNER_SCENE_KEYS = ['MainMenuScene', 'CharacterCreationScene'];
 const ORPHAN_STOP_MS = 400;
 /** Água (gid do tileset de água plana) e grama no chão autorado do fundo. */
 const WATER_GID = 3000;
-const WATERFALL = { key: 'menu-waterfall', path: 'Tileset/Spring Waterfall.png', frameSize: 64, frames: 8, fps: 8 };
 /** O personagem pronto que faz de fazendeiro no fundo. */
 const FARMER_LOOK = 'Alex' as const;
 /** Velocidade (px por segundo) do fazendeiro e dos patos. */
@@ -116,9 +116,9 @@ export class MenuBackdropScene extends Phaser.Scene {
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
     this.load.spritesheet(SPLASH_KEY, encodeURI(`/${SPLASH_PATH}`), { frameWidth: SPLASH_FRAME_SIZE, frameHeight: SPLASH_FRAME_SIZE });
     // Só do fundo (chaves próprias).
-    this.load.spritesheet(CHERRY_TREE_KEY, encodeURI(`/${CHERRY_TREE_PATH}`), { frameWidth: CHERRY_TREE_FRAME_WIDTH, frameHeight: CHERRY_TREE_FRAME_HEIGHT });
+    this.load.spritesheet(OAK_TREE_KEY, encodeURI(`/${OAK_TREE_PATH}`), { frameWidth: OAK_TREE_FRAME_WIDTH, frameHeight: OAK_TREE_FRAME_HEIGHT });
     this.load.spritesheet(CORN.key, encodeURI(`/${CORN.path}`), { frameWidth: CORN.frameWidth, frameHeight: CORN.frameHeight });
-    this.load.spritesheet(WATERFALL.key, encodeURI(`/${WATERFALL.path}`), { frameWidth: WATERFALL.frameSize, frameHeight: WATERFALL.frameSize });
+    preloadWaterfall(this);
     preloadDucks(this);
     preloadChickens(this);
     preloadButterflies(this);
@@ -223,13 +223,9 @@ export class MenuBackdropScene extends Phaser.Scene {
     this.farmlandRenderer.renderAll(this.farmland);
   }
 
-  /** A cachoeira no alto do rio: os 8 quadros da 1ª fileira da folha, em loop. */
+  /** A cachoeira no alto do rio (`systems/waterfall.ts`, a mesma do lago da Floresta). */
   private buildWaterfall(tile: number): void {
-    const key = `${WATERFALL.key}-flow`;
-    if (!this.anims.exists(key)) {
-      this.anims.create({ key, frames: this.anims.generateFrameNumbers(WATERFALL.key, { start: 0, end: WATERFALL.frames - 1 }), frameRate: WATERFALL.fps, repeat: -1 });
-    }
-    this.add.sprite(MENU_WATERFALL.col * tile, MENU_WATERFALL.row * tile, WATERFALL.key, 0).setOrigin(0, 0).setScale(DISPLAY_SCALE).setDepth(-0.5).play(key);
+    buildWaterfall(this, tile, MENU_WATERFALL.col, MENU_WATERFALL.row);
   }
 
   /** Patos nadando no rio: vão e voltam na sua raia (`systems/ducks.ts`, o mesmo do lago da Floresta), sem passar pela cachoeira. */
@@ -272,7 +268,7 @@ export class MenuBackdropScene extends Phaser.Scene {
     }
   }
 
-  /** Pinheiros (a mesma árvore da Fazenda) e cerejeiras floridas, todas no vento. */
+  /** Pinheiros (a mesma árvore da Fazenda) e Carvalhos Rosa floridos, todos no vento. */
   private buildTrees(tile: number): void {
     registerFrame(this, PINE_TREE_KEY, { name: PINE_TREE_FRAME_NAME, rect: PINE_TREE_FRAME });
     for (const tree of MENU_TREES) {
@@ -283,9 +279,9 @@ export class MenuBackdropScene extends Phaser.Scene {
       const x = (tree.col + 0.5) * tile;
       const y = (tree.row + 1) * tile;
       createGroundShadow(this, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6).setDepth(-0.4);
-      const cherry = this.add.image(x, y, CHERRY_TREE_KEY, CHERRY_TREE_FRAMES.mature).setOrigin(0.5, 1).setScale(DISPLAY_SCALE);
-      cherry.setDepth(cherry.y);
-      registerSway(cherry, 'tree');
+      const pinkOak = this.add.image(x, y, OAK_TREE_KEY, PINK_OAK_MATURE_FRAME).setOrigin(0.5, 1).setScale(DISPLAY_SCALE);
+      pinkOak.setDepth(pinkOak.y);
+      registerSway(pinkOak, 'tree');
     }
   }
 

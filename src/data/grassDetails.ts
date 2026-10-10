@@ -68,3 +68,16 @@ export const GRASS_BLADE_DETAILS: GrassDetailDefinition[] = [
   { id: 'blade-b', frameName: 'grass-blade-b', frameRect: { x: 180, y: 133, width: 7, height: 9 } },
   { id: 'blade-c', frameName: 'grass-blade-c', frameRect: { x: 195, y: 131, width: 9, height: 12 } },
 ];
+
+/**
+ * FLORES espalhadas pela grama da Fazenda (a 3ª camada de `systems/grassDetails.ts`, pedido explícito: "mais flores"): as flores da mesma
+ * folha, nos MESMOS recortes dos props do editor (`data/mapProps.ts` — azul, azul-clara, rosa, branca em cacho e a flor branca de folhas
+ * azul-esverdeadas). Balançam ao pisar e são colhidas com a Foice como as outras (Flor Silvestre).
+ */
+export const FLOWER_DETAILS: GrassDetailDefinition[] = [
+  { id: 'flower-blue', frameName: 'grass-flower-blue', frameRect: { x: 176, y: 53, width: 15, height: 11 } },
+  { id: 'flower-blue-light', frameName: 'grass-flower-blue-light', frameRect: { x: 192, y: 53, width: 15, height: 11 } },
+  { id: 'flower-pink', frameName: 'grass-flower-pink', frameRect: { x: 113, y: 67, width: 14, height: 9 } },
+  { id: 'flower-white-cluster', frameName: 'grass-flower-white-cluster', frameRect: { x: 226, y: 34, width: 12, height: 12 } },
+  { id: 'flower-calla', frameName: 'grass-flower-calla', frameRect: { x: 146, y: 65, width: 13, height: 15 } },
+];

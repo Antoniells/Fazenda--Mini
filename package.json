@@ -1,7 +1,7 @@
 {
   "name": "mini-fazenda",
   "private": true,
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Mini Fazenda — jogo 2D de fazenda",
   "author": "Mini Fazenda",
   "type": "module",
@@ -45,6 +45,7 @@
       "!dist/Sounds/Music/Polyshade's Chiptunes/**"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -57,6 +58,9 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "shortcutName": "Mini Fazenda",
       "artifactName": "Mini-Fazenda-Setup-${version}.${ext}"

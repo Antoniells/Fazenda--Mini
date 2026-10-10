@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { SATIETY_AFTER_FAINT } from '../data/hunger';
 import { gameState } from './gameState';
 import { save as saveGame } from './saveManager';
 import { finishHordeDefeat } from './horde';
@@ -54,6 +55,7 @@ export function handlePlayerDeath(scene: Phaser.Scene): void {
     const coinsLost = deathCoinPenalty(gameState.inventory.getCoins());
     gameState.inventory.spendCoins(coinsLost);
     gameState.playerHealth.restoreFull();
+    gameState.hunger.restoreAtLeast(SATIETY_AFTER_FAINT); // Senão, desmaiado de fome, desmaiaria de novo logo ao acordar.
 
     // Morreu durante a horda: o evento termina SEM o bônus — o jogador leva apenas os drops dos inimigos que já tinha abatido — e
     // o dia avança (quem acorda, `MainScene.init`, roda a virada de dia).

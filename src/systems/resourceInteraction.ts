@@ -3,7 +3,8 @@ import { Player } from '../entities/Player';
 import { Interactable, InteractionRegistry } from './interaction';
 import { gameState } from './gameState';
 import { getToolTierInfo, TOOL_TIER_POWER } from '../data/toolProgression';
-import { WOOD, STONE, ACORN } from '../data/resources';
+import { WOOD, STONE, RESOURCES } from '../data/resources';
+import { acornIdForSpecies, resolveTreeSpecies } from './treeVariety';
 import { LEAF_FALL_KEY, LEAF_FALL_ANIM_KEY, LEAF_FALL_FRAMES } from '../data/effects';
 import { WalkableGrid } from './grid';
 import { resourceNodeRegistry } from './resourceNodeRegistry';
@@ -170,7 +171,7 @@ export class TreeInteractable implements Interactable {
 
       const { x, y } = this.visual.sprite;
       const scene = this.visual.sprite.scene;
-      // Drop duplo (habilidade): um sorteio só por árvore, vale pra madeira e bolota juntas.
+      // Drop duplo (habilidade): um sorteio só por árvore, vale pra madeira e bolota juntas. A bolota é a da espécie da árvore (`data/trees.ts`).
       const doubled = rollDoubleDrop(scene, 1, x, y - 40) === 2 ? 2 : 1;
       const wood = Phaser.Math.Between(12, 16) * doubled;
       const acorns = Phaser.Math.Between(0, 2) * doubled;
@@ -178,10 +179,12 @@ export class TreeInteractable implements Interactable {
       impact(scene, { strength: 0.5 }); // A árvore cai: a tela sente (`systems/impact.ts`).
       awardXp(scene, 'chop', x, y - 16);
       spawnLoot(scene, this.player, x, y, { category: 'resource', id: WOOD.id, amount: wood });
-      if (acorns > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: ACORN.id, amount: acorns });
+      const species = resolveTreeSpecies(resourceNodeRegistry.getNode(this.sceneKey, this.col, this.row)?.species, this.col, this.row);
+      const acornId = acornIdForSpecies(species);
+      if (acorns > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: acornId, amount: acorns });
 
       console.log(
-        `Árvore cortada: +${wood} Madeira` + (acorns > 0 ? ` e +${acorns} Bolota${acorns > 1 ? 's' : ''}` : '') + '.',
+        `Árvore cortada: +${wood} Madeira` + (acorns > 0 ? ` e +${acorns} ${RESOURCES[acornId].name}` : '') + '.',
       );
 
       clearHarvestedNode(this.visual, this.grid, this.interactions, this.sceneKey, this.col, this.row);

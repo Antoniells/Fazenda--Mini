@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ALL_SOUND_EFFECTS, SoundEffectDef, STEP_GRASS_SOUNDS, STEP_BRIDGE_SOUND, STEP_STONE_SOUNDS, CLICK_SOUND } from '../data/audio';
+import { ALL_SOUND_EFFECTS, SoundEffectDef, STEP_GRASS_SOUNDS, STEP_WOOD_SOUND, STEP_STONE_SOUNDS, STEP_DIRT_SOUNDS, CLICK_SOUND } from '../data/audio';
 import { getEffectsVolume } from './audioSettings';
 
 /**
@@ -33,7 +33,8 @@ export function playClick(scene: Phaser.Scene): void {
   playEffect(scene, CLICK_SOUND);
 }
 
-export type StepSurface = 'grass' | 'bridge' | 'stone';
+/** Grama, terra (caminho, lavoura, areia), pedra (pontes, Cavernas) e madeira (o piso da casa) — ver `systems/groundSurface.ts`. */
+export type StepSurface = 'grass' | 'dirt' | 'stone' | 'wood';
 
 /**
  * Passos: toca um som a cada célula que o jogador pisa, escutando o mesmo
@@ -49,11 +50,11 @@ export function attachFootstepSounds(scene: Phaser.Scene, surfaceAt: (col: numbe
 
   const onStep = (col: number, row: number): void => {
     const surface = surfaceAt(col, row);
-    if (surface === 'bridge') {
-      playEffect(scene, STEP_BRIDGE_SOUND);
+    if (surface === 'wood') {
+      playEffect(scene, STEP_WOOD_SOUND);
       return;
     }
-    const sounds = surface === 'stone' ? STEP_STONE_SOUNDS : STEP_GRASS_SOUNDS;
+    const sounds = surface === 'stone' ? STEP_STONE_SOUNDS : surface === 'dirt' ? STEP_DIRT_SOUNDS : STEP_GRASS_SOUNDS;
     let index = Phaser.Math.Between(0, sounds.length - 1);
     if (index === lastIndex) index = (index + 1) % sounds.length;
     lastIndex = index;

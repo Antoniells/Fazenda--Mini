@@ -2,7 +2,7 @@ import { debugFlags } from '../debug/debugFlags';
 /**
  * A HUD mostra `HEART_COUNT` corações (cheio/meio/vazio) e a vida máxima é
  * escolhida pra que cada coração valha 10 HP e o meio-coração 5 HP — o dano
- * do Slime (5) tira exatamente meio coração, e comer uma colheita recupera
+ * do Slime (5) tira exatamente meio coração, e a fome (barra vazia) tira
  * exatamente meio coração (`HALF_HEART_HP`). Mudar um destes números exige
  * pensar nos outros dois juntos (ver `ui/healthHud.ts`, que só deriva deles).
  */
@@ -38,8 +38,9 @@ export interface PlayerHealthSaveData {
 
 /**
  * Vida do jogador (Fase 8 — Combate). Perde vida com o ataque dos Slimes
- * (`takeDamage`); recupera comendo uma colheita (`heal`, ver
- * `systems/eating.ts`) ou dormindo (`restoreFull`, ver `MainScene.sleep`).
+ * (`takeDamage`) e com a fome (barra vazia, `systems/hunger.ts`); recupera
+ * dormindo (`restoreFull`, ver `MainScene.sleep`) e aos poucos quando bem alimentado (barra de fome acima da metade,
+ * `Hunger.tickRegen`) — comer mata a fome, não cura direto.
  * Chegar a 0 dispara `systems/playerDeath.ts`. Guardada em `gameState`
  * (mesma razão do `Inventory`/`GameClock`: precisa sobreviver a trocas de
  * cena).

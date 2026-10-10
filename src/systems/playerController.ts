@@ -12,6 +12,10 @@ import { tutorial } from './tutorial';
 import { playEffect } from './soundEffects';
 import { SWORD_SWING_SOUND } from '../data/audio';
 import { swordDamage } from './enchanting';
+import { HALF_HEART_HP } from './playerHealth';
+import { REGEN_HP } from '../data/hunger';
+import { handlePlayerDeath } from './playerDeath';
+import { popText } from './floatingText';
 
 /** Janela do golpe guardado: Espaço apertado até isto antes do fim do golpe atual engata o próximo (`attackBufferedAt`). */
 const ATTACK_BUFFER_MS = 160;
@@ -230,11 +234,12 @@ export class PlayerController {
     if (this.player.col === col && this.player.row === row) {
       this.pendingInteraction = null;
       const interactable = this.canInteractWith(col, row) ? this.interactions.get(col, row) : undefined;
-      if (interactable) {
-        interactable.interact();
-      } else if (isEdibleCropSelected() && tutorial.allows({ kind: 'eat' })) {
-        // Clicar no próprio personagem com uma colheita na mão = comer (só se não houver nada na célula pra interagir).
+      if (isEdibleCropSelected() && tutorial.allows({ kind: 'eat' })) {
+        // Clicar no próprio personagem com comida na mão = comer — também em cima de um canteiro da lavoura (comida não ara, planta nem rega,
+        // então o canteiro não perde nada; antes ele "engolia" o clique e não dava pra comer dentro da área de plantio).
         startEating(this.scene, this.player);
+      } else if (interactable) {
+        interactable.interact();
       }
       return;
     }
@@ -339,6 +344,15 @@ private canWalkTo(col: number, row: number): boolean {
   }
 
   update(time: number, delta: number): void {
+    // A fome (`systems/hunger.ts`): com a barra vazia, meio coração de dano de tempos em tempos (o controle só roda sem menu aberto).
+    if (gameState.hunger.tick(delta) && gameState.playerHealth.takeDamage(HALF_HEART_HP, time)) {
+      this.player.playHurtFeedback();
+      popText(this.scene, this.player.sprite.x, this.player.sprite.y - 60, 'Fome!', { color: '#ff8a8a', fontSize: 14 });
+      if (gameState.playerHealth.isDead()) handlePlayerDeath(this.scene);
+    }
+    // Bem alimentado (barra acima da metade), a vida volta aos poucos — e a barra cai junto (`Hunger.tickRegen`).
+    const health = gameState.playerHealth;
+    if (!health.isDead() && gameState.hunger.tickRegen(delta, health.getHp() < health.getMaxHp())) health.heal(REGEN_HP);
     // O golpe guardado sai assim que o personagem fica livre — só se o aperto foi recente (senão foi um aperto perdido lá no começo).
     if (this.attackBufferedAt !== null && !this.player.isBusy()) {
       const recent = this.scene.time.now - this.attackBufferedAt <= ATTACK_BUFFER_MS;

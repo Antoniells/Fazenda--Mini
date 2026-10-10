@@ -1,8 +1,8 @@
-import { WOOD_KEY, WOOD_FRAME, ROCK_KEY, ROCK_FRAME_2, PINE_TREE_KEY, PINE_SPROUT_FRAME_NAME, IRON_KEY, IRON_FRAME, METAL_ICON_FRAMES, COAL_KEY, COAL_FRAME } from './tiles';
+import { WOOD_KEY, WOOD_FRAME, ROCK_KEY, ROCK_FRAME_2, PINE_TREE_KEY, PINE_SPROUT_FRAME_NAME, OAK_TREE_KEY, OAK_SPROUT_FRAME_NAME, BIRCH_TREE_KEY, BIRCH_SPROUT_FRAME_NAME, IRON_KEY, IRON_FRAME, METAL_ICON_FRAMES, COAL_KEY, COAL_FRAME } from './tiles';
 import { SLIME_KEY, SLIME_IDLE_FRAMES } from './enemies';
 import { EGG_ICON } from './animals';
 import { nameWithQuality, parseQualityId } from './quality';
-import { GRASS_DETAILS_KEY, WILD_GRASS_DETAIL } from './grassDetails';
+import { GRASS_DETAILS, GRASS_DETAILS_KEY, WILD_GRASS_DETAIL } from './grassDetails';
 import { FISH_RESOURCES } from './fishing';
 import { STORY_ITEMS_KEY, MAP_ICON_FRAME } from './caveLandmarks';
 import { ALL_CROPS_ICONS_KEY, CARROT } from './crops';
@@ -35,6 +35,8 @@ export interface ResourceDefinition {
   hasQuality?: boolean;
   /** Tom aplicado ao ícone (uma arte real existente, tingida). */
   tint?: number;
+  /** Dá pra comer (como as colheitas: mata a fome — `systems/eating.ts`, `data/hunger.ts`). Ex.: a Frutinha Silvestre dos arbustos. */
+  edible?: boolean;
 }
 
 /** Ícone reaproveita o mesmo frame já recortado por `systems/externalMapBuilder.ts` (pilha de madeira). */
@@ -56,16 +58,31 @@ export const STONE: ResourceDefinition = {
 };
 
 /**
- * Bolota (semente de árvore, plantável — ver `systems/treePlanting.ts`):
- * ícone reaproveita o broto da própria árvore (`PINE_SPROUT_FRAME_NAME`,
- * já recortado por `systems/externalMapBuilder.ts`) — mostra visualmente
- * "no que isso se transforma", sem precisar de um ícone de bolota dedicado.
+ * BOLOTAS (sementes de árvore, plantáveis — ver `systems/treePlanting.ts` e `data/trees.ts`): uma por espécie; cortar a árvore solta a
+ * dela e plantar faz nascer aquela espécie. O ícone de cada uma é o BROTO da própria árvore (recortados pela `MainScene`) — mostra "no que isso se transforma", sem um ícone de bolota dedicado.
+ *
+ * A de Pinheiro mantém o id `acorn` (era a "Bolota" única de antes — os saves continuam valendo).
  */
 export const ACORN: ResourceDefinition = {
   id: 'acorn',
-  name: 'Bolota',
+  name: 'Bolota de Pinheiro',
   textureKey: PINE_TREE_KEY,
   frameName: PINE_SPROUT_FRAME_NAME,
+};
+
+/** Bolota de Carvalho: nasce um Carvalho — ou, com `PINK_OAK_CHANCE`, um Carvalho Rosa. */
+export const OAK_ACORN: ResourceDefinition = {
+  id: 'oak-acorn',
+  name: 'Bolota de Carvalho',
+  textureKey: OAK_TREE_KEY,
+  frameName: OAK_SPROUT_FRAME_NAME,
+};
+
+export const BIRCH_ACORN: ResourceDefinition = {
+  id: 'birch-acorn',
+  name: 'Bolota de Bétula',
+  textureKey: BIRCH_TREE_KEY,
+  frameName: BIRCH_SPROUT_FRAME_NAME,
 };
 
 /** Drop do Slime derrotado (Fase 8 — Combate) — ícone reaproveita o próprio frame de idle do sprite do Slime (`entities/Slime.ts`), sem precisar de um ícone de item dedicado. */
@@ -128,6 +145,41 @@ export const WILD_GRASS: ResourceDefinition = {
   sellPrice: 1,
 };
 
+/** O ícone de um detalhe da grama (`data/grassDetails.ts`, recortado pela `MainScene`). */
+const grassDetailFrame = (id: string): string => GRASS_DETAILS.find((detail) => detail.id === id)?.frameName ?? WILD_GRASS_DETAIL.frameName;
+
+/** Colhidos com a Foice das flores e dos cogumelos da grama (`systems/forage.ts`, `data/forage.ts`) — ícone: a florzinha / o cogumelo da própria grama. */
+export const FLOWER: ResourceDefinition = {
+  id: 'wild-flower',
+  name: 'Flor Silvestre',
+  textureKey: GRASS_DETAILS_KEY,
+  frameName: grassDetailFrame('flower'),
+  sellPrice: 3,
+};
+
+export const MUSHROOM: ResourceDefinition = {
+  id: 'wild-mushroom',
+  name: 'Cogumelo',
+  textureKey: GRASS_DETAILS_KEY,
+  frameName: grassDetailFrame('mushroom'),
+  sellPrice: 4,
+};
+
+/**
+ * A FRUTINHA SILVESTRE dos arbustos frutíferos da Fazenda (`systems/berryBushes.ts`): comestível (mata a fome, como as colheitas) e
+ * vendável. Ícone: as cerejinhas de `Icons/Food Icons/Cherry.png` (32 x 16, dois quadros iguais de 16 x 16 — o 1º), carregado pela `MainScene`.
+ */
+export const BERRY_ICON_KEY = 'food-icon-cherry';
+export const BERRY_ICON_PATH = 'Icons/Food Icons/Cherry.png';
+export const WILD_BERRY: ResourceDefinition = {
+  id: 'wild-berry',
+  name: 'Frutinha Silvestre',
+  textureKey: BERRY_ICON_KEY,
+  frameName: 0,
+  sellPrice: 3,
+  edible: true,
+};
+
 /** O nome mostrado de um id de estoque, com a qualidade se tiver ("Ovo (Prata)"). */
 export function resourceDisplayName(id: string): string {
   const { baseId, quality } = parseQualityId(id);
@@ -138,6 +190,8 @@ export const RESOURCES: Record<string, ResourceDefinition> = {
   [WOOD.id]: WOOD,
   [STONE.id]: STONE,
   [ACORN.id]: ACORN,
+  [OAK_ACORN.id]: OAK_ACORN,
+  [BIRCH_ACORN.id]: BIRCH_ACORN,
   [SLIME_GOO.id]: SLIME_GOO,
   [IRON.id]: IRON,
   [COPPER_ORE.id]: COPPER_ORE,
@@ -152,6 +206,9 @@ export const RESOURCES: Record<string, ResourceDefinition> = {
   [GOLDEN_CARROT_SEED.id]: GOLDEN_CARROT_SEED,
   [GOLDEN_CARROT.id]: GOLDEN_CARROT,
   [WILD_GRASS.id]: WILD_GRASS,
+  [FLOWER.id]: FLOWER,
+  [MUSHROOM.id]: MUSHROOM,
+  [WILD_BERRY.id]: WILD_BERRY,
   [EGG.id]: EGG,
   // Os peixes (`data/fishing.ts`): pescados com a Vara, vendidos na Caixa de Remessas.
   ...Object.fromEntries(FISH_RESOURCES.map((fish) => [fish.id, fish])),

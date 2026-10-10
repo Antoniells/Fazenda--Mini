@@ -7,10 +7,21 @@ import { DISPLAY_SCALE } from './mapBuilder';
 import { registerFrame } from './externalMapBuilder';
 import { resourceNodeRegistry } from './resourceNodeRegistry';
 import { FarmResources, FARM_RESOURCES_KEY } from './farmResources';
-import { ACORN } from '../data/resources';
+import { BIRCH_ACORN, OAK_ACORN, RESOURCES } from '../data/resources';
+import { speciesFromAcorn } from './treeVariety';
 import { playEffect } from './soundEffects';
 import { PLACE_SOUND } from '../data/audio';
-import { PINE_TREE_KEY, PINE_SPROUT_FRAME_NAME, PINE_SPROUT_FRAME } from '../data/tiles';
+import {
+  PINE_TREE_KEY,
+  PINE_SPROUT_FRAME_NAME,
+  PINE_SPROUT_FRAME,
+  BIRCH_TREE_KEY,
+  BIRCH_SPROUT_FRAME_NAME,
+  BIRCH_SPROUT_FRAME,
+  OAK_TREE_KEY,
+  OAK_SPROUT_FRAME_NAME,
+  OAK_SPROUT_FRAME,
+} from '../data/tiles';
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
@@ -31,6 +42,9 @@ function cellKey(col: number, row: number): string {
  * (mesma regra de decorações: não faz sentido uma árvore no meio de um
  * canteiro) e em célula livre (sem outra árvore/broto/pedra).
  *
+ * Cada bolota planta a SUA espécie (`data/trees.ts` — a de Carvalho sorteia o Carvalho Rosa na hora de plantar); o fantasma mostra o
+ * broto dela.
+ *
  * Só cuida do MODO de plantio (fantasma + clique): a árvore plantada vira um
  * nó do registro da Fazenda e quem a desenha, faz crescer e a torna cortável
  * é o `FarmResources` (`systems/farmResources.ts`) — o mesmo das árvores do
@@ -40,6 +54,8 @@ export class TreePlantingSystem implements PointerInputInterceptor {
   private readonly ghost: Phaser.GameObjects.Image;
   private readonly farmlandCells: Set<string>;
   private active = false;
+  /** A bolota que está sendo plantada (`data/resources.ts`). */
+  private acornId = '';
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -68,20 +84,35 @@ export class TreePlantingSystem implements PointerInputInterceptor {
     return this.active;
   }
 
-  /** Alterna o modo de plantio. Sem bolotas no estoque, não entra no modo (só avisa no console). */
-  toggle(): void {
-    if (this.active) {
-      this.cancel();
+  /** A bolota em uso no modo de plantio (`''` fora dele). */
+  getAcornId(): string {
+    return this.active ? this.acornId : '';
+  }
+
+  /** Entra no modo de plantio com esta bolota (o fantasma mostra o broto dela). Sem ela no estoque, não entra (só avisa no console). */
+  start(acornId: string): void {
+    if (this.inventory.getResourceCount(acornId) <= 0) {
+      console.log('Sem bolotas no estoque — corte árvores com o Machado para conseguir.');
       return;
     }
 
-    if (this.inventory.getResourceCount(ACORN.id) <= 0) {
-      console.log('Sem Bolotas no estoque — corte árvores com o Machado para conseguir.');
-      return;
-    }
-
+    this.acornId = acornId;
+    this.showSproutGhost(acornId);
     this.active = true;
     this.ghost.setVisible(true);
+  }
+
+  /** O fantasma vira o broto da espécie da bolota. */
+  private showSproutGhost(acornId: string): void {
+    if (acornId === OAK_ACORN.id) {
+      registerFrame(this.scene, OAK_TREE_KEY, { name: OAK_SPROUT_FRAME_NAME, rect: OAK_SPROUT_FRAME });
+      this.ghost.setTexture(OAK_TREE_KEY, OAK_SPROUT_FRAME_NAME).setScale(DISPLAY_SCALE * 2);
+    } else if (acornId === BIRCH_ACORN.id) {
+      registerFrame(this.scene, BIRCH_TREE_KEY, { name: BIRCH_SPROUT_FRAME_NAME, rect: BIRCH_SPROUT_FRAME });
+      this.ghost.setTexture(BIRCH_TREE_KEY, BIRCH_SPROUT_FRAME_NAME).setScale(DISPLAY_SCALE * 2);
+    } else {
+      this.ghost.setTexture(PINE_TREE_KEY, PINE_SPROUT_FRAME_NAME).setScale(DISPLAY_SCALE * 2);
+    }
   }
 
   cancel(): void {
@@ -114,12 +145,12 @@ export class TreePlantingSystem implements PointerInputInterceptor {
     const col = Math.floor(x / this.tilePx);
     const row = Math.floor(y / this.tilePx);
     if (!this.canPlantAt(col, row)) return;
-    if (!this.inventory.useResource(ACORN.id)) return;
+    if (!this.inventory.useResource(this.acornId)) return;
 
-    this.farmResources.plant(col, row);
+    this.farmResources.plant(col, row, speciesFromAcorn(this.acornId));
     playEffect(this.scene, PLACE_SOUND);
-    console.log(`Bolota plantada — vai crescer com o passar dos dias.`);
+    console.log(`${RESOURCES[this.acornId]?.name ?? 'Bolota'} plantada — vai crescer com o passar dos dias.`);
 
-    if (this.inventory.getResourceCount(ACORN.id) <= 0) this.cancel();
+    if (this.inventory.getResourceCount(this.acornId) <= 0) this.cancel();
   }
 }

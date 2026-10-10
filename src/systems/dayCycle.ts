@@ -6,6 +6,7 @@ import { advanceForestDay } from '../scenes/ForestScene';
 import { advanceQuarryDay } from '../scenes/QuarryScene';
 import { advanceFarmResourcesDay } from './farmResources';
 import { layEggs } from './animals';
+import { advanceBerryBushes } from './berryBushState';
 import { deliverSeedOrders } from './seedOrders';
 import type { FarmDayReport, Plot } from './farmland';
 
@@ -15,6 +16,8 @@ export function advanceWorldResourcesState(): void {
   advanceQuarryDay();
   advanceFarmResourcesDay();
   layEggs(); // Cada galinha põe o ovo do dia no galinheiro dela.
+  gameState.forageCut.clear(); // As plantinhas, flores e cogumelos cortados com a Foice renascem (`systems/forage.ts`).
+  advanceBerryBushes(); // Os arbustos frutíferos andam um passo no ciclo (liso → flor → frutas).
 }
 
 /** Plantações regadas pela chuva / pelos aspersores na virada do dia — a cena aberta anima os respingos. */

@@ -68,13 +68,24 @@ export const LEAF_FALL_ANIM_KEY = 'fx-leaf-fall-anim';
 export const LEAF_FALL_FRAMES = { start: 0, end: 17 };
 
 /**
- * `Objects/Props/Water props.png` (64x16): 4 frames de 16x16 com riscos azuis
- * de chuva (gotas em queda) — usados como partículas em `ui/weatherOverlay.ts`.
+ * `Objects/Props/Water props.png` (64x16): 4 quadros de 16x16, cada um com TRÊS riscos azuis de chuva lado a lado. A chuva
+ * (`ui/weatherOverlay.ts`) usa cada risco SOZINHO (pedido explícito: gotas de 1 em 1, não em trios): os 12 riscos recortados
+ * (varredura pixel a pixel — 1 px de largura, 5 a 8 de altura; o inteiro, o partido e o com pinguinho de cada quadro).
  */
 export const RAIN_KEY = 'fx-rain';
 export const RAIN_PATH = 'Objects/Props/Water props.png';
 export const RAIN_FRAME_SIZE = 16;
-export const RAIN_FRAMES = [0, 1, 2, 3];
+const RAIN_STREAK_RECTS: ReadonlyArray<[number, number, number]> = [
+  // [x, y, altura] — por quadro: o risco da esquerda, o do meio e o da direita.
+  [3, 5, 7], [7, 3, 7], [11, 5, 7],
+  [19, 6, 7], [23, 4, 7], [27, 6, 7],
+  [35, 6, 8], [39, 4, 8], [43, 6, 8],
+  [51, 6, 5], [55, 4, 5], [59, 6, 5],
+];
+export const RAIN_DROP_FRAMES: ReadonlyArray<{ name: string; rect: { x: number; y: number; width: number; height: number } }> = RAIN_STREAK_RECTS.map(([x, y, height], index) => ({
+  name: `fx-rain-drop-${index}`,
+  rect: { x, y, width: 1, height },
+}));
 
 /**
  * `Animals/Forest/Bugs/Butterfly/*.png` (112x16): uma espécie por arquivo, 7 frames de 16x16 lado a lado — o ciclo
@@ -125,3 +136,27 @@ export const LEAF_FRAMES = [
 ];
 // Verdes claros e amarelados: destacam da grama e da copa (verdes escuros somem no chão).
 export const LEAF_GREENS = [0xa6d86a, 0xbfe27c, 0x8fcb5c, 0xd2e889];
+
+/**
+ * A CACHOEIRA (`Tileset/Spring Waterfall.png`, 512 x 128): a 1ª fileira são 8 quadros de 64 x 64 (= 4 x 4 células) da água caindo por um
+ * paredão de terra, com grama dos lados e espuma embaixo — a água entra pela borda DE CIMA do quadro, então ela fica encostada na borda norte
+ * do mapa, com a água logo abaixo. Usada no rio do fundo do menu e no lago da Floresta (`systems/waterfall.ts`).
+ */
+export const WATERFALL_KEY = 'waterfall';
+export const WATERFALL_PATH = 'Tileset/Spring Waterfall.png';
+export const WATERFALL_FRAME_SIZE = 64;
+export const WATERFALL_FRAMES = 8;
+export const WATERFALL_FPS = 8;
+
+/**
+ * ROCHAS NA ÁGUA (`Objects/Exterior/Beach/Stones.png` e `Stones 2.png`): a mesma rocha em 4 quadros, só a ondinha azul-clara em volta da
+ * base mexendo (66 a 104 pixels de diferença entre os quadros — varredura pixel a pixel) — uma pequena (32 x 32) e uma grande (48 x 32).
+ * Enfeite do lago da Floresta (`systems/waterRocks.ts`).
+ */
+export const WATER_ROCKS = {
+  small: { key: 'water-rock-small', path: 'Objects/Exterior/Beach/Stones.png', frameWidth: 32, frameHeight: 32 },
+  big: { key: 'water-rock-big', path: 'Objects/Exterior/Beach/Stones 2.png', frameWidth: 48, frameHeight: 32 },
+} as const;
+export type WaterRockSize = keyof typeof WATER_ROCKS;
+export const WATER_ROCK_FRAMES = 4;
+export const WATER_ROCK_FPS = 4;

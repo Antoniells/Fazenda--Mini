@@ -54,8 +54,8 @@ function ensureFlapAnims(scene: Phaser.Scene): void {
  * Borboletinhas da Fazenda (efeito visual, só de dia): de tempos em tempos uma nasce numa posição aleatória de
  * grama dentro (ou logo além) da tela, aparece com um Tween de opacidade (alpha 0 → 1), fica um tempo à vista
  * batendo asa e derivando devagar, e some do mesmo jeito (1 → 0). É UM Tween só (`yoyo` + `hold`), então subir e
- * descer o alfa são as duas metades do mesmo movimento. Quando o dia acaba (`GameClock.isDaytime`) ninguém novo
- * nasce e as que estão no ar somem suavemente — nunca existe borboleta de noite.
+ * descer o alfa são as duas metades do mesmo movimento. Quando o dia acaba (`GameClock.isDaytime`) ou começa a chover (`isRaining`)
+ * ninguém novo nasce e as que estão no ar somem suavemente — nunca existe borboleta de noite nem na chuva.
  *
  * Sem colisão nem interação; a cena chama `update` a cada frame (mesmo padrão dos outros sistemas de cena) e os
  * sprites/tweens morrem junto com ela. Quais células servem de "chão" (`isSpawnCell`) é decisão da cena.
@@ -69,6 +69,8 @@ export class ButterflyField {
     private readonly clock: GameClock,
     private readonly tilePx: number,
     private readonly isSpawnCell: (col: number, row: number) => boolean,
+    /** Está chovendo agora? (Na chuva as borboletas se escondem; ausente = nunca chove, como no fundo do menu.) */
+    private readonly isRaining: () => boolean = () => false,
   ) {
     ensureFlapAnims(scene);
   }
@@ -78,7 +80,7 @@ export class ButterflyField {
     const dt = deltaMs / 1000;
     for (const butterfly of this.alive) this.drift(butterfly, deltaMs, dt);
 
-    if (!this.clock.isDaytime()) {
+    if (!this.clock.isDaytime() || this.isRaining()) {
       if (this.alive.size > 0) this.dismissAll();
       this.untilNextSpawnMs = FIRST_SPAWN_MS;
       return;
@@ -145,7 +147,7 @@ export class ButterflyField {
     this.alive.add(butterfly);
   }
 
-  /** Começou a anoitecer: derruba o alfa de quem está no ar até 0 (a partir do valor atual) e remove. */
+  /** Começou a anoitecer (ou a chover): derruba o alfa de quem está no ar até 0 (a partir do valor atual) e remove. */
   private dismissAll(): void {
     for (const butterfly of this.alive) {
       if (butterfly.leaving) continue;

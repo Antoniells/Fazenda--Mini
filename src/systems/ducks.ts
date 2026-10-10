@@ -7,6 +7,9 @@ import {
   DUCK_SWIM_FRAME_RATE,
   DUCK_SWIM_SPEED,
   DUCK_TURN_PAUSE_MS,
+  DUCK_CHANGE_MS,
+  DUCK_FADE_MS,
+  DUCK_PRESENT_CHANCE,
 } from '../data/ducks';
 import { DISPLAY_SCALE } from './mapBuilder';
 import type { DuckLane } from './duckLanes';
@@ -47,4 +50,69 @@ export function spawnSwimmingDuck(scene: Phaser.Scene, tilePx: number, lane: Duc
     onRepeat: () => duck.setFlipX(!duck.flipX),
   });
   return duck;
+}
+
+/** A próxima mudança do lago (`roll` em [0, 1)): sai um pato, chega um, ou nada. Sem pato, só pode chegar; lotado, só pode sair. */
+export function nextPondChange(ducks: number, lanes: number, roll: number): 'leave' | 'arrive' | null {
+  if (lanes === 0) return null;
+  if (ducks === 0) return 'arrive';
+  if (ducks >= lanes) return 'leave';
+  return roll < 0.5 ? 'leave' : 'arrive';
+}
+
+/**
+ * Os patos que VÃO E VÊM (o lago da Floresta, `data/ducks.ts`): um pato por raia no máximo. Ao montar, cada raia sorteia se já tem pato
+ * (`DUCK_PRESENT_CHANCE`); de tempos em tempos (`DUCK_CHANGE_MS`) um pato some aos poucos ou um novo surge na água (`DUCK_FADE_MS`). Fora da
+ * hora (`canBeHere` falso — de noite, na chuva) ninguém chega e os que estão lá somem. A cena chama `update` a cada frame.
+ */
+export class DuckPond {
+  private readonly ducks = new Map<number, Phaser.GameObjects.Sprite>();
+  private untilChangeMs = Phaser.Math.Between(DUCK_CHANGE_MS.min, DUCK_CHANGE_MS.max);
+
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly tilePx: number,
+    private readonly lanes: DuckLane[],
+    private readonly canBeHere: () => boolean,
+  ) {
+    if (!canBeHere()) return;
+    lanes.forEach((_lane, index) => {
+      if (Math.random() < DUCK_PRESENT_CHANCE) this.arrive(index, false);
+    });
+  }
+
+  update(deltaMs: number): void {
+    if (!this.canBeHere()) {
+      for (const index of [...this.ducks.keys()]) this.leave(index);
+      return;
+    }
+    this.untilChangeMs -= deltaMs;
+    if (this.untilChangeMs > 0) return;
+    this.untilChangeMs = Phaser.Math.Between(DUCK_CHANGE_MS.min, DUCK_CHANGE_MS.max);
+
+    const change = nextPondChange(this.ducks.size, this.lanes.length, Math.random());
+    if (change === 'leave') this.leave(Phaser.Utils.Array.GetRandom([...this.ducks.keys()]));
+    if (change === 'arrive') {
+      const free = this.lanes.map((_lane, index) => index).filter((index) => !this.ducks.has(index));
+      if (free.length > 0) this.arrive(Phaser.Utils.Array.GetRandom(free), true);
+    }
+  }
+
+  /** Um pato na raia `index` — já à vista (ao montar) ou surgindo aos poucos na água. */
+  private arrive(index: number, fadeIn: boolean): void {
+    const duck = spawnSwimmingDuck(this.scene, this.tilePx, this.lanes[index], index);
+    this.ducks.set(index, duck);
+    if (!fadeIn) return;
+    duck.setAlpha(0);
+    this.scene.tweens.add({ targets: duck, alpha: 1, duration: DUCK_FADE_MS, ease: 'Sine.easeOut' });
+  }
+
+  /** O pato da raia `index` some aos poucos (para de nadar e se apaga). */
+  private leave(index: number): void {
+    const duck = this.ducks.get(index);
+    if (!duck) return;
+    this.ducks.delete(index);
+    this.scene.tweens.killTweensOf(duck);
+    this.scene.tweens.add({ targets: duck, alpha: 0, duration: DUCK_FADE_MS, ease: 'Sine.easeIn', onComplete: () => duck.destroy() });
+  }
 }

@@ -64,21 +64,21 @@ export function isUnderMenuWaterfall(col: number, row: number): boolean {
   return col >= col0 && col < col0 + cols && row >= row0 && row < row0 + rows;
 }
 
-/** Árvores: pinheiros e cerejeiras floridas (`CHERRY_TREE_*` em `data/tiles.ts`). Célula do tronco. */
-export const MENU_TREES: ReadonlyArray<{ col: number; row: number; kind: 'pine' | 'cherry' }> = [
+/** Árvores: pinheiros e Carvalhos Rosa floridos (`OAK_TREE_*` em `data/tiles.ts`). Célula do tronco. */
+export const MENU_TREES: ReadonlyArray<{ col: number; row: number; kind: 'pine' | 'pink-oak' }> = [
   { col: 16, row: 4, kind: 'pine' },
-  { col: 13, row: 8, kind: 'cherry' },
+  { col: 13, row: 8, kind: 'pink-oak' },
   { col: 22, row: 6, kind: 'pine' },
   { col: 37, row: 7, kind: 'pine' },
-  { col: 37, row: 3, kind: 'cherry' },
-  { col: 1, row: 8, kind: 'cherry' },
-  { col: 14, row: 12, kind: 'cherry' },
+  { col: 37, row: 3, kind: 'pink-oak' },
+  { col: 1, row: 8, kind: 'pink-oak' },
+  { col: 14, row: 12, kind: 'pink-oak' },
   { col: 24, row: 11, kind: 'pine' },
-  { col: 27, row: 13, kind: 'cherry' },
-  { col: 7, row: 20, kind: 'cherry' },
+  { col: 27, row: 13, kind: 'pink-oak' },
+  { col: 7, row: 20, kind: 'pink-oak' },
   { col: 12, row: 20, kind: 'pine' },
   { col: 20, row: 21, kind: 'pine' },
-  { col: 24, row: 19, kind: 'cherry' },
+  { col: 24, row: 19, kind: 'pink-oak' },
 ];
 
 /** A lavoura: cada coluna da terra arada com a sua cultura (as três do jogo, maduras) — e o milho, que não é cultura do jogo, só enfeite. */

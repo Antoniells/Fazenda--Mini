@@ -46,7 +46,8 @@ const expectedBodyLayers = (look: PlayerAppearance): number => 4 + (look.accesso
 describe('personalização do personagem', () => {
   beforeEach(freshGame);
 
-  it('toda escolha existe em TODAS as folhas do jogo (nenhuma peça some numa ação)', () => {
+  // Lê dezenas de PNGs do disco: com a máquina ocupada passava dos 5 s padrão do Vitest.
+  it('toda escolha existe em TODAS as folhas do jogo (nenhuma peça some numa ação)', { timeout: 20_000 }, () => {
     const looks = everyLook();
     for (const id of Object.keys(CHARACTER_SHEETS) as CharacterSheetId[]) {
       const sheet = CHARACTER_SHEETS[id];
@@ -65,7 +66,8 @@ describe('personalização do personagem', () => {
     for (const file of files) expect(assetExists(file), file).toBe(true);
   });
 
-  it('a Criação de Personagem carrega antes tudo o que qualquer escolha pede', () => {
+  // Idem: lê as imagens de cada escolha.
+  it('a Criação de Personagem carrega antes tudo o que qualquer escolha pede', { timeout: 20_000 }, () => {
     const preloaded = new Set(creationLayerPaths());
     for (const look of everyLook()) {
       for (const path of [...bodyLayers(CHARACTER_SHEETS.idle, look), ...portraitLayers(look)]) expect(preloaded.has(path), path).toBe(true);

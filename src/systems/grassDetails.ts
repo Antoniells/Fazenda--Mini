@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { FarmMapData } from '../data/maps/farmMap';
-import { GRASS_DETAILS_KEY, GRASS_DETAILS, GRASS_BLADE_DETAILS, WILD_GRASS_DETAIL, GrassDetailDefinition } from '../data/grassDetails';
+import { GRASS_DETAILS_KEY, GRASS_DETAILS, GRASS_BLADE_DETAILS, FLOWER_DETAILS, WILD_GRASS_DETAIL, GrassDetailDefinition } from '../data/grassDetails';
 import { GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '../data/tiles';
 import { hash2D } from './groundVariation';
 import { DirtZone } from './dirtPaths';
@@ -15,9 +15,11 @@ import { pushPlant, registerSway } from './foliageSway';
  * loja, caixa de remessas e árvores. Sem colisão nem interação — o jogador
  * simplesmente anda por cima, igual grama comum.
  */
-const DETAIL_CHANCE = 0.05;
+const DETAIL_CHANCE = 0.07;
 /** Chance (por célula livre, em outra camada de sorteio) de nascer um dos 3 tufos de lâminas finas (`GRASS_BLADE_DETAILS`). */
-const BLADE_CHANCE = 0.04;
+const BLADE_CHANCE = 0.07;
+/** Chance de uma célula de grama ainda livre ganhar uma flor (3ª camada, `FLOWER_DETAILS`). */
+const FLOWER_CHANCE = 0.035;
 /** Profundidade fixa dos detalhes "achatados" (cogumelo/pedrinha/florzinha): acima do chão (-1) e do caminho de terra (mesma camada), abaixo de tudo ordenado por Y (personagem, árvores). */
 const DETAIL_DEPTH = -0.6;
 
@@ -62,7 +64,7 @@ function buildExcludeSet(map: FarmMapData): Set<string> {
 }
 
 /** Registra (uma vez, idempotente) os frames recortados de `GRASS_DETAILS` que ainda não existem na textura — reaproveitado tanto pela Fazenda quanto por `systems/externalMapBuilder.ts` (Floresta). */
-export function registerGrassDetailFrames(scene: Phaser.Scene, details: GrassDetailDefinition[] = [...GRASS_DETAILS, ...GRASS_BLADE_DETAILS, WILD_GRASS_DETAIL]): void {
+export function registerGrassDetailFrames(scene: Phaser.Scene, details: GrassDetailDefinition[] = [...GRASS_DETAILS, ...GRASS_BLADE_DETAILS, ...FLOWER_DETAILS, WILD_GRASS_DETAIL]): void {
   const texture = scene.textures.get(GRASS_DETAILS_KEY);
   for (const detail of details) {
     if (texture.has(detail.frameName)) continue;
@@ -109,10 +111,18 @@ export function removeGrassDetailsAt(scene: Phaser.Scene, cells: Array<{ col: nu
  * "regra padrão" pra qualquer moita/cogumelo do jogo, não só a Fazenda).
  * Pedrinha/florzinha continuam "achatadas" no chão, só decoração.
  */
-export const RUSTLING_DETAIL_IDS: readonly string[] = ['tuft', 'mushroom', ...GRASS_BLADE_DETAILS.map((detail) => detail.id)];
+export const RUSTLING_DETAIL_IDS: readonly string[] = ['tuft', 'mushroom', ...GRASS_BLADE_DETAILS.map((detail) => detail.id), ...FLOWER_DETAILS.map((detail) => detail.id)];
 
 /** Célula por célula que teve um detalhe "alto" colocado (tufo/cogumelo) — usado para tocar o balanço (`rustleGrassTuft`) quando o jogador pisa em cima. */
 export type GrassTuftMap = Map<string, Phaser.GameObjects.Image>;
+
+/** Chave do `setData` com o id do detalhe (`GrassDetailDefinition.id`) em cada imagem — a coleta com a Foice (`systems/forage.ts`) lê. */
+export const GRASS_DETAIL_ID_KEY = 'grassDetailId';
+
+/** Os detalhes desenhados na cena (`"col,row"` → imagem), pra a coleta com a Foice — vazio se a cena não tem. */
+export function getGrassDetailImages(scene: Phaser.Scene): Map<string, Phaser.GameObjects.Image> {
+  return detailRegistry.get(scene)?.images ?? new Map();
+}
 
 /**
  * Desenha UM detalhe de grama na célula (col, row) — tufo/cogumelo
@@ -139,6 +149,7 @@ export function placeGrassDetail(
 
   const image = scene.add.image(x, y, GRASS_DETAILS_KEY, detail.frameName);
   image.setScale(DISPLAY_SCALE);
+  image.setData(GRASS_DETAIL_ID_KEY, detail.id);
   entryFor(scene, rustling).images.set(cellKey(col, row), image);
 
   if (isRustling) {
@@ -192,6 +203,19 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
 
       const bladeIndex = Math.floor(hash2D(col * 271 + 5, row * 337 + 11) * GRASS_BLADE_DETAILS.length) % GRASS_BLADE_DETAILS.length;
       placeGrassDetail(scene, tile, col, row, GRASS_BLADE_DETAILS[bladeIndex], rustling);
+      placed.add(key);
+    }
+  }
+
+  // Terceira camada: flores variadas (`FLOWER_DETAILS`), sorteadas à parte e nunca em cima das de antes.
+  for (let row = 0; row < map.rows; row++) {
+    for (let col = 0; col < map.cols; col++) {
+      const key = cellKey(col, row);
+      if (placed.has(key) || exclude.has(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
+      if (hash2D(col * 587 + 43, row * 829 + 61) >= FLOWER_CHANCE) continue;
+
+      const flowerIndex = Math.floor(hash2D(col * 113 + 7, row * 199 + 13) * FLOWER_DETAILS.length) % FLOWER_DETAILS.length;
+      placeGrassDetail(scene, tile, col, row, FLOWER_DETAILS[flowerIndex], rustling);
     }
   }
 

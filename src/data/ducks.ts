@@ -11,5 +11,12 @@ export const DUCK_SWIM_FRAME_RATE = 4;
 /** Velocidade de nado (px de tela por segundo) e a pausa em cada ponta antes de dar a volta (ms). */
 export const DUCK_SWIM_SPEED = 18;
 export const DUCK_TURN_PAUSE_MS = 1200;
-/** Quantos patos nadam no lago da Floresta. */
-export const FOREST_DUCKS = 2;
+/**
+ * Os patos do lago da Floresta (`DuckPond` em `systems/ducks.ts`) VÃO E VÊM: no máximo `FOREST_DUCKS` (um por raia); ao chegar na Floresta
+ * cada raia tem `DUCK_PRESENT_CHANCE` de já ter um pato (0 a 3 patos), e de tempos em tempos (`DUCK_CHANGE_MS`) um pato some aos poucos na
+ * água ou um novo aparece (`DUCK_FADE_MS`). Nunca de noite nem na chuva — começou a anoitecer ou a chover, os que estão lá somem.
+ */
+export const FOREST_DUCKS = 3;
+export const DUCK_PRESENT_CHANCE = 0.5;
+export const DUCK_CHANGE_MS = { min: 20_000, max: 45_000 };
+export const DUCK_FADE_MS = 1500;

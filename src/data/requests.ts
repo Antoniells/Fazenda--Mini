@@ -63,7 +63,7 @@ export const REQUESTS: Record<NpcId, RequestDefinition[]> = {
   ],
   supplier: [
     { id: 'su-onions', title: 'Cebolas pro caldo da vila', text: 'Estou testando uma receita nova. Traga-me 8 Cebolas fresquinhas, por favor!', requirements: [{ kind: 'deliverCrop', id: 'onion', amount: 8 }], reward: { coins: 120 } },
-    { id: 'su-acorns', title: 'Bolotas pra plantar', text: 'Quero ver um pinheiro nascer da minha janela. Me arranje 4 Bolotas?', requirements: [{ kind: 'deliverResource', id: 'acorn', amount: 4 }], reward: { coins: 50 } },
+    { id: 'su-acorns', title: 'Bolotas pra plantar', text: 'Quero ver um pinheiro nascer da minha janela. Me arranje 4 Bolotas de Pinheiro?', requirements: [{ kind: 'deliverResource', id: 'acorn', amount: 4 }], reward: { coins: 50 } },
     { id: 'su-carrots', title: 'Cenouras pro celeiro', text: 'As cenouras acabaram na prateleira! Traga 10 e eu te pago bem.', requirements: [{ kind: 'deliverCrop', id: 'carrot', amount: 10 }], reward: { coins: 150 } },
   ],
   carpenter: [
@@ -74,7 +74,7 @@ export const REQUESTS: Record<NpcId, RequestDefinition[]> = {
   mermaid: [
     { id: 'me-carrots', title: 'Cenouras crocantes', text: 'Nunca provei uma cenoura! Você me traz 6? Em troca eu te dou o que o mar devolveu.', requirements: [{ kind: 'deliverCrop', id: 'carrot', amount: 6 }], reward: { coins: 100, resources: { stone: 8 } } },
     { id: 'me-onions', title: 'Cebolas pro caldo', text: 'Os pescadores fazem um caldo divino, mas faltam 6 Cebolas. Você ajuda?', requirements: [{ kind: 'deliverCrop', id: 'onion', amount: 6 }], reward: { coins: 90, resources: { wood: 10 } } },
-    { id: 'me-acorns', title: 'Bolotas de enfeite', text: 'Quero enfeitar meu cantinho com bolotas! Traga 5, por favor.', requirements: [{ kind: 'deliverResource', id: 'acorn', amount: 5 }], reward: { coins: 60 } },
+    { id: 'me-acorns', title: 'Bolotas de enfeite', text: 'Quero enfeitar meu cantinho com bolotas! Traga 5 Bolotas de Pinheiro, por favor.', requirements: [{ kind: 'deliverResource', id: 'acorn', amount: 5 }], reward: { coins: 60 } },
     { id: 'me-goo', title: 'Gosma brilhante', text: 'A gosma dos Slimes brilha tanto... Me traga 4 pra eu usar de espelho.', requirements: [{ kind: 'deliverResource', id: 'slime-goo', amount: 4 }], reward: { coins: 50 } },
   ],
 };

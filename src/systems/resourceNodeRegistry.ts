@@ -1,12 +1,16 @@
 import Phaser from 'phaser';
 import type { OreKind } from '../data/ores';
+import type { TreeSpecies } from '../data/trees';
 
 /** `weed` = o mato colhível com a Foice (só na Fazenda, `systems/wildGrass.ts`); `ore` = veio de minério da Pedreira (`data/ores.ts`, `systems/oreInteraction.ts`). */
 export type ResourceNodeKind = 'tree' | 'smallRock' | 'bigRock' | 'weed' | 'ore';
 /** Só relevante para `kind: 'tree'` — pedras não crescem, nascem sempre prontas pra quebrar. */
 export type TreeStage = 'sprout' | 'young' | 'mature';
-/** Espécie da árvore (só `kind: 'tree'`): ausente = pinheiro. A bétula só existe adulta (sem broto/muda) e nunca é sorteada pelo respawn selvagem. */
-export type TreeSpecies = 'pine' | 'birch';
+/**
+ * Espécie da árvore (só `kind: 'tree'`, `data/trees.ts`): ausente = o "pinheiro de nascença", que a célula decide (`resolveTreeSpecies`, às vezes
+ * um Carvalho). A bétula nunca é sorteada pelo respawn selvagem (só a do mapa e a plantada de uma Bolota de Bétula).
+ */
+export type { TreeSpecies };
 
 export interface ResourceNode {
   col: number;
@@ -91,6 +95,18 @@ class ResourceNodeRegistry {
         for (const node of this.initial.get(sceneKey) ?? []) if (node.kind === 'ore') restored.set(nodeKey(node.col, node.row), { ...node });
       }
       this.scenes.set(sceneKey, restored);
+    }
+  }
+
+  /**
+   * Devolve os nós ORIGINAIS da cena que passam no filtro e não estão lá hoje (célula vazia) — ex.: um save de antes de o mapa crescer ganha
+   * as árvores/pedras da área nova (`seedForestExpansion`). Nós já existentes nunca são trocados.
+   */
+  restoreInitialWhere(sceneKey: string, filter: (node: ResourceNode) => boolean): void {
+    const nodes = this.scenes.get(sceneKey);
+    if (!nodes) return;
+    for (const node of this.initial.get(sceneKey) ?? []) {
+      if (filter(node) && !nodes.has(nodeKey(node.col, node.row))) nodes.set(nodeKey(node.col, node.row), { ...node });
     }
   }
 

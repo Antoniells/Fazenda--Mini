@@ -327,19 +327,29 @@ export const BIRCH_TREE_PATH = 'Objects/Tree/Common/No Shadow/Birch Tree.png';
 export const BIRCH_TREE_FRAME_NAME = 'birch-tree-full';
 export const BIRCH_TREE_FRAME = { x: 96, y: 0, width: 32, height: 48 };
 
+/** Broto e muda da Bétula: a folha `Birch Tree.png` tem o mesmo arranjo da do Pinheiro (varredura pixel a pixel) — a bétula plantada cresce como ele. */
+export const BIRCH_SPROUT_FRAME_NAME = 'birch-tree-sprout';
+export const BIRCH_SPROUT_FRAME = { x: 43, y: 34, width: 9, height: 11 };
+export const BIRCH_YOUNG_FRAME_NAME = 'birch-tree-young';
+export const BIRCH_YOUNG_FRAME = { x: 69, y: 14, width: 24, height: 32 };
+
 /**
- * Cerejeira (`Crops/Fruits Tree/Spring/Cherry Tree.png`, 14 quadros de 32 x 48 numa fileira): a árvore rosa RARA da Fazenda e da Floresta
- * (ver `systems/treeVariety.ts`) e do fundo do menu. A folha traz o crescimento inteiro — semente (0), broto (1), muda (2) e a árvore
- * adulta em várias fases (3 rosa, 4 rosa florida, 5 com frutas, 6 verde, 7 vermelha, 8 de neve), toco (9-10) e silhuetas brancas (11-13);
- * usados: broto, muda, a adulta florida e — a árvore verde da Fazenda — a adulta verde. Carregada como spritesheet (a mesma chave em toda cena — o 1º formato carregado é o que fica).
+ * Carvalho (`Crops/Fruits Tree/Spring/Cherry Tree.png` — o arquivo do pacote se chama "cerejeira", no jogo é o CARVALHO; 14 quadros de
+ * 32 x 48 numa fileira, ver `data/trees.ts`). A folha traz o crescimento inteiro — semente (0), broto (1), muda (2) e a árvore adulta em
+ * várias fases (3 rosa, 4 rosa florida, 5 com frutas, 6 verde, 7 vermelha, 8 de neve), toco (9-10) e silhuetas brancas (11-13). Usados:
+ * broto e muda (os dois carvalhos), a adulta VERDE (o Carvalho) e a rosa florida (o Carvalho Rosa, o raro). Carregada como spritesheet
+ * (a mesma chave em toda cena — o 1º formato carregado é o que fica).
  */
-export const CHERRY_TREE_KEY = 'cherry-tree';
-export const CHERRY_TREE_PATH = 'Crops/Fruits Tree/Spring/Cherry Tree.png';
-export const CHERRY_TREE_FRAME_WIDTH = 32;
-export const CHERRY_TREE_FRAME_HEIGHT = 48;
-export const CHERRY_TREE_FRAMES = { sprout: 1, young: 2, mature: 4 } as const;
-/** A mesma árvore adulta com a copa verde (a árvore verde da Fazenda, `systems/treeVariety.ts`). */
-export const LEAFY_TREE_MATURE_FRAME = 6;
+export const OAK_TREE_KEY = 'oak-tree';
+export const OAK_TREE_PATH = 'Crops/Fruits Tree/Spring/Cherry Tree.png';
+export const OAK_TREE_FRAME_WIDTH = 32;
+export const OAK_TREE_FRAME_HEIGHT = 48;
+export const OAK_TREE_FRAMES = { sprout: 1, young: 2, mature: 6 } as const;
+/** O Carvalho Rosa adulto (a copa rosa florida). */
+export const PINK_OAK_MATURE_FRAME = 4;
+/** Só o brotinho do quadro 1 (recorte pixel a pixel): o ícone da Bolota de Carvalho e o fantasma do plantio — o quadro inteiro (32 x 48) deixava o broto minúsculo. */
+export const OAK_SPROUT_FRAME_NAME = 'oak-tree-sprout';
+export const OAK_SPROUT_FRAME = { x: 43, y: 35, width: 9, height: 11 };
 
 /**
  * Pedras/rochas decorativas (Floresta/Pedreira): `Exterior/Deep Forest/deep

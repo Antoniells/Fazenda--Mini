@@ -164,7 +164,7 @@ export class ShopInteriorScene extends Phaser.Scene {
     const vendor = VENDORS[def.id];
     if (def.sells && vendor) this.shop = createVendorShop(this, vendor, gameState.inventory, this.player, { startBuild: (request) => this.startBuild(request) });
 
-    attachFootstepSounds(this, () => 'bridge');
+    attachFootstepSounds(this, () => 'wood');
     // Pisar na porta = sair; andar fecha a loja.
     onPlayerStepped(this, (col, row) => {
       if (this.shop?.isOpen()) this.shop.close();

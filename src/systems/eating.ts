@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { gameState } from './gameState';
-import { HALF_HEART_HP } from './playerHealth';
+import { satietyOf } from './hunger';
 import { INVENTORY_SIZE } from './inventory';
 import { playEffect } from './soundEffects';
 import { Player } from '../entities/Player';
 import { EATING_DURATION_MS } from '../data/player';
 import { EAT_SOUND } from '../data/audio';
 import { resolveSlotVisual } from '../data/items';
+import { RESOURCES } from '../data/resources';
+import type { SlotRef } from '../data/items';
 
 /** Emitido (via `scene.game.events`) quando o personagem TERMINA de comer — a `UIScene` escuta pra redesenhar corações e Hotbar. */
 export const PLAYER_ATE_EVENT = 'player-ate';
@@ -19,7 +21,7 @@ const FOOD_ICON_MIN_SCALE_FRACTION = 0.25;
 
 /**
  * Comer uma colheita (pedido explícito): consome 1 unidade de QUALQUER
- * colheita do inventário e recupera meio coração. Prefere a colheita do slot
+ * colheita do inventário (ou um material comestível) e enche a barra de FOME (`systems/hunger.ts`; não cura mais vida — a vida volta dormindo). Prefere a do slot
  * selecionado na Hotbar (dá controle ao jogador de qual comer); se o slot
  * selecionado não for uma colheita, come a primeira que achar na Bolsa —
  * "qualquer das colheitas", sem obrigar a selecionar antes.
@@ -38,18 +40,18 @@ const FOOD_ICON_MIN_SCALE_FRACTION = 0.25;
 export function startEating(scene: Phaser.Scene, player: Player): boolean {
   if (player.isBusy() || player.isMoving()) return false;
 
-  const { playerHealth } = gameState;
-  if (playerHealth.getHp() >= playerHealth.getMaxHp()) return false;
+  // Comer mata a fome (`systems/hunger.ts`): de barriga cheia, não come.
+  if (gameState.hunger.isFull()) return false;
 
-  const cropId = findCropToEat();
-  if (!cropId) return false;
+  const food = findFoodToEat();
+  if (!food) return false;
 
   player.performAction(
     'eat',
-    () => finishEating(scene, cropId),
+    () => finishEating(scene, food),
     () => {
       playEffect(scene, EAT_SOUND);
-      showFoodBeingEaten(scene, player, cropId);
+      showFoodBeingEaten(scene, player, food);
     },
   );
   return true;
@@ -59,19 +61,29 @@ export function startEating(scene: Phaser.Scene, player: Player): boolean {
 export function isEdibleCropSelected(): boolean {
   const { inventory } = gameState;
   const selected = inventory.getSelectedSlot();
-  return selected?.category === 'crop' && inventory.getCount(selected.id) > 0;
+  return !!selected && isFood(selected);
 }
 
-function finishEating(scene: Phaser.Scene, cropId: string): void {
-  const { inventory, playerHealth } = gameState;
-  if (!inventory.useCrop(cropId)) return;
-  playerHealth.heal(HALF_HEART_HP);
+/** Dá pra comer agora: uma colheita (qualquer uma) ou um material comestível (`ResourceDefinition.edible`) com estoque. */
+function isFood(ref: SlotRef): boolean {
+  const { inventory } = gameState;
+  if (ref.category === 'crop') return inventory.getCount(ref.id) > 0;
+  if (ref.category === 'resource') return !!RESOURCES[ref.id]?.edible && inventory.getResourceCount(ref.id) > 0;
+  return false;
+}
+
+function finishEating(scene: Phaser.Scene, food: SlotRef): void {
+  const { inventory, hunger } = gameState;
+  const eaten = food.category === 'crop' ? inventory.useCrop(food.id) : inventory.useResource(food.id);
+  if (!eaten) return;
+  // Comer enche a barra de fome (não cura mais vida — a vida volta dormindo).
+  hunger.eat(satietyOf(food));
   scene.game.events.emit(PLAYER_ATE_EVENT);
 }
 
-/** O ícone real da colheita (mesmo da Bolsa) sobre a cabeça, encolhendo a cada mordida até sumir ao fim da animação. */
-function showFoodBeingEaten(scene: Phaser.Scene, player: Player, cropId: string): void {
-  const visual = resolveSlotVisual({ category: 'crop', id: cropId });
+/** O ícone real da comida (mesmo da Bolsa) sobre a cabeça, encolhendo a cada mordida até sumir ao fim da animação. */
+function showFoodBeingEaten(scene: Phaser.Scene, player: Player, food: SlotRef): void {
+  const visual = resolveSlotVisual(food);
   if (!visual || !scene.textures.exists(visual.textureKey)) return;
 
   const sprite = player.sprite;
@@ -100,15 +112,16 @@ function showFoodBeingEaten(scene: Phaser.Scene, player: Player, cropId: string)
   });
 }
 
-function findCropToEat(): string | null {
+/** O que comer: o selecionado na Hotbar, se for comida; senão a primeira comida da Bolsa (colheita ou material comestível). */
+function findFoodToEat(): SlotRef | null {
   const { inventory } = gameState;
 
   const selected = inventory.getSelectedSlot();
-  if (selected?.category === 'crop' && inventory.getCount(selected.id) > 0) return selected.id;
+  if (selected && isFood(selected)) return selected;
 
   for (let index = 0; index < INVENTORY_SIZE; index++) {
     const slot = inventory.getSlot(index);
-    if (slot?.category === 'crop' && inventory.getCount(slot.id) > 0) return slot.id;
+    if (slot && isFood(slot)) return slot;
   }
   return null;
 }

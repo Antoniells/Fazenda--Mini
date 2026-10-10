@@ -1,4 +1,5 @@
 import { Inventory } from './inventory';
+import { Hunger } from './hunger';
 import { createSmeltState, SmeltState } from '../data/smelting';
 import { createUpgradesState, UpgradesState } from '../data/upgrades';
 import { GameClock } from './gameClock';
@@ -104,6 +105,8 @@ export const gameState = {
   unlockedExpansions: new Set<string>(),
   /** Fase 8 — Combate: vida do jogador, ver `systems/playerHealth.ts`. */
   playerHealth: new PlayerHealth(),
+  /** A fome (saciedade 0-100, `systems/hunger.ts`). Vai pro save. */
+  hunger: new Hunger(),
   farmland: new Farmland(farmMap.farmlandArea),
   /** Chave = célula-âncora (`"col,row"`), mesmo esquema de `DecorationPlacementSystem.placed`. */
   placedDecorations: new Map<string, PlacedDecorationRecord>(),
@@ -157,6 +160,10 @@ export const gameState = {
   upgrades: createUpgradesState() as UpgradesState,
   /** Cercas da lavoura destruídas pela horda ("col,row"), à espera do Martelo (`systems/farmFences.ts`) — vai pro save. */
   destroyedFences: new Set<string>(),
+  /** Plantinhas/flores/cogumelos cortados com a Foice HOJE (`"cena|col,row"`, `systems/forage.ts`): somem até a virada do dia, quando renascem. Vai pro save. */
+  forageCut: new Set<string>(),
+  /** Arbustos frutíferos da Fazenda: dias desde a última colheita de cada um (`"col,row"` → dias, `data/berryBushes.ts`). Ausente = já tem frutas. Vai pro save. */
+  berryBushes: {} as Record<string, number>,
   /**
    * Tutorial de novos jogadores (`systems/tutorial.ts`): `tutorialCompleted` vai pro Save Game — partida nova começa `false`, save
    * antigo (sem o campo) carrega `true`; o padrão `true` cobre o fluxo de desenvolvimento que abre a Fazenda sem passar pelo menu.

@@ -5,7 +5,10 @@ import { PLAYER_START } from '../data/player';
 import { DECORATIONS } from '../data/decorations';
 import { Player } from '../entities/Player';
 import { buildFarmRock, buildGrowingTree, WorldResourceVisual } from './externalMapBuilder';
-import { resourceNodeRegistry, ResourceNode, ResourceCaps } from './resourceNodeRegistry';
+import { resourceNodeRegistry, ResourceNode, ResourceCaps, type TreeSpecies } from './resourceNodeRegistry';
+import { EXTRA_FARM_TREE_BATCHES, type ExtraFarmTreeBatch } from '../data/trees';
+import { isBerryBushCell } from '../data/berryBushes';
+import { rollOakSpecies } from './treeVariety';
 import { TreeInteractable, RockInteractable } from './resourceInteraction';
 import { InteractionRegistry } from './interaction';
 import { buildWalkableGrid, WalkableGrid } from './grid';
@@ -74,9 +77,24 @@ const KEEP_CLEAR_RADIUS = 2;
 export function initFarmResourceRegistry(): void {
   const initial: ResourceNode[] = [
     ...farmMap.treePositions.map(([col, row]): ResourceNode => ({ col, row, kind: 'tree', stage: 'mature' })),
+    // As levas de árvores que vieram depois do mapa autorado (`EXTRA_FARM_TREE_BATCHES`).
+    ...EXTRA_FARM_TREE_BATCHES.flatMap((batch) => batch.trees.map(({ col, row, species }) => extraTreeNode(col, row, species))),
     ...farmMap.rockPositions.map(([col, row]): ResourceNode => ({ col, row, kind: 'smallRock', stage: 'mature' })),
   ];
   resourceNodeRegistry.ensureInitialized(FARM_RESOURCES_KEY, initial, FARM_CAPS);
+}
+
+/** Uma árvore extra já adulta: o Carvalho sorteia o Carvalho Rosa; o Pinheiro guarda a espécie (pra a célula não o trocar por um Carvalho). */
+function extraTreeNode(col: number, row: number, species: 'oak' | 'pine'): ResourceNode {
+  return { col, row, kind: 'tree', stage: 'mature', species: species === 'oak' ? rollOakSpecies() : 'pine' };
+}
+
+/** Save de antes desta leva de árvores: planta-as uma vez, já adultas, nas células que estiverem livres (sem outro recurso e sem obra/construção). */
+export function seedFarmTreeBatch(batch: ExtraFarmTreeBatch): void {
+  for (const { col, row, species } of batch.trees) {
+    if (resourceNodeRegistry.hasNodeAt(FARM_RESOURCES_KEY, col, row) || !isFarmCellFreeForResource(col, row)) continue;
+    resourceNodeRegistry.addNode(FARM_RESOURCES_KEY, extraTreeNode(col, row, species));
+  }
 }
 
 let staticGrid: WalkableGrid | null = null;
@@ -126,6 +144,8 @@ export function isFarmCellFreeForResource(col: number, row: number): boolean {
 
   const gid = farmMap.ground?.[row]?.[col];
   if (gid !== undefined && gid !== GRASS_FLAT_TILE_INDEX && gid !== GRASS_FLAT_DARK_TILE_INDEX) return false;
+
+  if (isBerryBushCell(col, row)) return false; // O pé de um arbusto frutífero (`data/berryBushes.ts`).
 
   for (const [c, r] of getKeyPoints()) {
     if (Math.max(Math.abs(c - col), Math.abs(r - row)) <= KEEP_CLEAR_RADIUS) return false;
@@ -186,7 +206,7 @@ export class FarmResources {
       const key = cellKey(node.col, node.row);
 
       if (node.kind === 'tree') {
-        const visual = buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage, node.species, 'farm');
+        const visual = buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage, node.species);
         this.visuals.set(key, { visual, kind: node.kind, stage: node.stage });
         if (node.stage === 'mature') {
           this.grid.block(node.col, node.row);
@@ -211,10 +231,10 @@ export class FarmResources {
     }
   }
 
-  /** O jogador plantou uma bolota: nasce como broto (e cresce com os dias, como os que brotam sozinhos). */
-  plant(col: number, row: number): void {
-    resourceNodeRegistry.addNode(FARM_RESOURCES_KEY, { col, row, kind: 'tree', stage: 'sprout' });
-    const visual = buildGrowingTree(this.scene, TILE_SIZE, col, row, 'sprout', 'pine', 'farm');
+  /** O jogador plantou uma bolota: nasce como broto da espécie dela (e cresce com os dias, como os que brotam sozinhos). */
+  plant(col: number, row: number, species: TreeSpecies): void {
+    resourceNodeRegistry.addNode(FARM_RESOURCES_KEY, { col, row, kind: 'tree', stage: 'sprout', species });
+    const visual = buildGrowingTree(this.scene, TILE_SIZE, col, row, 'sprout', species);
     this.visuals.set(cellKey(col, row), { visual, kind: 'tree', stage: 'sprout' });
   }
 

@@ -15,6 +15,7 @@ import { playEffect } from '../systems/soundEffects';
 import { HURT_SOUND } from '../data/audio';
 import { getMoveSpeedMultiplier } from '../systems/skills';
 import { impact } from '../systems/impact';
+import { popText } from '../systems/floatingText';
 
 export type Facing = 'down' | 'up' | 'side';
 
@@ -224,6 +225,8 @@ const col = this.col + dCol;
     // passo/`faceDirection`, já deixou `this.facing`/`sprite.flipX`
     // corretos; não há nada a reaplicar).
     this.busy = true;
+    // Trabalhar e lutar dão fome (`systems/hunger.ts`); ao cruzar pra "com fome", um aviso sobre a cabeça.
+    if (gameState.hunger.spendFor(action)) popText(this.sprite.scene, this.sprite.x, this.sprite.y - 60, 'Com fome! Coma algo.', { color: '#ffd27a', fontSize: 13 });
 
     const spec = this.assets.actions[action];
     // Algumas folhas de animação têm mais margem vazia abaixo do

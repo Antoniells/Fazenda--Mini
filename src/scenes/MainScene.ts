@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { farmMap } from '../data/maps/farmMap';
 import { attachFootstepSounds, playEffect } from '../systems/soundEffects';
+import { groundSurfaceOfGid } from '../systems/groundSurface';
 import { DOOR_SOUND } from '../data/audio';
 import { ROOSTER_SOUND, ROOSTER_HOURS } from '../data/audio';
 import {
@@ -11,10 +12,16 @@ import {
   TILE_SIZE,
   PINE_TREE_KEY,
   PINE_TREE_PATH,
-  CHERRY_TREE_KEY,
-  CHERRY_TREE_PATH,
-  CHERRY_TREE_FRAME_WIDTH,
-  CHERRY_TREE_FRAME_HEIGHT,
+  OAK_TREE_KEY,
+  OAK_TREE_PATH,
+  OAK_TREE_FRAME_WIDTH,
+  OAK_TREE_FRAME_HEIGHT,
+  BIRCH_TREE_KEY,
+  BIRCH_TREE_PATH,
+  BIRCH_SPROUT_FRAME_NAME,
+  BIRCH_SPROUT_FRAME,
+  OAK_SPROUT_FRAME_NAME,
+  OAK_SPROUT_FRAME,
   PINE_TREE_FRAME_NAME,
   PINE_TREE_FRAME,
   PINE_SPROUT_FRAME_NAME,
@@ -101,16 +108,18 @@ import {
 } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE, SPRINKLER_WATER_KEY, SPRINKLER_WATER_PATH, SPRINKLER_WATER_FRAME_SIZE, LEAF_FALL_KEY, LEAF_FALL_PATH, LEAF_FALL_FRAME_SIZE } from '../data/effects';
 import { GRASS_DETAILS_KEY, GRASS_DETAILS_PATH } from '../data/grassDetails';
-import { buildFarmGround, buildFenceCorners, buildFenceSide, buildShippingBin, buildPlayerHouse, buildFarmlandFence, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { buildFarmGround, buildFenceCorners, buildFenceSide, buildShippingBin, buildPlayerHouse, buildFarmlandFence, bridgeWalkwayCells, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildMapProps } from '../systems/mapProps';
 import { GROUND_TILESETS } from '../systems/groundTilesets';
 import { buildDirtZone } from '../systems/dirtPaths';
-import { buildGrassDetails, rustleGrassTuft, GrassTuftMap } from '../systems/grassDetails';
+import { buildGrassDetails, getGrassDetailImages, removeGrassDetailsAt, rustleGrassTuft, GrassTuftMap } from '../systems/grassDetails';
+import { buildBerryBushes, preloadBerryBushes } from '../systems/berryBushes';
+import { attachGrassDetailForage, attachMapPropForage } from '../systems/forage';
 import { buildWalkableGrid } from '../systems/grid';
 import { PropertyExpansionSystem } from '../systems/propertyExpansion';
 import { BridgeSystem } from '../systems/bridgeSystem';
 import { TreePlantingSystem } from '../systems/treePlanting';
-import { ACORN } from '../data/resources';
+import { isAcornId } from '../systems/treeVariety';
 import { WEAPONS } from '../data/weapons';
 import { ARMORS } from '../data/armors';
 import { SlotRef } from '../data/items';
@@ -284,8 +293,9 @@ export class MainScene extends Phaser.Scene {
       frameHeight: TILE_SIZE,
     });
     this.load.image(PINE_TREE_KEY, encodeURI(`/${PINE_TREE_PATH}`));
-    // A cerejeira rara no lugar de alguns pinheiros (`systems/treeVariety.ts`) — a Floresta usa a mesma textura.
-    this.load.spritesheet(CHERRY_TREE_KEY, encodeURI(`/${CHERRY_TREE_PATH}`), { frameWidth: CHERRY_TREE_FRAME_WIDTH, frameHeight: CHERRY_TREE_FRAME_HEIGHT });
+    // O Carvalho (e o Carvalho Rosa) e a Bétula (`data/trees.ts`): árvores do mundo, plantadas das bolotas e os ícones das bolotas — a Floresta usa as mesmas texturas.
+    this.load.spritesheet(OAK_TREE_KEY, encodeURI(`/${OAK_TREE_PATH}`), { frameWidth: OAK_TREE_FRAME_WIDTH, frameHeight: OAK_TREE_FRAME_HEIGHT });
+    this.load.image(BIRCH_TREE_KEY, encodeURI(`/${BIRCH_TREE_PATH}`));
     this.load.spritesheet(SOIL_TILESET_KEY, encodeURI(`/${SOIL_TILESET_PATH}`), {
       frameWidth: TILE_SIZE,
       frameHeight: TILE_SIZE,
@@ -320,6 +330,7 @@ export class MainScene extends Phaser.Scene {
     // Sprite do Slime: os inimigos da horda (`entities/Raider.ts`) usam a mesma arte — a Floresta carrega por conta própria, a Fazenda também precisa.
     this.load.spritesheet(SLIME_KEY, encodeURI(`/${SLIME_PATH}`), { frameWidth: SLIME_FRAME_SIZE, frameHeight: SLIME_FRAME_SIZE });
     preloadButterflies(this);
+    preloadBerryBushes(this); // Os arbustos frutíferos e o ícone da Frutinha Silvestre.
 
     for (const crop of Object.values(CROPS)) {
       this.load.spritesheet(crop.textureKey, encodeURI(`/${crop.texturePath}`), {
@@ -445,6 +456,15 @@ export class MainScene extends Phaser.Scene {
     
     if (!pineTexture.has(PINE_SPROUT_FRAME_NAME)) {
       pineTexture.add(PINE_SPROUT_FRAME_NAME, 0, PINE_SPROUT_FRAME.x, PINE_SPROUT_FRAME.y, PINE_SPROUT_FRAME.width, PINE_SPROUT_FRAME.height);
+    }
+    // Os brotos da Bétula e do Carvalho: os ícones das bolotas deles (`data/resources.ts`), usados por toda a interface.
+    const oakTexture = this.textures.get(OAK_TREE_KEY);
+    if (!oakTexture.has(OAK_SPROUT_FRAME_NAME)) {
+      oakTexture.add(OAK_SPROUT_FRAME_NAME, 0, OAK_SPROUT_FRAME.x, OAK_SPROUT_FRAME.y, OAK_SPROUT_FRAME.width, OAK_SPROUT_FRAME.height);
+    }
+    const birchTexture = this.textures.get(BIRCH_TREE_KEY);
+    if (!birchTexture.has(BIRCH_SPROUT_FRAME_NAME)) {
+      birchTexture.add(BIRCH_SPROUT_FRAME_NAME, 0, BIRCH_SPROUT_FRAME.x, BIRCH_SPROUT_FRAME.y, BIRCH_SPROUT_FRAME.width, BIRCH_SPROUT_FRAME.height);
     }
     if (!pineTexture.has(PINE_YOUNG_FRAME_NAME)) {
       pineTexture.add(PINE_YOUNG_FRAME_NAME, 0, PINE_YOUNG_FRAME.x, PINE_YOUNG_FRAME.y, PINE_YOUNG_FRAME.width, PINE_YOUNG_FRAME.height);
@@ -607,7 +627,7 @@ export class MainScene extends Phaser.Scene {
     const fenceImages = buildFarmlandFence(this, farmMap);
     // Props de decoração ambiente autorados no MapEditorScene (aba
     // Decoração, pedido explícito) — puramente visuais, sem colisão.
-    buildMapProps(this, farmMap.tileSize, farmMap.props ?? []);
+    const farmProps = buildMapProps(this, farmMap.tileSize, farmMap.props ?? []);
 
     const grid = buildWalkableGrid(farmMap);
     const tilePx = farmMap.tileSize * DISPLAY_SCALE;
@@ -644,6 +664,9 @@ export class MainScene extends Phaser.Scene {
     // Árvores e pedras da Fazenda: desenhadas do registro (o que já foi cortado/quebrado/nasceu), bloqueiam o grid e ganham a coleta.
     ensureTutorialWeed(); // O mato do tutorial na lavoura (só enquanto o passo de cortá-lo não passou).
     this.farmResources = new FarmResources(this, grid, interactions, this.player);
+    // Os arbustos frutíferos (`systems/berryBushes.ts`): sólidos e clicáveis; a grama decorativa embaixo deles sai.
+    const bushCells = buildBerryBushes(this, tilePx, grid, interactions, this.player);
+    removeGrassDetailsAt(this, bushCells.map(([col, row]) => ({ col, row })));
     registerFarmlandInteractables(farmMap, this.farmland, this.farmlandRenderer, this.inventory, this.player, interactions);
     this.shippingBinMenu = registerShippingBinInteractable(
       this,
@@ -738,6 +761,10 @@ export class MainScene extends Phaser.Scene {
     this.builderCrew = new BuilderCrew(this, grid, tilePx, this.player, this.constructionSites, this.decorationPlacement);
     this.builderCrew.init();
     this.treePlanting = new TreePlantingSystem(this, farmMap, tilePx, grid, this.inventory, this.farmResources, (col, row) => this.farmFences.hasFenceAt(col, row));
+
+    // Plantinhas, flores e cogumelos da grama: coletáveis com a Foice (`systems/forage.ts`) — depois de todas as outras interações (a delas vale).
+    attachGrassDetailForage(this.scene.key, this.player, interactions, getGrassDetailImages(this), this.grassTufts);
+    attachMapPropForage(this.scene.key, this.player, interactions, farmProps);
 
     new TileCursor(this, tilePx, grid, farmMap.farmlandArea);
 
@@ -864,8 +891,13 @@ export class MainScene extends Phaser.Scene {
       toggleInventoryScreen();
     });
 
-    const bridgeCells = new Set(farmMap.bridges.map((bridge) => `${bridge.col},${bridge.row}`));
-    attachFootstepSounds(this, (col, row) => (bridgeCells.has(`${col},${row}`) ? 'bridge' : 'grass'));
+    // Passos pelo chão (`systems/groundSurface.ts`): as pontes (de pedra) soam como pedra, a lavoura arada como terra, o resto pela arte do chão.
+    const bridgeCells = new Set(farmMap.bridges.flatMap((bridge) => [[bridge.col, bridge.row], ...bridgeWalkwayCells(bridge)]).map(([col, row]) => `${col},${row}`));
+    attachFootstepSounds(this, (col, row) => {
+      if (bridgeCells.has(`${col},${row}`)) return 'stone';
+      if (this.farmland.isTilled(col, row)) return 'dirt';
+      return groundSurfaceOfGid(this, farmMap.ground?.[row]?.[col]);
+    });
 
     // "Grama" pro nascimento das borboletas: o GID autorado da célula é grama plana, e não é ponte nem lavoura já arada/plantada.
     const isGrassCell = (col: number, row: number): boolean => {
@@ -882,7 +914,7 @@ export class MainScene extends Phaser.Scene {
       return isDirtGround(farmMap.ground, col, row);
     };
     attachFootDust(this, this.player, tilePx, isDirtCell);
-    this.butterflies = new ButterflyField(this, gameState.gameClock, tilePx, isGrassCell);
+    this.butterflies = new ButterflyField(this, gameState.gameClock, tilePx, isGrassCell, () => gameState.weather.raining);
 
     onPlayerStepped(this, (col, row) => {
       tutorial.notify({ kind: 'move' });
@@ -988,8 +1020,9 @@ export class MainScene extends Phaser.Scene {
       this.decorationPlacement.cancel();
     }
 
-    if (selectedSlot && selectedSlot.category === 'resource' && selectedSlot.id === ACORN.id) {
-      if (!this.treePlanting.isActive()) this.treePlanting.toggle();
+    // Bolota na mão: o modo de plantio daquela bolota (trocar de bolota troca o broto do fantasma).
+    if (selectedSlot && selectedSlot.category === 'resource' && isAcornId(selectedSlot.id)) {
+      if (this.treePlanting.getAcornId() !== selectedSlot.id) this.treePlanting.start(selectedSlot.id);
     } else {
       this.treePlanting.cancel();
     }

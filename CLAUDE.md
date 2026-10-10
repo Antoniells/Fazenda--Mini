@@ -75,7 +75,7 @@ Ao criar ou modificar elementos visuais:
 
 ## Estado atual
 
-Versão **0.1.12**. O jogo está completo do começo ao fim: agricultura, economia, construções e melhorias, tempo e clima, recursos e mineração, Vilarejo com moradores e campanha, hordas, Cavernas de 100 andares, pesca e a história principal ("Os Três Pilares do Equilíbrio"), da cena introdutória narrada ao fim com cinemática e créditos. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para o que está pronto e o que falta — o próximo trabalho é a **Etapa 6 da Fase 11** (rodada de jogo, balanceamento e polimento de falas, sons e arte).
+Versão **0.1.13**. O jogo está completo do começo ao fim: agricultura, economia, construções e melhorias, tempo e clima, recursos e mineração, Vilarejo com moradores e campanha, hordas, Cavernas de 100 andares, pesca e a história principal ("Os Três Pilares do Equilíbrio"), da cena introdutória narrada ao fim com cinemática e créditos. Consulte [docs/ROADMAP.md](docs/ROADMAP.md) para o que está pronto e o que falta — o próximo trabalho é a **Etapa 6 da Fase 11** (rodada de jogo, balanceamento e polimento de falas, sons e arte).
 
 Convenções de trabalho que valem para todas as tarefas:
 - **Menu de hack (F9)**: ferramenta de teste (`src/debug/hackMenu.ts`), só no modo de desenvolvimento (`npm run dev`); leva a qualquer cena e a qualquer marco da história.

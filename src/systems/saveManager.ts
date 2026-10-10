@@ -5,6 +5,7 @@ import { gameState, PlacedDecorationRecord, PlayerProfile, SlimeRespawnRecord, W
 import { Inventory, InventorySaveData } from './inventory';
 import { GameClock, GameClockSaveData } from './gameClock';
 import { PlayerHealth, PlayerHealthSaveData } from './playerHealth';
+import { Hunger } from './hunger';
 import { Farmland, PlotSaveData } from './farmland';
 import { farmMap } from '../data/maps/farmMap';
 import { StorageAdapter, createDefaultStorageAdapter } from './storageAdapter';
@@ -24,6 +25,9 @@ import { AnimalsState, createAnimalsState } from '../data/animals';
 import { ConstructionState, createConstructionState } from '../data/construction';
 import { UpgradesState, createLegacyUpgradesState, createUpgradesState } from '../data/upgrades';
 import { applyUpgrades } from './farmUpgrades';
+import { seedFarmTreeBatch } from './farmResources';
+import { EXTRA_FARM_TREE_BATCHES } from '../data/trees';
+import { seedForestExpansion } from './forestExpansion';
 import { STARTER_BROKEN_FENCES } from '../data/farmStart';
 import { SmeltState, createSmeltState } from '../data/smelting';
 import { REMOVED_DECORATIONS } from '../data/decorations';
@@ -69,6 +73,8 @@ export interface SaveData {
   inventory: InventorySaveData;
   gameClock: GameClockSaveData;
   playerHealth: PlayerHealthSaveData;
+  /** A saciedade (fome, `systems/hunger.ts`) — ausente em saves de antes da fome = barra cheia. */
+  hunger?: number;
   unlockedBridges: string[];
   /** Trechos de expansão comprados — ausente em saves anteriores (que sempre recomeçavam trancados). */
   unlockedExpansions?: string[];
@@ -119,6 +125,18 @@ export interface SaveData {
   smelting?: SmeltState;
   /** Cercas destruídas aguardando conserto — ausente em saves antigos (nenhuma). */
   destroyedFences?: string[];
+  /** As levas de árvores extras da Fazenda (`EXTRA_FARM_TREE_BATCHES`) que este save já recebeu (ids). Ausente = nenhuma (fora as das marcas antigas abaixo). */
+  farmTreeBatches?: string[];
+  /** Marca antiga (leva `oaks-1`): os 6 primeiros Carvalhos já plantados. Só lida. */
+  farmOaksSeeded?: boolean;
+  /** Plantinhas/flores/cogumelos cortados hoje — ausente em saves antigos (nenhum). */
+  forageCut?: string[];
+  /** Arbustos frutíferos: dias desde a última colheita de cada um — ausente em saves antigos (todos com frutas). */
+  berryBushes?: Record<string, number>;
+  /** A Floresta já tem a área nova (56 x 42)? Ausente em saves de antes de ela crescer = não (ganham as árvores/pedras dela ao carregar). */
+  forestExpanded?: boolean;
+  /** Marca antiga (leva `trees-2`): as 10 árvores a mais já plantadas. Só lida. */
+  farmMoreTreesSeeded?: boolean;
   /** O tutorial de novos jogadores já foi concluído? Ausente em saves antigos (que já jogavam) = concluído. */
   tutorialCompleted?: boolean;
   /** A dica do regador vazio já foi mostrada? Ausente em saves antigos = já (não recebem a dica). */
@@ -231,6 +249,7 @@ export function save(slot?: number): void {
     inventory: gameState.inventory.serialize(),
     gameClock: gameState.gameClock.serialize(),
     playerHealth: gameState.playerHealth.serialize(),
+    hunger: gameState.hunger.serialize(),
     unlockedBridges: Array.from(gameState.unlockedBridges),
     unlockedExpansions: Array.from(gameState.unlockedExpansions),
     farmland: gameState.farmland.serialize(),
@@ -258,6 +277,10 @@ export function save(slot?: number): void {
     caveDeepest: gameState.cave.deepest,
     caveExplored: { day: gameState.caveExplored.day, floors: [...gameState.caveExplored.floors] },
     destroyedFences: [...gameState.destroyedFences],
+    farmTreeBatches: EXTRA_FARM_TREE_BATCHES.map((batch) => batch.id), // Partida nova já nasce com todas; save antigo ganha as que faltam ao carregar.
+    forageCut: [...gameState.forageCut],
+    berryBushes: { ...gameState.berryBushes },
+    forestExpanded: true,
     upgrades: { ...gameState.upgrades },
     smelting: { jobs: gameState.smelting.jobs.map((job) => ({ ...job })) },
     tutorialCompleted: gameState.tutorialCompleted,
@@ -351,6 +374,7 @@ export function load(slot: number): boolean {
     gameState.inventory = inventory;
     gameState.gameClock = gameClock;
     gameState.playerHealth = playerHealth;
+    gameState.hunger = Hunger.deserialize(data.hunger);
     gameState.unlockedBridges = unlockedBridges;
     gameState.unlockedExpansions = new Set(data.unlockedExpansions ?? []);
     gameState.farmland = farmland;
@@ -378,9 +402,17 @@ export function load(slot: number): boolean {
     gameState.cave = { deepest: data.caveDeepest ?? 0 };
     gameState.caveExplored = { day: data.caveExplored?.day ?? 0, floors: [...(data.caveExplored?.floors ?? [])] };
     gameState.destroyedFences = new Set(data.destroyedFences ?? []);
+    gameState.forageCut = new Set(data.forageCut ?? []);
+    gameState.berryBushes = { ...(data.berryBushes ?? {}) };
     gameState.smelting = { jobs: (data.smelting?.jobs ?? []).map((job) => ({ ...job })) };
     gameState.upgrades = data.upgrades ? { ...createUpgradesState(), ...data.upgrades } : createLegacyUpgradesState();
     applyUpgrades(); // A casa, a lavoura e a cerca do save (a lavoura ampliada ganha as parcelas que faltarem).
+    // Levas de árvores extras que este save ainda não recebeu (as marcas antigas valem pelas levas delas): plantadas agora, onde estiver livre.
+    const treeBatches = new Set(data.farmTreeBatches ?? []);
+    if (data.farmOaksSeeded) treeBatches.add('oaks-1');
+    if (data.farmMoreTreesSeeded) treeBatches.add('trees-2');
+    for (const batch of EXTRA_FARM_TREE_BATCHES) if (!treeBatches.has(batch.id)) seedFarmTreeBatch(batch);
+    if (!data.forestExpanded) seedForestExpansion(); // Save de antes de a Floresta crescer: ganha as árvores/pedras da área nova.
     gameState.tutorialCompleted = data.tutorialCompleted ?? true;
     gameState.waterHintSeen = data.waterHintSeen ?? true;
     gameState.villageVisited = data.villageVisited ?? true;
@@ -412,6 +444,7 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.inventory = new Inventory();
   gameState.gameClock = new GameClock();
   gameState.playerHealth = new PlayerHealth();
+  gameState.hunger = new Hunger();
   gameState.unlockedBridges = new Set();
   gameState.unlockedExpansions = new Set();
   gameState.upgrades = createUpgradesState();
@@ -440,6 +473,8 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.construction = createConstructionState();
   gameState.cave = { deepest: 0 };
   gameState.caveExplored = { day: 0, floors: [] };
+  gameState.forageCut = new Set();
+  gameState.berryBushes = {};
   gameState.destroyedFences = new Set(STARTER_BROKEN_FENCES); // Partida nova: algumas cercas já quebradas (`data/farmStart.ts`).
   gameState.smelting = createSmeltState();
   gameState.sprinklerAnimDay = 0;

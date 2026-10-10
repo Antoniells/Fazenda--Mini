@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { Hunger } from '../systems/hunger';
+import { MAX_SATIETY } from '../data/hunger';
 import { debugFlags } from './debugFlags';
 import { gameState } from '../systems/gameState';
 import { startNewGame, save as saveGame } from '../systems/saveManager';
@@ -158,6 +160,13 @@ export function installHackMenu(game: Phaser.Game): void {
     say(`+${days} dia(s) → dia ${gameState.gameClock.getDay()} (${formatHours(gameState.gameClock.getHours())})`);
   }
 
+  /** Liga/desliga a chuva de HOJE (`gameState.weather.raining`, o véu de chuva acompanha na hora). Ligar rega a lavoura toda, como um dia de chuva de verdade (`rollDailyWeather`). */
+  function toggleRain(): void {
+    gameState.weather.raining = !gameState.weather.raining;
+    if (gameState.weather.raining) gameState.farmland.waterAll();
+    say(gameState.weather.raining ? 'Chuva ligada (a lavoura foi regada).' : 'Chuva desligada.');
+  }
+
   function giveResources(): void {
     // Sem os peixes: são muitos e lotariam a Bolsa (têm botão próprio).
     for (const id of Object.keys(RESOURCES)) if (!FISH_BY_ID[id]) inventory().addResources(id, 99);
@@ -269,7 +278,7 @@ export function installHackMenu(game: Phaser.Game): void {
   }
   function renderStatus(): void {
     const scenes = game.scene.getScenes(true).map((scene) => scene.scene.key).filter((key) => !PERSISTENT_SCENES.includes(key));
-    status.textContent = `Dia ${gameState.gameClock.getDay()}  ${formatHours(gameState.gameClock.getHours())}  x${debugFlags.timeScale}\nMoedas: ${gameState.inventory.getCoins()}   Cena: ${scenes.join(', ') || '(menu)'}\nInvencível: ${debugFlags.godMode ? 'sim' : 'não'}   Lojas abertas: ${debugFlags.shopsAlwaysOpen ? 'sempre' : 'no horário'}
+    status.textContent = `Dia ${gameState.gameClock.getDay()}  ${formatHours(gameState.gameClock.getHours())}  x${debugFlags.timeScale}  Chuva: ${gameState.weather.raining ? 'sim' : 'não'}\nMoedas: ${gameState.inventory.getCoins()}   Cena: ${scenes.join(', ') || '(menu)'}\nInvencível: ${debugFlags.godMode ? 'sim' : 'não'}   Lojas abertas: ${debugFlags.shopsAlwaysOpen ? 'sempre' : 'no horário'}
 Tour: ${tourTimer !== null ? 'rodando' : 'parado'}   Erros: ${errorCount}
 História: ${STORY_MILESTONES.filter((milestone) => hasMilestone(milestone.id)).length}/${STORY_MILESTONES.length} marcos, pilares ${countPillars()}/3`;
   }
@@ -341,9 +350,18 @@ História: ${STORY_MILESTONES.filter((milestone) => hasMilestone(milestone.id)).
   for (const hour of [6, 12, 18, 23]) button(time, `ir p/ ${String(hour).padStart(2, '0')}:00`, () => goToHour(hour));
   for (const days of [1, 3, 10]) button(time, `+${days} dia${days > 1 ? 's' : ''}`, () => skipDays(days));
   for (const scale of [1, 5, 20, 60]) button(time, `velocidade x${scale}`, () => (debugFlags.timeScale = scale));
+  button(time, 'Chuva: ligar/desligar', toggleRain);
 
   const player = section('Jogador');
   button(player, 'Curar tudo', () => gameState.playerHealth.restoreFull());
+  button(player, 'Fome: esvaziar', () => {
+    gameState.hunger = Hunger.deserialize(0);
+    say('Fome: barra vazia (o personagem começa a perder vida).');
+  });
+  button(player, 'Fome: encher', () => {
+    gameState.hunger = Hunger.deserialize(MAX_SATIETY);
+    say('Fome: barra cheia.');
+  });
   button(player, 'Invencível: alternar', () => (debugFlags.godMode = !debugFlags.godMode));
   button(player, 'Lojas sempre abertas: alternar', () => {
     debugFlags.shopsAlwaysOpen = !debugFlags.shopsAlwaysOpen;

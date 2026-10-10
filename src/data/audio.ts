@@ -27,13 +27,16 @@ export const STEP_GRASS_SOUNDS: SoundEffectDef[] = [
 ];
 /** Farfalhar da copa quando o personagem passa pelas folhas (`systems/treeSway.ts`): os mesmos passos na grama, mais baixos (já carregados). */
 export const TREE_RUSTLE_SOUNDS: SoundEffectDef[] = STEP_GRASS_SOUNDS.map((sound) => ({ ...sound, volume: 0.45 }));
-export const STEP_BRIDGE_SOUND: SoundEffectDef = { key: 'sfx-step-bridge', path: `${EFFECTS_DIR}/Passos ponte.wav`, volume: 1 };
+/** Passo no piso de madeira (dentro de casa). Era o das pontes também — elas são de pedra e agora soam como pedra. */
+export const STEP_WOOD_SOUND: SoundEffectDef = { key: 'sfx-step-bridge', path: `${EFFECTS_DIR}/Passos ponte.wav`, volume: 1 };
 /**
  * Passos no chão de pedra das Cavernas: 5 variações (sorteadas sem repetir a anterior, como na grama) — `footstep_concrete_000-004` do
  * pacote "Impact Sounds" do Kenney (CC0, kenney.nl), copiados da biblioteca de referência (`docs/REFERENCE_GUIDE.md`). Antes a Caverna
  * usava o passo de madeira da ponte. Os arquivos têm pico ~0,9 (os passos na grama, ~0,13): volume baixo pra soar parecido.
  */
 export const STEP_STONE_SOUNDS: SoundEffectDef[] = [1, 2, 3, 4, 5].map((n) => ({ key: `sfx-step-stone-${n}`, path: `${EFFECTS_DIR}/Passos de pedra ${n}.ogg`, volume: 0.2 }));
+/** Passos na terra (caminhos, lavoura arada, areia): o mesmo passo das pontes (o de pedra) — pedido do usuário, depois de testar vários outros. */
+export const STEP_DIRT_SOUNDS: SoundEffectDef[] = STEP_STONE_SOUNDS;
 export const HURT_SOUND: SoundEffectDef = { key: 'sfx-hurt', path: `${EFFECTS_DIR}/Dano.wav`, volume: 1 };
 export const PICKUP_SOUND: SoundEffectDef = { key: 'sfx-pickup', path: `${EFFECTS_DIR}/Coletor de itens.wav`, volume: 1 };
 /** Golpe de espada acertando um Slime (`EnemyStats.hitSound`, ver `data/enemies.ts`). */
@@ -124,7 +127,7 @@ export const ROOSTER_HOURS = { from: 6, to: 6.5 };
 /** Tudo que o `preloadSoundEffects` carrega (uma vez, no boot — são poucos KB). */
 export const ALL_SOUND_EFFECTS: SoundEffectDef[] = [
   ...STEP_GRASS_SOUNDS,
-  STEP_BRIDGE_SOUND,
+  STEP_WOOD_SOUND,
   ...STEP_STONE_SOUNDS,
   HURT_SOUND,
   PICKUP_SOUND,
