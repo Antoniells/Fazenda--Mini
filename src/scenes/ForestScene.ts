@@ -183,7 +183,7 @@ export class ForestScene extends ExternalMapScene {
       // O grid.block incondicional foi removido daqui!
 
       if (node.kind === 'tree') {
-        const visual = buildGrowingTree(this, TILE_SIZE, node.col, node.row, node.stage, node.species);
+        const visual = buildGrowingTree(this, TILE_SIZE, node.col, node.row, node.stage, node.species, node.beehive);
         this.treeVisuals.push(visual.sprite);
 
         if (node.stage === 'mature') {

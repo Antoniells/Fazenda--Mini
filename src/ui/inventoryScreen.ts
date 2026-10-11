@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
-import { playClick } from '../systems/soundEffects';
+import { playClick, playEffect } from '../systems/soundEffects';
+import { popText } from '../systems/floatingText';
+import { PLACE_SOUND } from '../data/audio';
 import { Inventory, HOTBAR_SIZE, STORAGE_SIZE } from '../systems/inventory';
 import { resolveSlotVisual } from '../data/items';
 import { CROPS, ALL_CROPS_ICONS_KEY, CropDefinition } from '../data/crops';
@@ -29,6 +31,8 @@ import {
   CLOSE_TAB_BG_FRAME,
   CLOSE_BUTTON_SHEET_KEY,
   CLOSE_X_ICON_FRAME,
+  TRASH_CAN_KEY,
+  TRASH_CAN_FRAME,
   CLOSE_X_ICON_PRESSED_FRAME,
   EXTRAS_UI_KEY,
   GLOBAL_CURSOR_CORNER_NAMES,
@@ -85,8 +89,8 @@ const HOTBAR_BOOK_HEIGHT = HOTBAR_BOOK_TOP + HOTBAR_BOOK_BOTTOM;
 const HOTBAR_BOOK_ROW_Y = 14;
 /** Folga (px de tela) entre a fileira e a borda do livro fino, além dos cantos dourados; e entre o livro fino e o caderno. */
 const HOTBAR_BOOK_SIDE_PAD = 10;
-/** Espaço a mais no meio da fileira (px de tela), em cima da lombada do livro fino: as células do meio não encostam nela. */
-const HOTBAR_BOOK_SPINE_GAP = 14;
+/** Espaço a mais no meio da fileira (px de tela), em cima da lombada do livro fino: os 4 slots da esquerda ficam bem à esquerda e os 4 da direita bem à direita (pedido explícito — antes as células do meio quase encostavam na lombada). */
+const HOTBAR_BOOK_SPINE_GAP = 48;
 const HOTBAR_BOOK_GAP = 4;
 /** Fração da célula (16px nativos) que um ícone "normal" (16x16) preenche. */
 const ICON_FILL_RATIO = 0.8;
@@ -115,6 +119,11 @@ const TAB_SELECTOR_PADDING = 2;
 const CLOSE_MARK_SCALE = 1.8;
 const CLOSE_BOOK_OVERLAP = 30;
 const CLOSE_X_TARGET_PX = 30;
+/** Altura (px de tela) da lixeira; onde ela fica — fora do livro, junto ao canto de baixo à direita (a partir da coluna do X e do pé do livro); o tanto que cresce com um item arrastado em cima. */
+const TRASH_TARGET_PX = 36;
+const TRASH_OFFSET_X = 35;
+const TRASH_BOTTOM_INSET = 7;
+const TRASH_HOVER_FACTOR = 1.2;
 const CLOSE_X_OFFSET_X = CLOSE_BOOK_OVERLAP + (CLOSE_TAB_BG_FRAME.rect.width * CLOSE_MARK_SCALE - CLOSE_BOOK_OVERLAP) / 2;
 
 /** Área de papel em branco de cada página — ver comentário idêntico em `ShopMenu`. */
@@ -322,6 +331,9 @@ export class InventoryScreen implements PointerInputInterceptor {
   private readonly emptyText: Phaser.GameObjects.Text;
   private readonly closeButton: Phaser.GameObjects.Image;
   private readonly closeButtonMark: Phaser.GameObjects.Image;
+  /** A lixeira (embaixo do botão de fechar): soltar um item arrastado nela o joga fora inteiro (`Inventory.trashSlot`). */
+  private readonly trashCan: Phaser.GameObjects.Image;
+  private trashBaseScale = 1;
   private activeCategory: InventoryTabCategory = 'backpack';
   private isOpen_ = false;
   /** Referência viva do `Inventory` sendo mostrado — guardada pra o `dragend` (disparado fora do fluxo normal de `refresh`) poder chamar `swapSlots` sem precisar receber o inventário de novo. */
@@ -536,6 +548,15 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     this.closeButtonMark.setScale(computeFitScale(this.closeButtonMark, CLOSE_X_TARGET_PX));
     this.closeButtonMark.setScrollFactor(0);
     this.closeButtonMark.setDepth(closeDepth + 1);
+
+    // A lixeira: fora do livro, junto ao canto de baixo à direita — arraste um item até ela pra jogá-lo fora.
+    const trashTexture = scene.textures.get(TRASH_CAN_KEY);
+    if (!trashTexture.has(TRASH_CAN_FRAME.name)) trashTexture.add(TRASH_CAN_FRAME.name, 0, TRASH_CAN_FRAME.rect.x, TRASH_CAN_FRAME.rect.y, TRASH_CAN_FRAME.rect.width, TRASH_CAN_FRAME.rect.height);
+    this.trashCan = scene.add.image(closeX + CLOSE_X_OFFSET_X + ajusteX + TRASH_OFFSET_X, bookTop + bookHeight - TRASH_BOTTOM_INSET, TRASH_CAN_KEY, TRASH_CAN_FRAME.name);
+    this.trashCan.setOrigin(0.5, 1).setScrollFactor(0).setDepth(closeDepth + 1);
+    this.trashBaseScale = computeFitScale(this.trashCan, TRASH_TARGET_PX);
+    this.trashCan.setScale(this.trashBaseScale);
+    this.trashCan.setVisible(false);
 
     const slotWidth = INVENTORY_SLOT_RECT.width * SLOT_SCALE;
     const slotHeight = INVENTORY_SLOT_RECT.height * SLOT_SCALE;
@@ -900,6 +921,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     });
     icon.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
       icon.setPosition(dragX, dragY);
+      this.setTrashHover(this.isOverTrash(dragX, dragY));
     });
     icon.on('dragend', () => {
       const sourceIndex = this.dragSourceIndex;
@@ -913,6 +935,8 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
       const targetSlot = targetIndex === -1 ? undefined : this.cellSlotIndex[targetIndex];
       const validDrop = targetIndex !== -1 && targetIndex !== sourceIndex && sourceSlot !== undefined && targetSlot !== undefined && this.currentInventory.canSwapSlots(sourceSlot, targetSlot);
       if (validDrop) this.currentInventory.swapSlots(sourceSlot!, targetSlot!);
+      else if (sourceSlot !== undefined && this.isOverTrash(icon.x, icon.y)) this.trash(sourceSlot);
+      this.setTrashHover(false);
 
       // Encaixe válido: tween curto e rápido (já "encaixou"). Inválido:
       // tween mais longo com "Back.easeOut" — um pequeno ricochete ao
@@ -957,6 +981,34 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
    * O que uma célula mostra pra um slot da Bolsa: ícone, quantidade, clique. Slot da Hotbar (0-7): clicar seleciona e o ativo ganha o tom
    * creme. Armadura: clicar veste/tira (a vestida ganha "E" e um tom azulado).
    */
+  /** O ponto (px de tela) está sobre a lixeira (visível)? */
+  private isOverTrash(x: number, y: number): boolean {
+    return this.trashCan.visible && Phaser.Geom.Rectangle.Contains(this.trashCan.getBounds(), x, y);
+  }
+
+  /** A lixeira cresce um pouco enquanto um item arrastado está sobre ela. */
+  private setTrashHover(over: boolean): void {
+    this.trashCan.setScale(this.trashBaseScale * (over ? TRASH_HOVER_FACTOR : 1));
+  }
+
+  /** Joga fora o item do slot da Bolsa `slotIndex` (ferramentas e armaduras ficam — `Inventory.trashSlot`), com o aviso em cima da lixeira. */
+  private trash(slotIndex: number): void {
+    if (!this.currentInventory) return;
+    const ref = this.currentInventory.getSlot(slotIndex);
+    const name = ref ? (resolveSlotVisual(ref)?.name ?? ref.id) : '';
+    const result = this.currentInventory.trashSlot(slotIndex);
+    const x = this.trashCan.x;
+    const y = this.trashCan.y - this.trashCan.displayHeight - 4;
+    if (result.kind === 'refused') {
+      popText(this.trashCan.scene, x, y, 'Ferramentas e armaduras não vão pro lixo', { color: '#ff8a8a', fontSize: 14, screenFixed: true });
+      return;
+    }
+    if (result.kind !== 'trashed') return;
+    playEffect(this.trashCan.scene, PLACE_SOUND);
+    popText(this.trashCan.scene, x, y, `Jogado fora: ${result.amount > 1 ? `${result.amount} ` : ''}${name}`, { color: '#ffe9b3', fontSize: 14, screenFixed: true });
+    this.refresh(this.currentInventory);
+  }
+
   private slotContent(inventory: Inventory, slotIndex: number): InventorySlotContent {
     const isHotbarSlot = slotIndex < HOTBAR_SIZE;
     const tint = isHotbarSlot && slotIndex === inventory.getSelectedHotbarIndex() ? SELECTED_HOTBAR_TINT : UNSELECTED_TINT;
@@ -1223,6 +1275,7 @@ this.closeButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: num
     if (visible) this.closeButton.setInteractive();
     else this.closeButton.disableInteractive();
     this.closeButtonMark.setVisible(visible);
+    this.trashCan.setVisible(visible);
 
     this.skillPanel.setVisible(visible && this.activeCategory === 'skills');
     for (const piece of this.hotbarBook) piece.setVisible(visible);

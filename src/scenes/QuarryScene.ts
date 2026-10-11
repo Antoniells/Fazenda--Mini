@@ -10,6 +10,10 @@ import { ORE_RESPAWN_CHANCE, getQuarryVeins } from '../data/ores';
 import { WalkableGrid } from '../systems/grid';
 import { InteractionRegistry } from '../systems/interaction';
 import { Player } from '../entities/Player';
+import { SlimeSpawner } from '../systems/slimeSpawner';
+import { SLIME_KEY, SLIME_PATH, SLIME_FRAME_SIZE } from '../data/enemies';
+import { gameState } from '../systems/gameState';
+import { isInventoryOpen } from './UIScene';
 
 export const QUARRY_SCENE_KEY = 'QuarryScene';
 
@@ -17,6 +21,9 @@ export const QUARRY_SCENE_KEY = 'QuarryScene';
 const QUARRY_GROUND_SATURATION = 0.1;
 /** Tint do chão da Pedreira: bem mais claro que o da faixa Mineração da Fazenda (`BIOME_TINTS.mining`) — o cinza vem da dessaturação, não de escurecer. */
 const QUARRY_GROUND_TINT = 0xdddddd;
+
+/** Os slimes da 1ª ida não nascem a menos disto (células) de onde o jogador chega. */
+const QUARRY_SLIME_MIN_DISTANCE_CELLS = 8;
 
 /** Teto de nós ativos ao mesmo tempo (Fase 7 — respawn diário). Sem árvores aqui, só pedras. */
 const QUARRY_CAPS = { maxTrees: 0, maxRocks: 42 };
@@ -78,9 +85,13 @@ export class QuarryScene extends ExternalMapScene {
     });
   }
 
+  /** Os slimes da 1ª ida (`QUARRY_FIRST_VISIT_SLIMES`): só os que ainda não foram derrotados — depois de todos, a Pedreira fica sem eles. */
+  private slimeSpawner: SlimeSpawner | null = null;
+
   protected loadMapAssets(): void {
     this.load.image(ROCK_KEY, encodeURI(`/${ROCK_PATH}`));
     this.load.image(ORE_KEY, encodeURI(`/${ORE_PATH}`));
+    if (!this.textures.exists(SLIME_KEY)) this.load.spritesheet(SLIME_KEY, encodeURI(`/${SLIME_PATH}`), { frameWidth: SLIME_FRAME_SIZE, frameHeight: SLIME_FRAME_SIZE });
   }
 
   protected buildMapContent(ctx: { tilePx: number; grid: WalkableGrid; interactions: InteractionRegistry; player: Player }): void {
@@ -91,6 +102,12 @@ export class QuarryScene extends ExternalMapScene {
     for (const cell of quarryArrivalCells()) {
       const [col, row] = cell.split(',').map(Number);
       resourceNodeRegistry.removeNode(QUARRY_SCENE_KEY, col, row);
+    }
+
+    // Veio que saiu da lista (`getQuarryVeins` — ex.: os 3 de ouro tirados pra deixar o ouro mais raro): some também dos saves antigos.
+    const veinCells = new Set(getQuarryVeins().map(({ col, row }) => `${col},${row}`));
+    for (const node of resourceNodeRegistry.getNodes(QUARRY_SCENE_KEY)) {
+      if (node.kind === 'ore' && !veinCells.has(`${node.col},${node.row}`)) resourceNodeRegistry.removeNode(QUARRY_SCENE_KEY, node.col, node.row);
     }
 
     let rockVariant: 0 | 1 | 2 = 0;
@@ -110,5 +127,25 @@ export class QuarryScene extends ExternalMapScene {
 
     // Props de decoração ambiente (aba "Decoração" do MapEditorScene, pedido explícito) — puramente visuais, sem colisão.
     buildMapProps(this, TILE_SIZE, quarryMap.props ?? []);
+
+    // A 1ª ida à Pedreira tem alguns slimes (depois das pedras, pra não nascerem em cima delas); derrotado, cada um sai de vez.
+    this.slimeSpawner = null;
+    if (gameState.quarrySlimesLeft > 0) {
+      const spawner = new SlimeSpawner(this, TILE_SIZE, quarryMap.cols, quarryMap.rows, grid, player, {
+        count: gameState.quarrySlimesLeft,
+        onKilled: () => {
+          gameState.quarrySlimesLeft = Math.max(0, gameState.quarrySlimesLeft - 1);
+        },
+        minDistanceCells: QUARRY_SLIME_MIN_DISTANCE_CELLS,
+      });
+      this.slimeSpawner = spawner;
+      this.controller.setEnemyProvider(() => spawner.getAliveEnemies());
+    }
+  }
+
+  update(time: number, delta: number): void {
+    super.update(time, delta);
+    // Parados com o Inventário aberto (o mesmo critério do movimento do jogador, como na Floresta).
+    if (!isInventoryOpen()) this.slimeSpawner?.update(time, delta);
   }
 }

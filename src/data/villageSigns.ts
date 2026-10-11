@@ -72,3 +72,13 @@ export const SHOP_SIGNS: ShopSignDefinition[] = [
     awning: 0, // Vermelho, de padaria.
   },
 ];
+
+/**
+ * O MURAL DO VILAREJO (`systems/villageNoticeBoard.ts`): o quadro de avisos COM PAPÉIS da mesma folha (`Notice Boards.png`, o de baixo à
+ * esquerda — o mesmo desenho do quadro em branco, 32 px abaixo), no gramado à direita do poço da praça. Ocupa 2x2 células: a de cima é o
+ * painel e só a fileira de baixo (as pernas, `legs` e a da direita) bloqueia. Clicar abre o calendário e os acontecimentos (`ui/noticeBoardPanel.ts`).
+ */
+export const VILLAGE_NOTICE_BOARD = {
+  frame: { name: 'village-notice-board', rect: { x: 0, y: 32, width: 32, height: 32 } },
+  legs: { col: 10, row: 16 },
+};

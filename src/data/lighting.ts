@@ -65,32 +65,24 @@ export interface LightSourceDefinition {
 }
 
 export const LIGHT_SOURCES: Record<LightSourceType, LightSourceDefinition> = {
-  lampPost: { glowOffsetY: -22, glowRadiusCells: 4.5, glowColor: 0xffdcaa, lightIntensity: 1.6, flicker: 0.03, breatheMs: 6500, breatheAlpha: 0.4, breatheScale: 0.1 },
+  lampPost: { glowOffsetY: -30, glowRadiusCells: 4.5, glowColor: 0xffdcaa, lightIntensity: 1.6, flicker: 0.03, breatheMs: 6500, breatheAlpha: 0.4, breatheScale: 0.1 },
   torch: { glowOffsetY: -22, glowRadiusCells: 3.2, glowColor: 0xffb070, lightIntensity: 1.4, flicker: 0.14, breatheMs: 5000, breatheAlpha: 0.15, breatheScale: 0.05 },
 };
 
 /**
- * `Objects/Exterior/Exterior.png` (512x176): o poste de madeira dos letreiros (linha de cima) sem a placa — recorte só da haste
- * (6x16, abaixo de onde a placa se prende, pixel a pixel). O lampião fica em cima dela (`LAMP_LANTERN_*`).
+ * O POSTE DE RUA (`Objects/Exterior/Street Lamp.png`, 64x48): dois quadros de 32x48 do mesmo poste de ferro de dois braços — o 0
+ * apagado (vidros cinza) e o 1 aceso (vidros amarelos). O desenho ocupa 25x37 a partir de (4, 1) em cada quadro: o pé fica na linha 37.
  */
-export const LAMP_POLE_KEY = 'light-lamp-pole';
-export const LAMP_POLE_PATH = 'Objects/Exterior/Exterior.png';
-export const LAMP_POLE_FRAME = { name: 'light-lamp-pole-frame', rect: { x: 316, y: 14, width: 6, height: 16 } };
-
-/**
- * `Objects/Exterior/Mine and Dungeon/Lamp .png` (48x16): 3 quadros de 16x16 de um lampião de ferro com o vidro aceso (a chama
- * oscila entre eles). Apagado é o mesmo quadro escurecido (`LAMP_OFF_TINT`).
- */
-export const LAMP_LANTERN_KEY = 'light-lamp-lantern';
-export const LAMP_LANTERN_PATH = 'Objects/Exterior/Mine and Dungeon/Lamp .png';
-export const LAMP_LANTERN_FRAME_SIZE = 16;
-export const LAMP_LIT_FRAMES = [0, 1, 2];
-export const LAMP_FRAME_MS = 180;
-export const LAMP_OFF_TINT = 0x5c6070;
-/** Opacidade da cópia "brilhante" (ADD, por cima da escuridão) do lampião/tocha aceso: o vidro e a chama ficam iluminados mesmo no escuro. */
+export const STREET_LAMP_KEY = 'light-street-lamp';
+export const STREET_LAMP_PATH = 'Objects/Exterior/Street Lamp.png';
+export const STREET_LAMP_FRAME_WIDTH = 32;
+export const STREET_LAMP_FRAME_HEIGHT = 48;
+export const STREET_LAMP_OFF_FRAME = 0;
+export const STREET_LAMP_LIT_FRAMES = [1];
+/** Origem Y (0-1) do quadro: o pé do poste (linha 37 de 48) fica no ponto de colocação. */
+export const STREET_LAMP_ORIGIN_Y = 38 / 48;
+/** Opacidade da cópia "brilhante" (ADD, por cima da escuridão) do poste/tocha aceso: os vidros e a chama ficam iluminados mesmo no escuro. */
 export const EMISSIVE_ALPHA = 0.85;
-/** Quanto o fundo do lampião (px nativos) sobe em relação ao pé do poste: o vidro (linha 13 do quadro) encosta no topo da haste (16 px). */
-export const LAMP_LANTERN_BOTTOM_Y = -12;
 
 /**
  * `Objects/Exterior/Mine and Dungeon/Fire light.png` (144x48): tocha (vaso de ferro) em quadros de 16x48 — 0 e 7 apagada, 1-6 a
@@ -115,8 +107,8 @@ export interface LightSourcePlacement {
 
 /** Os dois postes do Vilarejo: um de cada lado da avenida norte, na entrada da praça (a avenida ocupa as colunas 14-15). */
 export const VILLAGE_LIGHT_SOURCES: LightSourcePlacement[] = [
-  { type: 'lampPost', col: 13, row: 9 },
-  { type: 'lampPost', col: 16, row: 9 },
+  { type: 'lampPost', col: 13, row: 10 },
+  { type: 'lampPost', col: 16, row: 10 },
 ];
 
 /**

@@ -7,6 +7,9 @@ import {
   INVENTORY_PANEL_BORDER,
   MENU_UI_KEY,
   MENU_UI_PATH,
+  MENU_SELECTOR_KEY,
+  MENU_SELECTOR_PATH,
+  MENU_SELECTOR_FRAME,
   MENU_PART_FRAMES,
   MENU_BUTTON_FRAMES,
   CLOSE_BUTTON_SHEET_KEY,
@@ -136,6 +139,7 @@ export class MainMenuScene extends Phaser.Scene {
     // jogo (nunca depende de `MainScene.preload()` já ter carregado nada).
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
     this.load.image(MENU_UI_KEY, encodeURI(`/${MENU_UI_PATH}`));
+    this.load.image(MENU_SELECTOR_KEY, encodeURI(`/${MENU_SELECTOR_PATH}`)); // O seletor (destaque do hover) dos botões.
     this.load.image(CLOSE_BUTTON_SHEET_KEY, encodeURI(`/${CLOSE_BUTTON_SHEET_PATH}`));
     // Efeitos sonoros (poucos KB): o cache de áudio é global, então basta carregar aqui uma vez pro jogo todo.
     preloadSoundEffects(this);
@@ -208,6 +212,9 @@ export class MainMenuScene extends Phaser.Scene {
     for (const frame of [...Object.values(MENU_PART_FRAMES), ...Object.values(MENU_BUTTON_FRAMES)]) {
       if (!texture.has(frame.name)) texture.add(frame.name, 0, frame.rect.x, frame.rect.y, frame.rect.width, frame.rect.height);
     }
+    const selectorTexture = this.textures.get(MENU_SELECTOR_KEY);
+    const { name: selectorName, rect: selectorRect } = MENU_SELECTOR_FRAME;
+    if (!selectorTexture.has(selectorName)) selectorTexture.add(selectorName, 0, selectorRect.x, selectorRect.y, selectorRect.width, selectorRect.height);
 
     // Composição centralizada na tela: logo em cima, coroa de folhas atrás dele, os 3 botões embaixo.
     const buttons = [MENU_BUTTON_FRAMES.start, MENU_BUTTON_FRAMES.settings, MENU_BUTTON_FRAMES.quit];
@@ -241,9 +248,9 @@ export class MainMenuScene extends Phaser.Scene {
     const plate = this.add.image(x, y, MENU_UI_KEY, frame.name);
     plate.setOrigin(0.5, 0).setScale(MENU_UI_SCALE).setDepth(2);
 
-    // Só a moldura dourada (o interior é transparente): esticada pra cobrir exatamente a placa, por cima dela e por baixo do texto.
-    const gold = MENU_PART_FRAMES.goldPlate.rect;
-    const highlight = this.add.image(x, y, MENU_UI_KEY, MENU_PART_FRAMES.goldPlate.name);
+    // O seletor (`MENU_SELECTOR_FRAME`, só a moldura — o interior é transparente): esticado pra cobrir exatamente a placa, por cima dela e por baixo do texto.
+    const gold = MENU_SELECTOR_FRAME.rect;
+    const highlight = this.add.image(x, y, MENU_SELECTOR_KEY, MENU_SELECTOR_FRAME.name);
     highlight.setOrigin(0.5, 0).setScale(width / gold.width, height / gold.height).setDepth(3).setAlpha(0);
 
     const text = this.add.text(x + labelOffsetX * MENU_UI_SCALE, y + height / 2, label, {

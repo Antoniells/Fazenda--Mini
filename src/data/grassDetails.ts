@@ -81,3 +81,15 @@ export const FLOWER_DETAILS: GrassDetailDefinition[] = [
   { id: 'flower-white-cluster', frameName: 'grass-flower-white-cluster', frameRect: { x: 226, y: 34, width: 12, height: 12 } },
   { id: 'flower-calla', frameName: 'grass-flower-calla', frameRect: { x: 146, y: 65, width: 13, height: 15 } },
 ];
+
+/**
+ * A GRAMA DE CADA ESTAÇÃO: o tufo e as 3 lâminas de grama (`systems/grassDetails.ts`) trocam pelo tufo da estação, da mesma folha —
+ * no Outono a moita seca laranja (linha das folhas de outono, 160,33), no Inverno a moita congelada (linha da neve, 112,49; limites medidos
+ * varrendo o canal alfa — a coluna 128 já é a flor vizinha). Primavera e Verão: os recortes de sempre. O mato colhível (Capim) não muda:
+ * o recorte dele também é o ícone do item.
+ */
+export const SEASONAL_GRASS_DETAIL_IDS: readonly string[] = ['tuft', 'blade-a', 'blade-b', 'blade-c'];
+export const SEASONAL_GRASS_FRAMES: Partial<Record<'spring' | 'summer' | 'autumn' | 'winter', { x: number; y: number; width: number; height: number }>> = {
+  autumn: { x: 160, y: 33, width: 16, height: 15 },
+  winter: { x: 112, y: 49, width: 16, height: 15 },
+};

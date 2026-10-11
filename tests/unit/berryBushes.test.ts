@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { BERRY_BUSH_FRAMES, BERRY_BUSH_PATH, BERRY_DAYS_TO_FRUIT, FARM_BERRY_BUSHES, berryBushFrame, daysUntilBerries } from '../../src/data/berryBushes';
+import { BERRY_BUSH_FRAMES, BERRY_BUSH_PATH, BERRY_DAYS_TO_FRUIT, FARM_BERRY_BUSHES, berryBushFrame, berryBushFruitsIn, berryBushSeasonFrame, daysUntilBerries } from '../../src/data/berryBushes';
+import { SEASON_LENGTH_DAYS } from '../../src/data/seasons';
 import { BERRY_ICON_PATH, RESOURCES, WILD_BERRY } from '../../src/data/resources';
 import { EXTRA_FARM_TREE_BATCHES } from '../../src/data/trees';
 import { FLOWER_DETAILS } from '../../src/data/grassDetails';
@@ -64,5 +65,22 @@ describe('arbustos frutíferos', () => {
   it('as flores novas da grama são colhidas com a Foice como flor', () => {
     expect(FLOWER_DETAILS.length).toBeGreaterThanOrEqual(4);
     for (const detail of FLOWER_DETAILS) expect(forageKindOfGrassDetail(detail.id), detail.id).toBe('flower');
+  });
+
+  it('no Outono (folhas laranja) e no Inverno (verde-escuro) o arbusto não dá frutas e o ciclo para; na Primavera recomeça liso', () => {
+    expect(berryBushFruitsIn('spring')).toBe(true);
+    expect(berryBushFruitsIn('summer')).toBe(true);
+    expect(berryBushFruitsIn('autumn')).toBe(false);
+    expect(berryBushFruitsIn('winter')).toBe(false);
+    expect(berryBushSeasonFrame(BERRY_DAYS_TO_FRUIT, 'summer')).toBe(BERRY_BUSH_FRAMES.fruit);
+    expect(berryBushSeasonFrame(BERRY_DAYS_TO_FRUIT, 'autumn')).toBe(2);
+    expect(berryBushSeasonFrame(BERRY_DAYS_TO_FRUIT, 'winter')).toBe(0);
+
+    const [col, row] = FARM_BERRY_BUSHES[0];
+    const autumnDay = 1 + SEASON_LENGTH_DAYS * 2;
+    advanceBerryBushes(autumnDay);
+    expect(berryBushDays(col, row)).toBe(0);
+    advanceBerryBushes(1 + SEASON_LENGTH_DAYS * 4); // A Primavera do ano seguinte: anda de novo.
+    expect(berryBushDays(col, row)).toBe(1);
   });
 });

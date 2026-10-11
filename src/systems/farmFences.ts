@@ -6,7 +6,8 @@ import { playEffect, playRandomEffect } from './soundEffects';
 import { popText } from './floatingText';
 import { Player } from '../entities/Player';
 import { fenceSkin } from './upgradeLevels';
-import { HAMMER } from '../data/tools';
+import { FENCE_REPAIR_WOOD, HAMMER } from '../data/tools';
+import { WOOD } from '../data/resources';
 import { AXE_HIT_SOUNDS, OBJECT_BREAK_SOUND, HAMMER_SOUND } from '../data/audio';
 
 interface FenceCell {
@@ -17,7 +18,7 @@ interface FenceCell {
   intactFrame: string | number;
 }
 
-/** Cerca destruída: só o Martelo conserta. Célula ANDÁVEL (o inimigo e o jogador passam), mas o clique leva o jogador até um vizinho e o golpe acontece de lá. */
+/** Cerca destruída: só o Martelo conserta, gastando `FENCE_REPAIR_WOOD` Madeiras. Célula ANDÁVEL (o inimigo e o jogador passam), mas o clique leva o jogador até um vizinho e o golpe acontece de lá. */
 class BrokenFenceInteractable implements Interactable {
   readonly interactFromAdjacent = true;
 
@@ -38,8 +39,18 @@ class BrokenFenceInteractable implements Interactable {
       return;
     }
 
-    // Mesma animação de golpe da Picareta (não há uma animação própria de martelo).
-    this.player.performAction('pickaxe', () => this.fences.repair(this.col, this.row));
+    if (!this.hasRepairWood()) return;
+
+    // Mesma animação de golpe da Picareta (não há uma animação própria de martelo). A madeira só sai se a cerca foi mesmo consertada.
+    this.player.performAction('pickaxe', () => {
+      if (this.hasRepairWood() && this.fences.repair(this.col, this.row)) gameState.inventory.useResource(WOOD.id, FENCE_REPAIR_WOOD);
+    });
+  }
+
+  private hasRepairWood(): boolean {
+    if (gameState.inventory.getResourceCount(WOOD.id) >= FENCE_REPAIR_WOOD) return true;
+    popText(this.player.sprite.scene, this.player.sprite.x, this.player.sprite.y - 44, `Precisa de ${FENCE_REPAIR_WOOD} Madeiras`, { fontSize: 13 });
+    return false;
   }
 }
 

@@ -1,4 +1,5 @@
 import { Inventory } from './inventory';
+import { QUARRY_FIRST_VISIT_SLIMES } from '../data/enemies';
 import { Hunger } from './hunger';
 import { createSmeltState, SmeltState } from '../data/smelting';
 import { createUpgradesState, UpgradesState } from '../data/upgrades';
@@ -176,6 +177,8 @@ export const gameState = {
   waterObjective: false,
   /** O jogador já pisou no Vilarejo? Enquanto não, depois do tutorial, o objetivo "conhecer o Vilarejo" fica na lista (`data/tutorial.ts` `VILLAGE_OBJECTIVE_TEXT`). Vai pro save: partida nova começa `false`, save antigo carrega `true`; o padrão `true` cobre o fluxo de desenvolvimento. */
   villageVisited: true,
+  /** Quantos dos slimes da 1ª ida à Pedreira ainda estão lá (`QUARRY_FIRST_VISIT_SLIMES`, `data/enemies.ts`): cada um derrotado sai de vez. Vai pro save. */
+  quarrySlimesLeft: QUARRY_FIRST_VISIT_SLIMES,
   tutorialStep: 0,
   tutorialProgress: 0,
   /** Último dia em que os aspersores tocaram a animação da manhã (só uma vez por dia) — não vai pro save. */

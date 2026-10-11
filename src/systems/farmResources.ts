@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { seasonIdForDay, weedsGrowIn } from '../data/seasons';
+import { currentGroundSeason } from './seasonalGround';
 import { farmMap } from '../data/maps/farmMap';
 import { TILE_SIZE, GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '../data/tiles';
 import { PLAYER_START } from '../data/player';
@@ -169,8 +171,14 @@ export function isFarmCellFreeForResource(col: number, row: number): boolean {
  * germinando) em grama livre — chamado na virada de dia por `systems/dayCycle.ts` (dormir) e pela `MainScene` (meia-noite),
  * sem depender de a Fazenda estar aberta.
  */
-export function advanceFarmResourcesDay(): void {
+export function advanceFarmResourcesDay(day: number = gameState.gameClock.getDay()): void {
   resourceNodeRegistry.advanceDay(FARM_RESOURCES_KEY, farmMap.cols, farmMap.rows, isFarmCellFreeForResource);
+  // Outono: o mato some (e o que acabou de nascer também) — `WEEDLESS_SEASONS`.
+  if (!weedsGrowIn(seasonIdForDay(day))) {
+    for (const node of resourceNodeRegistry.getNodes(FARM_RESOURCES_KEY)) {
+      if (node.kind === 'weed') resourceNodeRegistry.removeNode(FARM_RESOURCES_KEY, node.col, node.row);
+    }
+  }
 }
 
 /**
@@ -197,6 +205,7 @@ export class FarmResources {
     for (const { visual } of this.visuals.values()) {
       visual.sprite.destroy();
       visual.shadow?.destroy();
+      for (const extra of visual.extras ?? []) extra.destroy();
     }
     this.visuals.clear();
     clearWeedVisuals();
@@ -206,7 +215,7 @@ export class FarmResources {
       const key = cellKey(node.col, node.row);
 
       if (node.kind === 'tree') {
-        const visual = buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage, node.species);
+        const visual = buildGrowingTree(this.scene, TILE_SIZE, node.col, node.row, node.stage, node.species, node.beehive);
         this.visuals.set(key, { visual, kind: node.kind, stage: node.stage });
         if (node.stage === 'mature') {
           this.grid.block(node.col, node.row);
@@ -216,6 +225,11 @@ export class FarmResources {
       }
 
       if (node.kind === 'weed') {
+        // Outono: sem mato (`WEEDLESS_SEASONS`) — também some do registro, pra não segurar o canteiro (o save já aberto no Outono).
+        if (!weedsGrowIn(currentGroundSeason())) {
+          resourceNodeRegistry.removeNode(FARM_RESOURCES_KEY, node.col, node.row);
+          continue;
+        }
         farmlandCellKeys ??= new Set(farmMap.farmlandArea.map(([c, r]) => cellKey(c, r)));
         const visual = buildWeed(this.scene, farmMap.tileSize * DISPLAY_SCALE, this.player, this.interactions, FARM_RESOURCES_KEY, node.col, node.row, farmlandCellKeys.has(key));
         this.visuals.set(key, { visual, kind: node.kind, stage: node.stage });

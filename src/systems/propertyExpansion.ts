@@ -6,7 +6,8 @@ import { playEffect } from './soundEffects';
 import { UNLOCK_SOUND } from '../data/audio';
 import { WalkableGrid } from './grid';
 import { gameState } from './gameState';
-import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, bridgeRailingCells, BIOME_TINTS } from './mapBuilder';
+import { buildGroundChunk, buildExpansionChunkFence, buildFenceSide, BIOME_TINTS } from './mapBuilder';
+import { getGroundPatches } from './groundPatches';
 
 /** Ponto de compra de um trecho (célula bloqueada, sem placa visível — ver comentário da classe): ao interagir, tenta comprar aquele trecho específico (ver `PropertyExpansionSystem.tryBuy`). */
 class ExpansionSignInteractable implements Interactable {
@@ -35,13 +36,21 @@ class ExpansionSignInteractable implements Interactable {
  * marcador no chão indicando onde clicar.
  *
  * Cada trecho já nasce com grama e o perímetro externo definitivo
- * desenhados (a câmera já pode alcançá-lo — ver `MainScene.create`), mas
- * fica isolado pela parede do núcleo naquele lado até a compra, quando ela
- * é removida (visual e do grid).
+ * desenhados, mas fica isolado pela parede do núcleo naquele lado até a
+ * compra, quando ela é removida (visual e do grid).
+ *
+ * A Fazenda é uma ILHA (`systems/islandEdges.ts`): a câmera mostra um pouco
+ * de água além da borda, então o trecho FECHADO fica invisível (senão
+ * apareceria no lugar do abismo) e só aparece ao ser comprado — como os
+ * cantos entre dois trechos, visíveis só com os dois abertos.
  */
 export class PropertyExpansionSystem {
   private readonly wallImages = new Map<ExpansionDirection, Phaser.GameObjects.Image[]>();
   private readonly purchased = new Set<ExpansionDirection>();
+  /** O que cada trecho desenha (chão, manchas de grama e cerca de fora) — escondido enquanto ele está fechado. */
+  private readonly chunkVisuals = new Map<ExpansionDirection, Phaser.GameObjects.Components.Visible[]>();
+  /** Os cantos entre um trecho horizontal e um vertical: aparecem só com os dois abertos. */
+  private readonly cornerVisuals: Array<{ directions: [ExpansionDirection, ExpansionDirection]; visuals: Phaser.GameObjects.Components.Visible[] }> = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -49,12 +58,12 @@ export class PropertyExpansionSystem {
     private readonly grid: WalkableGrid,
     private readonly inventory: Inventory,
     private readonly interactions: InteractionRegistry,
-    /** Chamado depois de um trecho ser comprado — a Fazenda amplia os limites da câmera (só mostra o que já está liberado). */
-    private readonly onUnlocked: () => void = () => {},
+    /** Chamado depois de um trecho ser comprado — a Fazenda amplia a ilha (câmera e beirada) e leva as pontes daquele lado pra nova borda. */
+    private readonly onUnlocked: (direction: ExpansionDirection) => void = () => {},
   ) {
     for (const chunk of map.expansions) {
-      buildGroundChunk(scene, map.tileSize, chunk.col0, chunk.row0, chunk.cols, chunk.rows, undefined, BIOME_TINTS[chunk.biome]);
-      buildExpansionChunkFence(scene, map.tileSize, chunk);
+      const ground = buildGroundChunk(scene, map.tileSize, chunk.col0, chunk.row0, chunk.cols, chunk.rows, undefined, BIOME_TINTS[chunk.biome]);
+      this.chunkVisuals.set(chunk.direction, [...groundVisuals(ground), ...buildExpansionChunkFence(scene, map.tileSize, chunk)]);
 
       // Trecho que já nasce aberto (o Vilarejo): sem parede do núcleo, sem placa de compra — libera a passagem já na criação.
       if (chunk.startsUnlocked) {
@@ -81,6 +90,16 @@ export class PropertyExpansionSystem {
     }
 
     this.fillDiagonalGaps(scene, map);
+    this.refreshVisibility();
+  }
+
+  /** Trecho fechado invisível; canto entre dois trechos visível só com os dois abertos. */
+  private refreshVisibility(): void {
+    for (const [direction, visuals] of this.chunkVisuals) for (const visual of visuals) visual.setVisible(this.purchased.has(direction));
+    for (const corner of this.cornerVisuals) {
+      const open = corner.directions.every((direction) => this.purchased.has(direction));
+      for (const visual of corner.visuals) visual.setVisible(open);
+    }
   }
 
   /**
@@ -99,7 +118,7 @@ export class PropertyExpansionSystem {
 
     for (const h of horizontal) {
       for (const v of vertical) {
-        buildGroundChunk(scene, map.tileSize, h.col0, v.row0, h.cols, v.rows);
+        this.cornerVisuals.push({ directions: [h.direction, v.direction], visuals: groundVisuals(buildGroundChunk(scene, map.tileSize, h.col0, v.row0, h.cols, v.rows)) });
       }
     }
   }
@@ -125,41 +144,37 @@ export class PropertyExpansionSystem {
     for (const image of this.wallImages.get(chunk.direction) ?? []) image.destroy();
     this.wallImages.delete(chunk.direction);
     this.unblockCoreWall(chunk.direction);
+    this.refreshVisibility();
 
     const [signCol, signRow] = chunk.signPosition;
     this.interactions.remove(signCol, signRow);
 
     console.log(`${biomeLabel} desbloqueada! (saldo: ${this.inventory.getCoins()}).`);
-    this.onUnlocked();
+    this.onUnlocked(chunk.direction);
   }
 
   /**
-   * Libera, no grid, a parede do núcleo naquele lado — os mesmos cantos que
-   * ficam sempre bloqueados (ver `buildFenceCorners`). Pula as células de
-   * `farmMap.bridges` que ficam nessa mesma parede (Sistema de Cenas): uma
-   * ponte não é "mais um pedaço de terra que se abre" como as expansões —
-   * ela sempre precisa continuar bloqueada pro clique disparar a interação
-   * (`BridgeSystem`/`PlayerController.handleBlockedClick`), não virar uma
-   * célula andável comum só porque o lado foi expandido.
+   * Libera, no grid, a parede do núcleo naquele lado — menos os cantos, que
+   * ficam sempre bloqueados (ver `buildFenceCorners`). A parede inteira,
+   * inclusive onde ficava a ponte daquele lado: com o trecho comprado, ela
+   * vai pra parede de fora dele (`islandLayout.farmBridgeCell`, `BridgeSystem.relocate`).
    */
   private unblockCoreWall(direction: ExpansionDirection): void {
     const { cols, rows } = this.map;
-    const bridgeCoord = (direction === 'north' || direction === 'south' ? 'col' : 'row') as 'col' | 'row';
-    const bridgesOnThisWall = this.map.bridges.filter((bridge) => bridge.direction === direction);
-    const bridgeCoordsOnThisWall = new Set(bridgesOnThisWall.map((bridge) => bridge[bridgeCoord]));
-    // Os corrimões da ponte (células da própria parede, ao lado dela) também continuam sempre bloqueados (`BridgeSystem`) — abrir a
-    // parede não pode devolvê-los ao jogador, senão dá pra contornar o "túnel" e entrar na ponte pelo lado.
-    const railingCells = new Set(bridgesOnThisWall.flatMap((bridge) => bridgeRailingCells(bridge)).map(([col, row]) => `${col},${row}`));
-    const isRailing = (col: number, row: number): boolean => railingCells.has(`${col},${row}`);
-
     if (direction === 'north') {
-      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col) && !isRailing(col, 0)) this.grid.unblock(col, 0);
+      for (let col = 1; col < cols - 1; col++) this.grid.unblock(col, 0);
     } else if (direction === 'south') {
-      for (let col = 1; col < cols - 1; col++) if (!bridgeCoordsOnThisWall.has(col) && !isRailing(col, rows - 1)) this.grid.unblock(col, rows - 1);
+      for (let col = 1; col < cols - 1; col++) this.grid.unblock(col, rows - 1);
     } else if (direction === 'west') {
-      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row) && !isRailing(0, row)) this.grid.unblock(0, row);
+      for (let row = 1; row < rows - 1; row++) this.grid.unblock(0, row);
     } else {
-      for (let row = 1; row < rows - 1; row++) if (!bridgeCoordsOnThisWall.has(row) && !isRailing(cols - 1, row)) this.grid.unblock(cols - 1, row);
+      for (let row = 1; row < rows - 1; row++) this.grid.unblock(cols - 1, row);
     }
   }
+}
+
+/** O chão de um trecho e as manchas de grama dele (uma camada à parte). */
+function groundVisuals(ground: Phaser.Tilemaps.TilemapLayer): Phaser.GameObjects.Components.Visible[] {
+  const patches = getGroundPatches(ground);
+  return patches ? [ground, patches] : [ground];
 }

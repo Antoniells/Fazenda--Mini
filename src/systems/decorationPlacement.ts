@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
-import { remainingQueueMs } from './smelting';
+import { seasonalBuildingTexture } from './snowRoofs';
+import { furnaceKey, readyBarAt, releaseFurnace, remainingSmeltMsAt, startSmeltAt } from './smelting';
+import { SMELT_COAL_AMOUNT, SMELT_MINUTES, SMELT_ORE_AMOUNT } from '../data/smelting';
+import { RESOURCES, resourceDisplayName } from '../data/resources';
 import { clearPlantsUnder } from './plantClearing';
 import { DecorationDefinition, DECORATIONS } from '../data/decorations';
 import { FarmMapData } from '../data/maps/farmMap';
@@ -26,12 +29,16 @@ import { OPEN_CHEST_MENU_EVENT, OpenChestMenuPayload } from './furniturePlacemen
 import { popText } from './floatingText';
 import { sprinklerReachCells } from './sprinklers';
 import { playEffect, playRandomEffect } from './soundEffects';
-import { OBJECT_BREAK_SOUND, ORE_HIT_SOUNDS, PLACE_SOUND, WATER_SOUND } from '../data/audio';
+import { CRAFT_SOUND, OBJECT_BREAK_SOUND, ORE_HIT_SOUNDS, PLACE_SOUND, WATER_SOUND } from '../data/audio';
 
 /** Nome do evento global disparado ao interagir com a Fornalha — ouvido pela `UIScene`, que é quem realmente sabe abrir o `FurnaceMenu` (ver `scenes/UIScene.ts`). Um evento em `scene.game.events` (não `scene.events`) evita este módulo (`systems/`) precisar importar de `scenes/`, na direção errada da arquitetura. */
 export const OPEN_FURNACE_MENU_EVENT = 'open-furnace-menu';
 /** Disparado pela `UIScene` a cada barra posta na fila da Fornalha, com o tempo (ms) que a fila ainda leva: as Fornalhas posicionadas acendem o fogo por esse tempo (`DecorationPlacementSystem.lightUsedStructures`). */
 export const FURNACE_SMELTED_EVENT = 'furnace-smelted';
+/** De quanto em quanto tempo (ms reais) as Fornalhas conferem se a barra ficou pronta (o ícone dela aparece em cima). */
+const FURNACE_BAR_CHECK_MS = 500;
+/** Quanto (px de mundo) o ícone da barra pronta sobe e desce sobre a Fornalha. */
+const FURNACE_BAR_BOB_PX = 4;
 
 const GHOST_VALID_TINT = 0x9be89b;
 const GHOST_INVALID_TINT = 0xff8a8a;
@@ -79,9 +86,10 @@ class PlacedDecorationInteractable implements Interactable {
       return; // <-- O return impede que o poço seja destruído
     }
 
-    // Fornalha: interagir abre a tela de fundição (`ui/furnaceMenu.ts`). Como o Poço e o Galinheiro, ela é uma construção do Marceneiro: sai do mundo só por ele (mover/destruir, `systems/buildFlow.ts`).
+    // Fornalha: sem livro de receitas — clicar com o minério bruto na mão o põe pra assar (`systems/smelting.ts`, `startSmeltAt`). Como o Poço e o
+    // Galinheiro, ela é uma construção do Marceneiro: sai do mundo só por ele (mover/destruir, `systems/buildFlow.ts`).
     if (this.decorationId === 'furnace') {
-      this.scene.game.events.emit(OPEN_FURNACE_MENU_EVENT);
+      this.system.useFurnace(this.col, this.row);
       return;
     }
 
@@ -179,6 +187,8 @@ export interface SitePickHandler {
  */
 export class DecorationPlacementSystem implements PointerInputInterceptor {
   private readonly placed = new Map<string, PlacedDecoration>();
+  /** O ícone da barra pronta flutuando sobre cada Fornalha (`col,row`) que tem uma esperando ser buscada (`refreshFurnaceBars`). */
+  private readonly furnaceBars = new Map<string, Phaser.GameObjects.Image>();
   private readonly ghost: Phaser.GameObjects.Image;
   /** Grid verde dos terrenos que o aspersor em posicionamento vai regar (só desenhado com uma decoração de `waterReach` ativa). */
   private readonly coverage: Phaser.GameObjects.Graphics;
@@ -222,6 +232,8 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     const onSmelted = (durationMs: number): void => this.lightUsedStructures(durationMs);
     scene.game.events.on(FURNACE_SMELTED_EVENT, onSmelted);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.game.events.off(FURNACE_SMELTED_EVENT, onSmelted));
+    // A barra fica pronta com o relógio andando (ou depois de dormir): de tempos em tempos confere quais Fornalhas têm uma esperando.
+    scene.time.addEvent({ delay: FURNACE_BAR_CHECK_MS, loop: true, callback: () => this.refreshFurnaceBars() });
   }
 
   isActive(): boolean {
@@ -371,7 +383,7 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     if (!this.inventory.useDecoration(decoration.id)) return;
 
     this.placeAt(decoration, col, row);
-    playEffect(this.scene, PLACE_SOUND);
+    playEffect(this.scene, decoration.placeSound ?? PLACE_SOUND);
 
     // Sem mais estoque, sai do modo — não tem sentido continuar "segurando"
     // uma decoração que o jogador não tem mais.
@@ -396,12 +408,15 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
     const y = (row + height) * this.tilePx;
 
     const scaleMultiplier = decoration.displayScaleMultiplier ?? 1;
-    const shadow = createGroundShadow(this.scene, x, y, DISPLAY_SCALE * 1.1 * scaleMultiplier, DISPLAY_SCALE * 0.5 * scaleMultiplier);
+    const shadowStyle = decoration.shadow ?? { scaleX: 1, scaleY: 1, offsetY: 0 };
+    const shadow = createGroundShadow(this.scene, x, y + shadowStyle.offsetY, DISPLAY_SCALE * 1.1 * scaleMultiplier * shadowStyle.scaleX, DISPLAY_SCALE * 0.5 * scaleMultiplier * shadowStyle.scaleY);
     shadow.setDepth(PLACED_SHADOW_DEPTH);
 
     // Decoração animada: posicionada, ela fica no quadro de REPOUSO (o 1º da animação — o `frameName` é só o ícone, um recorte mais justo).
     const frames = decoration.animationFrames;
-    const image = this.scene.add.image(x, y, decoration.textureKey, frames?.[0]?.name ?? decoration.frameName);
+    // Parada (o galinheiro): no Inverno, com o telhado nevado (`systems/snowRoofs.ts`).
+    const art = frames ? { textureKey: decoration.textureKey, frameName: frames[0]?.name } : seasonalBuildingTexture(this.scene, decoration.textureKey, decoration.frameName);
+    const image = this.scene.add.image(x, y, art.textureKey, art.frameName);
     image.setOrigin(0.5, frames ? decoration.animationOriginY ?? 1 : 1);
     image.setScale(DISPLAY_SCALE * (decoration.displayScaleMultiplier ?? 1));
     image.setDepth(y);
@@ -480,6 +495,11 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
 
     if (DECORATIONS[entry.decorationId]?.isCoop) discardCoop(coopKey(col, row)); // Só chega aqui sem galinhas (a Picareta confere antes).
     if (DECORATIONS[entry.decorationId]?.isChest) discardChest(farmChestId(col, row)); // Só chega aqui vazio (Picareta/Recolher conferem antes).
+    if (DECORATIONS[entry.decorationId]?.animatesWhenUsed) {
+      // Fornalha movida/destruída pelo Marceneiro: o que ela assava (ou a barra esperando) vai sozinho pra Bolsa (`releaseFurnace`).
+      releaseFurnace(furnaceKey(col, row));
+      this.refreshFurnaceBars();
+    }
 
     if (!returnToStock) return; // Destruída/movida pelo Marceneiro (`systems/buildFlow.ts`): a construção some, sem voltar pra Bolsa.
 
@@ -544,8 +564,9 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
    * Acende (`animatesWhenUsed`) as construções em uso — a Fornalha depois de uma fundição: o fogo (quadros 2..N em loop) fica aceso por `durationMs` (o que a fila de fundição ainda leva) e ela volta ao quadro de repouso.
    * Uma que já está acesa só ganha mais tempo.
    */
-  lightUsedStructures(durationMs: number): void {
+  lightUsedStructures(durationMs: number, only?: { col: number; row: number }): void {
     for (const entry of this.placed.values()) {
+      if (only && (entry.col !== only.col || entry.row !== only.row)) continue;
       const decoration = DECORATIONS[entry.decorationId];
       const frames = decoration?.animatesWhenUsed ? decoration.animationFrames : undefined;
       if (!decoration || !frames || frames.length < 2 || !entry.image.active) continue;
@@ -594,9 +615,77 @@ export class DecorationPlacementSystem implements PointerInputInterceptor {
       if (!decoration) continue;
       this.placeAt(decoration, col, row);
     }
-    // Fundições ainda na fila (o jogador saiu da Fazenda e voltou): o fogo continua aceso até a fila acabar.
-    const smelting = remainingQueueMs();
-    if (smelting > 0) this.lightUsedStructures(smelting);
+    // Fornalhas ainda assando (o jogador saiu da Fazenda e voltou): o fogo de cada uma continua aceso até a leva dela acabar.
+    for (const { decorationId, col, row } of gameState.placedDecorations.values()) {
+      if (!DECORATIONS[decorationId]?.animatesWhenUsed) continue;
+      const smelting = remainingSmeltMsAt(furnaceKey(col, row));
+      if (smelting > 0) this.lightUsedStructures(smelting, { col, row });
+    }
+    this.refreshFurnaceBars();
+  }
+
+  /** Mostra (flutuando, sobe e desce) o ícone da barra pronta sobre cada Fornalha que tem uma esperando, e o tira das que já foram buscadas. */
+  refreshFurnaceBars(): void {
+    for (const [key, entry] of this.placed) {
+      const barId = DECORATIONS[entry.decorationId]?.animatesWhenUsed && entry.image.active ? readyBarAt(furnaceKey(entry.col, entry.row)) : null;
+      if (barId) entry.litUntil = Math.min(entry.litUntil, this.scene.time.now); // Pronta: o fogo apaga (o relógio pode ter pulado, ex.: dormir).
+      const shown = this.furnaceBars.get(key);
+      if (shown && (!barId || shown.getData('barId') !== barId)) {
+        this.scene.tweens.killTweensOf(shown);
+        shown.destroy();
+        this.furnaceBars.delete(key);
+      }
+      const resource = barId ? RESOURCES[barId] : undefined;
+      if (!barId || !resource || this.furnaceBars.has(key)) continue;
+      const iconY = entry.image.y - entry.image.displayHeight - 2;
+      const icon = this.scene.add.image(entry.image.x, iconY, resource.textureKey, resource.frameName);
+      icon.setOrigin(0.5, 1).setScale(DISPLAY_SCALE).setDepth(entry.image.depth + 1).setData('barId', barId);
+      this.scene.tweens.add({ targets: icon, y: iconY - FURNACE_BAR_BOB_PX, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      this.furnaceBars.set(key, icon);
+    }
+    for (const [key, icon] of this.furnaceBars) {
+      if (this.placed.has(key)) continue;
+      this.scene.tweens.killTweensOf(icon);
+      icon.destroy();
+      this.furnaceBars.delete(key);
+    }
+  }
+
+  /**
+   * Clique na Fornalha em (`col`, `row`): com uma barra pronta esperando (o ícone flutuando), ela vai pra Bolsa; com o minério bruto na mão, gasta os
+   * materiais e ela assa por 4 horas (o fogo acende); assando, diz quanto falta; sem minério na mão (ou sem material), diz o que precisa.
+   */
+  useFurnace(col: number, row: number): void {
+    const selected = this.inventory.getSelectedSlot();
+    const result = startSmeltAt(furnaceKey(col, row), selected?.category === 'resource' ? selected.id : null, this.inventory);
+    const x = col * this.tilePx + this.tilePx / 2;
+    const y = row * this.tilePx;
+    const warn = (text: string): void => {
+      popText(this.scene, x, y, text, { color: '#ff8a8a', fontSize: 14 });
+    };
+    switch (result.kind) {
+      case 'collected':
+        playEffect(this.scene, CRAFT_SOUND);
+        popText(this.scene, x, y, `+1 ${resourceDisplayName(result.barId)}`, { color: '#ffd98a', fontSize: 16 });
+        this.refreshFurnaceBars();
+        return;
+      case 'started':
+        playEffect(this.scene, CRAFT_SOUND);
+        popText(this.scene, x, y, `Assando: ${resourceDisplayName(result.barId)} (${SMELT_MINUTES / 60}h)`, { color: '#ffd98a', fontSize: 14 });
+        this.lightUsedStructures(remainingSmeltMsAt(furnaceKey(col, row)), { col, row });
+        return;
+      case 'busy': {
+        const hours = Math.max(1, Math.round(result.minutesLeft / 60));
+        popText(this.scene, x, y, `Assando ${resourceDisplayName(result.barId)}: falta${hours > 1 ? 'm' : ''} ~${hours}h`, { color: '#ffe9b3', fontSize: 14 });
+        return;
+      }
+      case 'notOre':
+        warn(`Segure um minério bruto na mão (${SMELT_ORE_AMOUNT} + ${SMELT_COAL_AMOUNT} Carvões)`);
+        return;
+      case 'missing':
+        warn(`Precisa de ${result.oreAmount} ${resourceDisplayName(result.oreId)} e ${result.fuelAmount} ${resourceDisplayName(result.fuelId)}`);
+        return;
+    }
   }
 
   /**

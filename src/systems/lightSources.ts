@@ -1,17 +1,14 @@
 import Phaser from 'phaser';
 import {
   EMISSIVE_ALPHA,
-  LAMP_FRAME_MS,
-  LAMP_LANTERN_BOTTOM_Y,
-  LAMP_LANTERN_FRAME_SIZE,
-  LAMP_LANTERN_KEY,
-  LAMP_LANTERN_PATH,
-  LAMP_LIT_FRAMES,
-  LAMP_OFF_TINT,
-  LAMP_POLE_FRAME,
-  LAMP_POLE_KEY,
-  LAMP_POLE_PATH,
   LIGHT_SOURCES,
+  STREET_LAMP_FRAME_HEIGHT,
+  STREET_LAMP_FRAME_WIDTH,
+  STREET_LAMP_KEY,
+  STREET_LAMP_LIT_FRAMES,
+  STREET_LAMP_OFF_FRAME,
+  STREET_LAMP_ORIGIN_Y,
+  STREET_LAMP_PATH,
   TORCH_FRAME_HEIGHT,
   TORCH_FRAME_MS,
   TORCH_FRAME_WIDTH,
@@ -25,7 +22,6 @@ import {
 } from '../data/lighting';
 import { TILE_SIZE } from '../data/tiles';
 import { DISPLAY_SCALE } from './mapBuilder';
-import { registerFrame } from './externalMapBuilder';
 import { createGroundShadow } from './shadow';
 import { lightIntensityAt } from './ambientLight';
 import { POP_TEXT_DEPTH } from './floatingText';
@@ -51,7 +47,7 @@ interface LightSource {
   litFrames: number[];
   frameMs: number;
   offFrame: number;
-  /** Tingimento de apagada (o lampião de dia fica escurecido); ausente = sem tingimento. */
+  /** Tingimento de apagada; ausente = sem tingimento (o poste e a tocha têm quadro apagado próprio). */
   offTint?: number;
 }
 
@@ -61,8 +57,7 @@ function ensureSpritesheet(scene: Phaser.Scene, key: string, path: string, frame
 
 /** Carrega as artes de poste e tocha — chamado no `preload` da cena que usa `LightSourceSystem`. */
 export function preloadLightSources(scene: Phaser.Scene): void {
-  if (!scene.textures.exists(LAMP_POLE_KEY)) scene.load.image(LAMP_POLE_KEY, encodeURI(`/${LAMP_POLE_PATH}`));
-  ensureSpritesheet(scene, LAMP_LANTERN_KEY, LAMP_LANTERN_PATH, LAMP_LANTERN_FRAME_SIZE, LAMP_LANTERN_FRAME_SIZE);
+  ensureSpritesheet(scene, STREET_LAMP_KEY, STREET_LAMP_PATH, STREET_LAMP_FRAME_WIDTH, STREET_LAMP_FRAME_HEIGHT);
   ensureSpritesheet(scene, TORCH_KEY, TORCH_PATH, TORCH_FRAME_WIDTH, TORCH_FRAME_HEIGHT);
 }
 
@@ -98,11 +93,9 @@ export class LightSourceSystem {
     createGroundShadow(scene, x, y - 3, DISPLAY_SCALE * 0.75, DISPLAY_SCALE * 0.3).setDepth(-0.4);
 
     if (placement.type === 'lampPost') {
-      registerFrame(scene, LAMP_POLE_KEY, LAMP_POLE_FRAME);
-      const pole = scene.add.image(x, y, LAMP_POLE_KEY, LAMP_POLE_FRAME.name);
-      pole.setOrigin(0.5, 1).setScale(DISPLAY_SCALE).setDepth(y);
-      lit = scene.add.image(x, y + LAMP_LANTERN_BOTTOM_Y * DISPLAY_SCALE, LAMP_LANTERN_KEY, 0).setOrigin(0.5, 1).setDepth(y + 0.1);
-      extras = { litFrames: LAMP_LIT_FRAMES, frameMs: LAMP_FRAME_MS, offFrame: 0, offTint: LAMP_OFF_TINT };
+      // O poste de rua do pacote: um quadro apagado e um aceso (os vidros amarelos), sem animação.
+      lit = scene.add.image(x, y, STREET_LAMP_KEY, STREET_LAMP_OFF_FRAME).setOrigin(0.5, STREET_LAMP_ORIGIN_Y).setDepth(y);
+      extras = { litFrames: STREET_LAMP_LIT_FRAMES, frameMs: 1000, offFrame: STREET_LAMP_OFF_FRAME };
     } else {
       lit = scene.add.image(x, y, TORCH_KEY, TORCH_OFF_FRAME).setOrigin(0.5, TORCH_ORIGIN_Y).setDepth(y);
       extras = { litFrames: TORCH_LIT_FRAMES, frameMs: TORCH_FRAME_MS, offFrame: TORCH_OFF_FRAME };

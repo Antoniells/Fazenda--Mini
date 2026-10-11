@@ -1,9 +1,10 @@
+import { HONEY_DROP } from '../data/beehives';
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Interactable, InteractionRegistry } from './interaction';
 import { gameState } from './gameState';
 import { getToolTierInfo, TOOL_TIER_POWER } from '../data/toolProgression';
-import { WOOD, STONE, RESOURCES } from '../data/resources';
+import { WOOD, STONE, HONEY, RESOURCES } from '../data/resources';
 import { acornIdForSpecies, resolveTreeSpecies } from './treeVariety';
 import { LEAF_FALL_KEY, LEAF_FALL_ANIM_KEY, LEAF_FALL_FRAMES } from '../data/effects';
 import { WalkableGrid } from './grid';
@@ -20,6 +21,8 @@ import { impact } from './impact';
 export interface HarvestableVisual {
   sprite: Phaser.GameObjects.Image;
   shadow?: Phaser.GameObjects.Image;
+  /** O que vai junto (as abelhas de uma colmeia). */
+  extras?: Phaser.GameObjects.GameObject[];
 }
 
 /** "Golpes de madeira" até uma árvore cair (Fase 9 — pedido explícito): Machado de Madeira 8 golpes; tiers maiores batem mais forte (`TOOL_TIER_POWER`). */
@@ -115,6 +118,7 @@ export function clearHarvestedNode(
 ): void {
   visual.sprite.destroy();
   visual.shadow?.destroy();
+  for (const extra of visual.extras ?? []) extra.destroy();
   grid.unblock(col, row);
   interactions.remove(col, row);
   resourceNodeRegistry.removeNode(sceneKey, col, row);
@@ -179,9 +183,13 @@ export class TreeInteractable implements Interactable {
       impact(scene, { strength: 0.5 }); // A árvore cai: a tela sente (`systems/impact.ts`).
       awardXp(scene, 'chop', x, y - 16);
       spawnLoot(scene, this.player, x, y, { category: 'resource', id: WOOD.id, amount: wood });
-      const species = resolveTreeSpecies(resourceNodeRegistry.getNode(this.sceneKey, this.col, this.row)?.species, this.col, this.row);
+      const node = resourceNodeRegistry.getNode(this.sceneKey, this.col, this.row);
+      const species = resolveTreeSpecies(node?.species, this.col, this.row);
       const acornId = acornIdForSpecies(species);
       if (acorns > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: acornId, amount: acorns });
+      // Árvore com colmeia (`data/beehives.ts`): o Mel cai junto.
+      const honey = node?.beehive ? Phaser.Math.Between(HONEY_DROP[0], HONEY_DROP[1]) * doubled : 0;
+      if (honey > 0) spawnLoot(scene, this.player, x, y, { category: 'resource', id: HONEY.id, amount: honey });
 
       console.log(
         `Árvore cortada: +${wood} Madeira` + (acorns > 0 ? ` e +${acorns} ${RESOURCES[acornId].name}` : '') + '.',

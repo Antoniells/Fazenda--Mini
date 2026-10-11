@@ -21,6 +21,7 @@ import { findWeightedPath } from './hordePathfinding';
 import { GridPoint } from './pathfinding';
 import { farmMap } from '../data/maps/farmMap';
 import { SLIME_GOO } from '../data/resources';
+import { FENCE_REPAIR_WOOD } from '../data/tools';
 import { hordeEnemyHp, HORDE_INITIAL_BURST, HORDE_SPAWN_BATCH, HORDE_SPAWN_INTERVAL_MS, HORDE_MIN_SPAWN_DISTANCE_TILES, RAIDER_AI } from '../data/horde';
 import { getPlayerDefense } from './enchanting';
 
@@ -136,7 +137,7 @@ export class HordeDirector {
     }
     // Cercas destruídas ficam assim até o Martelo: avisa quantas faltam consertar.
     const broken = this.fences.destroyedCount();
-    const repairHint = broken > 0 ? ` ${broken} cerca(s) destruída(s) — conserte com o Martelo.` : '';
+    const repairHint = broken > 0 ? ` ${broken} cerca(s) destruída(s) — conserte com o Martelo e ${FENCE_REPAIR_WOOD} Madeiras cada.` : '';
     const lostLine = describeCropsLost(summary.cropsLost);
     this.message.show(title, `Recompensa: ${summary.lines.join(', ')}.${lostLine ? ` ${lostLine}` : ''}${repairHint}`);
     console.log(`Horda vencida. Recompensa: ${summary.lines.join(', ')}.`);

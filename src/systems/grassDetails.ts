@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
+import { currentGroundSeason } from './seasonalGround';
 import { FarmMapData } from '../data/maps/farmMap';
-import { GRASS_DETAILS_KEY, GRASS_DETAILS, GRASS_BLADE_DETAILS, FLOWER_DETAILS, WILD_GRASS_DETAIL, GrassDetailDefinition } from '../data/grassDetails';
+import { GRASS_DETAILS_KEY, GRASS_DETAILS, GRASS_BLADE_DETAILS, FLOWER_DETAILS, WILD_GRASS_DETAIL, GrassDetailDefinition, SEASONAL_GRASS_DETAIL_IDS, SEASONAL_GRASS_FRAMES } from '../data/grassDetails';
 import { GRASS_FLAT_TILE_INDEX, GRASS_FLAT_DARK_TILE_INDEX } from '../data/tiles';
 import { hash2D } from './groundVariation';
 import { DirtZone } from './dirtPaths';
 import { DISPLAY_SCALE } from './mapBuilder';
+import { isFenceCell, onFenceCell } from './fenceCells';
 import { pushPlant, registerSway } from './foliageSway';
 
 /**
@@ -66,9 +68,15 @@ function buildExcludeSet(map: FarmMapData): Set<string> {
 /** Registra (uma vez, idempotente) os frames recortados de `GRASS_DETAILS` que ainda não existem na textura — reaproveitado tanto pela Fazenda quanto por `systems/externalMapBuilder.ts` (Floresta). */
 export function registerGrassDetailFrames(scene: Phaser.Scene, details: GrassDetailDefinition[] = [...GRASS_DETAILS, ...GRASS_BLADE_DETAILS, ...FLOWER_DETAILS, WILD_GRASS_DETAIL]): void {
   const texture = scene.textures.get(GRASS_DETAILS_KEY);
+  // A grama da estação do chão (`SEASONAL_GRASS_FRAMES`): o mesmo nome de quadro aponta pro recorte da estação — refeito quando ela muda.
+  const seasonal = SEASONAL_GRASS_FRAMES[currentGroundSeason()];
   for (const detail of details) {
-    if (texture.has(detail.frameName)) continue;
-    const { x, y, width, height } = detail.frameRect;
+    const { x, y, width, height } = seasonal && SEASONAL_GRASS_DETAIL_IDS.includes(detail.id) ? seasonal : detail.frameRect;
+    if (texture.has(detail.frameName)) {
+      const frame = texture.get(detail.frameName);
+      if (frame.cutX === x && frame.cutY === y && frame.cutWidth === width && frame.cutHeight === height) continue;
+      texture.remove(detail.frameName);
+    }
     texture.add(detail.frameName, 0, x, y, width, height);
   }
 }
@@ -173,6 +181,9 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
 
   const exclude = buildExcludeSet(map);
   for (const key of extraExclude) exclude.add(key); // Sob construções (e obras) da Fazenda não nasce planta.
+  // Nem embaixo de cerca: as já postas ficam de fora, e as que vierem depois tiram o que nasceu ali (`systems/fenceCells.ts`).
+  const isExcluded = (key: string): boolean => exclude.has(key) || isFenceCell(scene, key);
+  onFenceCell(scene, (col, row) => removeGrassDetailsAt(scene, [{ col, row }]));
   const tile = map.tileSize * DISPLAY_SCALE;
   const rustling: GrassTuftMap = new Map();
   detailRegistry.set(scene, { images: new Map(), rustling });
@@ -181,7 +192,7 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
   for (let row = 0; row < map.rows; row++) {
     for (let col = 0; col < map.cols; col++) {
       const key = cellKey(col, row);
-      if (exclude.has(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
+      if (isExcluded(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
 
       // Offset diferente do usado em `groundVariation`/`dirtPaths` na mesma
       // célula, pra não correlacionar com a variação de tom da grama nem
@@ -198,7 +209,7 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
   for (let row = 0; row < map.rows; row++) {
     for (let col = 0; col < map.cols; col++) {
       const key = cellKey(col, row);
-      if (placed.has(key) || exclude.has(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
+      if (placed.has(key) || isExcluded(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
       if (hash2D(col * 419 + 17, row * 613 + 29) >= BLADE_CHANCE) continue;
 
       const bladeIndex = Math.floor(hash2D(col * 271 + 5, row * 337 + 11) * GRASS_BLADE_DETAILS.length) % GRASS_BLADE_DETAILS.length;
@@ -211,7 +222,7 @@ export function buildGrassDetails(scene: Phaser.Scene, map: FarmMapData, dirtZon
   for (let row = 0; row < map.rows; row++) {
     for (let col = 0; col < map.cols; col++) {
       const key = cellKey(col, row);
-      if (placed.has(key) || exclude.has(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
+      if (placed.has(key) || isExcluded(key) || dirtZone.has(col, row) || !isGrassTile(map, col, row)) continue;
       if (hash2D(col * 587 + 43, row * 829 + 61) >= FLOWER_CHANCE) continue;
 
       const flowerIndex = Math.floor(hash2D(col * 113 + 7, row * 199 + 13) * FLOWER_DETAILS.length) % FLOWER_DETAILS.length;

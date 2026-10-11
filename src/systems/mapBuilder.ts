@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { markFenceCell } from './fenceCells';
 import { BiomeId, BridgeDefinition, ExpansionChunk, ExpansionDirection, FarmMapData, getFarmlandFenceLayout } from '../data/maps/farmMap';
 import {
   GRASS_TILESET_KEY,
@@ -8,11 +9,7 @@ import {
   FENCE_CORNER_BOTTOM_RIGHT_INDEX,
   FENCE_EDGE_H_INDEX,
   FENCE_EDGE_V_INDEX,
-  PINE_TREE_KEY,
   OAK_TREE_KEY,
-  OAK_TREE_FRAMES,
-  PINK_OAK_MATURE_FRAME,
-  PINE_TREE_FRAME_NAME,
   SHIPPING_BIN_KEY,
   SHIPPING_BIN_FRAME_NAME,
   SHIPPING_BIN_FRAME,
@@ -21,6 +18,9 @@ import {
   BRIDGE_HORIZONTAL_FRAME,
   BRIDGE_VERTICAL_WALL_TILE_FRAME,
   BRIDGE_VERTICAL_POST_FRAME,
+  BRIDGE_HORIZONTAL_SPAN_FRAME,
+  BRIDGE_VERTICAL_SPAN_FRAME,
+  BRIDGE_VERTICAL_POST_SPAN_FRAME,
   GRASS_FLAT_TILE_INDEX,
   GRASS_FLAT_DARK_TILE_INDEX,
 } from '../data/tiles';
@@ -34,6 +34,8 @@ import { buildWaterAutotile } from './waterAutotile';
 import { attachGroundPatches, buildGroundPatches } from './groundPatches';
 import { registerSway } from './foliageSway';
 import type { WaterStyleId } from '../data/tiles';
+import { seasonalMatureTree } from './seasonalTrees';
+import { seasonalBuildingTexture } from './snowRoofs';
 
 /** Escala de exibição: cada tile de 16px é desenhado em 32px na tela. */
 export const DISPLAY_SCALE = 2;
@@ -62,6 +64,7 @@ function placeFenceTile(
   image.setOrigin(0, 0);
   image.setScale(DISPLAY_SCALE);
   image.setFlip(flipX, flipY);
+  markFenceCell(scene, col, row); // Embaixo da cerca não nasce grama/flor/cogumelo (`systems/fenceCells.ts`).
   return image;
 }
 
@@ -271,9 +274,11 @@ export function buildFenceSide(scene: Phaser.Scene, map: FarmMapData, direction:
  * lados que não fazem fronteira com o núcleo (esse lado fica aberto, sem
  * cerca, unindo o trecho ao núcleo assim que a parede dele for removida).
  * Diferente da cerca do núcleo, esta nunca é removida — é o novo limite
- * final da propriedade nessa direção.
+ * final da propriedade nessa direção. Devolve as imagens (o trecho fechado
+ * fica invisível — `PropertyExpansionSystem`).
  */
-export function buildExpansionChunkFence(scene: Phaser.Scene, tileSize: number, chunk: ExpansionChunk): void {
+export function buildExpansionChunkFence(scene: Phaser.Scene, tileSize: number, chunk: ExpansionChunk): Phaser.GameObjects.Image[] {
+  const images: Phaser.GameObjects.Image[] = [];
   const tile = tileSize * DISPLAY_SCALE;
   const { direction, col0, row0, cols, rows } = chunk;
   const colEnd = col0 + cols - 1;
@@ -281,33 +286,34 @@ export function buildExpansionChunkFence(scene: Phaser.Scene, tileSize: number, 
 
   if (direction === 'east') {
     // Lado compartilhado com o núcleo: oeste (col0) — fica aberto.
-    for (let col = col0; col < colEnd; col++) placeFenceTile(scene, tile, col, row0, FENCE_EDGE_H_INDEX);
-    for (let col = col0; col < colEnd; col++) placeFenceTile(scene, tile, col, rowEnd, FENCE_EDGE_H_INDEX);
-    for (let row = row0 + 1; row < rowEnd; row++) placeFenceTile(scene, tile, colEnd, row, FENCE_EDGE_V_INDEX);
-    placeFenceTile(scene, tile, colEnd, row0, FENCE_CORNER_INDEX, true, false);
-    placeFenceTile(scene, tile, colEnd, rowEnd, FENCE_CORNER_BOTTOM_RIGHT_INDEX);
+    for (let col = col0; col < colEnd; col++) images.push(placeFenceTile(scene, tile, col, row0, FENCE_EDGE_H_INDEX));
+    for (let col = col0; col < colEnd; col++) images.push(placeFenceTile(scene, tile, col, rowEnd, FENCE_EDGE_H_INDEX));
+    for (let row = row0 + 1; row < rowEnd; row++) images.push(placeFenceTile(scene, tile, colEnd, row, FENCE_EDGE_V_INDEX));
+    images.push(placeFenceTile(scene, tile, colEnd, row0, FENCE_CORNER_INDEX, true, false));
+    images.push(placeFenceTile(scene, tile, colEnd, rowEnd, FENCE_CORNER_BOTTOM_RIGHT_INDEX));
   } else if (direction === 'west') {
     // Lado compartilhado com o núcleo: leste (colEnd) — fica aberto.
-    for (let col = col0 + 1; col <= colEnd; col++) placeFenceTile(scene, tile, col, row0, FENCE_EDGE_H_INDEX);
-    for (let col = col0 + 1; col <= colEnd; col++) placeFenceTile(scene, tile, col, rowEnd, FENCE_EDGE_H_INDEX);
-    for (let row = row0 + 1; row < rowEnd; row++) placeFenceTile(scene, tile, col0, row, FENCE_EDGE_V_INDEX);
-    placeFenceTile(scene, tile, col0, row0, FENCE_CORNER_INDEX);
-    placeFenceTile(scene, tile, col0, rowEnd, FENCE_CORNER_BOTTOM_LEFT_INDEX);
+    for (let col = col0 + 1; col <= colEnd; col++) images.push(placeFenceTile(scene, tile, col, row0, FENCE_EDGE_H_INDEX));
+    for (let col = col0 + 1; col <= colEnd; col++) images.push(placeFenceTile(scene, tile, col, rowEnd, FENCE_EDGE_H_INDEX));
+    for (let row = row0 + 1; row < rowEnd; row++) images.push(placeFenceTile(scene, tile, col0, row, FENCE_EDGE_V_INDEX));
+    images.push(placeFenceTile(scene, tile, col0, row0, FENCE_CORNER_INDEX));
+    images.push(placeFenceTile(scene, tile, col0, rowEnd, FENCE_CORNER_BOTTOM_LEFT_INDEX));
   } else if (direction === 'north') {
     // Lado compartilhado com o núcleo: sul (rowEnd) — fica aberto.
-    for (let col = col0 + 1; col < colEnd; col++) placeFenceTile(scene, tile, col, row0, FENCE_EDGE_H_INDEX);
-    for (let row = row0; row < rowEnd; row++) placeFenceTile(scene, tile, col0, row, FENCE_EDGE_V_INDEX);
-    for (let row = row0; row < rowEnd; row++) placeFenceTile(scene, tile, colEnd, row, FENCE_EDGE_V_INDEX);
-    placeFenceTile(scene, tile, col0, row0, FENCE_CORNER_INDEX);
-    placeFenceTile(scene, tile, colEnd, row0, FENCE_CORNER_INDEX, true, false);
+    for (let col = col0 + 1; col < colEnd; col++) images.push(placeFenceTile(scene, tile, col, row0, FENCE_EDGE_H_INDEX));
+    for (let row = row0; row < rowEnd; row++) images.push(placeFenceTile(scene, tile, col0, row, FENCE_EDGE_V_INDEX));
+    for (let row = row0; row < rowEnd; row++) images.push(placeFenceTile(scene, tile, colEnd, row, FENCE_EDGE_V_INDEX));
+    images.push(placeFenceTile(scene, tile, col0, row0, FENCE_CORNER_INDEX));
+    images.push(placeFenceTile(scene, tile, colEnd, row0, FENCE_CORNER_INDEX, true, false));
   } else {
     // south — lado compartilhado com o núcleo: norte (row0) — fica aberto.
-    for (let col = col0 + 1; col < colEnd; col++) placeFenceTile(scene, tile, col, rowEnd, FENCE_EDGE_H_INDEX);
-    for (let row = row0 + 1; row <= rowEnd; row++) placeFenceTile(scene, tile, col0, row, FENCE_EDGE_V_INDEX);
-    for (let row = row0 + 1; row <= rowEnd; row++) placeFenceTile(scene, tile, colEnd, row, FENCE_EDGE_V_INDEX);
-    placeFenceTile(scene, tile, col0, rowEnd, FENCE_CORNER_BOTTOM_LEFT_INDEX);
-    placeFenceTile(scene, tile, colEnd, rowEnd, FENCE_CORNER_BOTTOM_RIGHT_INDEX);
+    for (let col = col0 + 1; col < colEnd; col++) images.push(placeFenceTile(scene, tile, col, rowEnd, FENCE_EDGE_H_INDEX));
+    for (let row = row0 + 1; row <= rowEnd; row++) images.push(placeFenceTile(scene, tile, col0, row, FENCE_EDGE_V_INDEX));
+    for (let row = row0 + 1; row <= rowEnd; row++) images.push(placeFenceTile(scene, tile, colEnd, row, FENCE_EDGE_V_INDEX));
+    images.push(placeFenceTile(scene, tile, col0, rowEnd, FENCE_CORNER_BOTTOM_LEFT_INDEX));
+    images.push(placeFenceTile(scene, tile, colEnd, rowEnd, FENCE_CORNER_BOTTOM_RIGHT_INDEX));
   }
+  return images;
 }
 
 /**
@@ -389,7 +395,7 @@ const BRIDGE_VERTICAL_LEFT_POST_OFFSET = -BRIDGE_VERTICAL_RIGHT_POST_OFFSET;
  * construção; os 2 postes são desenhados por cima, cada um na sua própria
  * posição, sem nenhum vínculo um com o outro.
  */
-function buildVerticalBridgeWall(scene: Phaser.Scene, x: number, y: number): void {
+function buildVerticalBridgeWall(scene: Phaser.Scene, x: number, y: number): Phaser.GameObjects.GameObject[] {
   const texture = scene.textures.get(BRIDGE_KEY);
   registerBridgeFrame(texture, BRIDGE_VERTICAL_WALL_TILE_FRAME);
   registerBridgeFrame(texture, BRIDGE_VERTICAL_POST_FRAME);
@@ -401,12 +407,64 @@ function buildVerticalBridgeWall(scene: Phaser.Scene, x: number, y: number): voi
   wall.setTileScale(DISPLAY_SCALE, DISPLAY_SCALE);
   wall.setDepth(BRIDGE_DEPTH);
 
+  const objects: Phaser.GameObjects.GameObject[] = [wall];
   for (const offset of [BRIDGE_VERTICAL_LEFT_POST_OFFSET, BRIDGE_VERTICAL_RIGHT_POST_OFFSET]) {
     const post = scene.add.image(x + offset * DISPLAY_SCALE, y, BRIDGE_KEY, BRIDGE_VERTICAL_POST_FRAME.name);
     post.setOrigin(0.5, 0.5);
     post.setScale(DISPLAY_SCALE);
     post.setDepth(BRIDGE_DEPTH + 0.1);
+    objects.push(post);
   }
+  return objects;
+}
+
+/** O vão por cima da cabeceira (cobre a borda dela, sem emenda) e abaixo dos postes. */
+const BRIDGE_SPAN_DEPTH = BRIDGE_DEPTH + 0.05;
+
+/**
+ * O VÃO da ponte norte/sul sobre a água (`BRIDGE_VERTICAL_SPAN_FRAME`): a ripa e os 2 postes repetidos pra fora a partir da linha 88 (sul)
+ * ou até a 104 (norte) da cabeceira — onde a arte se emenda sem costura —, com `lengthPx` arredondado pra um número inteiro de períodos.
+ */
+function buildVerticalBridgeSpan(scene: Phaser.Scene, x: number, y: number, outward: -1 | 1, lengthPx: number): Phaser.GameObjects.GameObject[] {
+  const texture = scene.textures.get(BRIDGE_KEY);
+  registerBridgeFrame(texture, BRIDGE_VERTICAL_SPAN_FRAME);
+  registerBridgeFrame(texture, BRIDGE_VERTICAL_POST_SPAN_FRAME);
+
+  const period = BRIDGE_VERTICAL_SPAN_FRAME.rect.height * DISPLAY_SCALE;
+  const height = Math.ceil(lengthPx / period) * period;
+  const wallTop = y - (BRIDGE_VERTICAL_WALL_TILE_FRAME.rect.height * DISPLAY_SCALE) / 2;
+  const rowY = (frameRow: number): number => wallTop + (frameRow - BRIDGE_VERTICAL_WALL_TILE_FRAME.rect.y) * DISPLAY_SCALE;
+  // Norte: termina (embaixo) na linha 104 da cabeceira; sul: começa (em cima) na linha 88.
+  const anchorY = outward < 0 ? rowY(BRIDGE_VERTICAL_SPAN_FRAME.rect.y + BRIDGE_VERTICAL_SPAN_FRAME.rect.height) : rowY(BRIDGE_VERTICAL_SPAN_FRAME.rect.y);
+  const originY = outward < 0 ? 1 : 0;
+
+  const wall = scene.add.tileSprite(x, anchorY, BRIDGE_VERTICAL_WALL_WIDTH * DISPLAY_SCALE, height, BRIDGE_KEY, BRIDGE_VERTICAL_SPAN_FRAME.name);
+  wall.setOrigin(0.5, originY).setTileScale(DISPLAY_SCALE, DISPLAY_SCALE).setDepth(BRIDGE_SPAN_DEPTH);
+  const objects: Phaser.GameObjects.GameObject[] = [wall];
+  for (const offset of [BRIDGE_VERTICAL_LEFT_POST_OFFSET, BRIDGE_VERTICAL_RIGHT_POST_OFFSET]) {
+    const post = scene.add.tileSprite(x + offset * DISPLAY_SCALE, anchorY, BRIDGE_VERTICAL_POST_SPAN_FRAME.rect.width * DISPLAY_SCALE, height, BRIDGE_KEY, BRIDGE_VERTICAL_POST_SPAN_FRAME.name);
+    post.setOrigin(0.5, originY).setTileScale(DISPLAY_SCALE, DISPLAY_SCALE).setDepth(BRIDGE_DEPTH + 0.1);
+    objects.push(post);
+  }
+  return objects;
+}
+
+/**
+ * O VÃO da ponte leste/oeste sobre a água (`BRIDGE_HORIZONTAL_SPAN_FRAME`): as colunas 31-62 da cabeceira repetidas pra fora — a leste a
+ * partir da coluna 31, a oeste terminando na 63 (idêntica à 31), onde a arte se emenda sem costura.
+ */
+function buildHorizontalBridgeSpan(scene: Phaser.Scene, x: number, y: number, outward: -1 | 1, lengthPx: number): Phaser.GameObjects.GameObject {
+  registerBridgeFrame(scene.textures.get(BRIDGE_KEY), BRIDGE_HORIZONTAL_SPAN_FRAME);
+  const { rect } = BRIDGE_HORIZONTAL_SPAN_FRAME;
+  const period = rect.width * DISPLAY_SCALE;
+  const width = Math.ceil(lengthPx / period) * period;
+  const frameLeft = x - (BRIDGE_HORIZONTAL_FRAME.rect.width * DISPLAY_SCALE) / 2;
+  const colX = (frameCol: number): number => frameLeft + (frameCol - BRIDGE_HORIZONTAL_FRAME.rect.x) * DISPLAY_SCALE;
+  const anchorX = outward < 0 ? colX(rect.x + rect.width) : colX(rect.x);
+
+  const span = scene.add.tileSprite(anchorX, y, width, rect.height * DISPLAY_SCALE, BRIDGE_KEY, BRIDGE_HORIZONTAL_SPAN_FRAME.name);
+  span.setOrigin(outward < 0 ? 1 : 0, 0.5).setTileScale(DISPLAY_SCALE, DISPLAY_SCALE).setDepth(BRIDGE_SPAN_DEPTH);
+  return span;
 }
 
 /**
@@ -420,17 +478,22 @@ function buildVerticalBridgeWall(scene: Phaser.Scene, x: number, y: number): voi
  * desalinhados. Objeto plano de chão (como a própria cerca), por isso
  * `origin(0.5, 0.5)` centralizado na célula, e não `origin(0.5, 1)` como
  * objetos "em pé" (placas, árvores).
+ *
+ * `spanCells`: o VÃO que atravessa a água em volta da ilha (`systems/islandEdges.ts`), da cabeceira pra fora. Devolve tudo o que desenhou
+ * (a Fazenda muda a ponte de lugar quando um trecho é comprado).
  */
-export function buildBridge(scene: Phaser.Scene, tileSize: number, bridge: BridgeDefinition): void {
+export function buildBridge(scene: Phaser.Scene, tileSize: number, bridge: BridgeDefinition, spanCells = 0): Phaser.GameObjects.GameObject[] {
   const tile = tileSize * DISPLAY_SCALE;
   const isVerticalCrossing = bridge.direction === 'north' || bridge.direction === 'south';
+  const outward: -1 | 1 = bridge.direction === 'north' || bridge.direction === 'west' ? -1 : 1;
 
   const x = bridge.col * tile + tile / 2;
   const y = bridge.row * tile + tile / 2;
 
   if (isVerticalCrossing) {
-    buildVerticalBridgeWall(scene, x, y);
-    return;
+    const objects = buildVerticalBridgeWall(scene, x, y);
+    if (spanCells > 0) objects.push(...buildVerticalBridgeSpan(scene, x, y, outward, spanCells * tile));
+    return objects;
   }
 
   const texture = scene.textures.get(BRIDGE_KEY);
@@ -440,6 +503,7 @@ export function buildBridge(scene: Phaser.Scene, tileSize: number, bridge: Bridg
   image.setOrigin(0.5, 0.5);
   image.setScale(DISPLAY_SCALE);
   image.setDepth(BRIDGE_DEPTH);
+  return spanCells > 0 ? [image, buildHorizontalBridgeSpan(scene, x, y, outward, spanCells * tile)] : [image];
 }
 
 /**
@@ -527,10 +591,9 @@ export function buildFarmDecorations(
 
     // De vez em quando, um Carvalho (ou o raro Carvalho Rosa) no lugar do pinheiro (`systems/treeVariety.ts`).
     const species = scene.textures.exists(OAK_TREE_KEY) ? worldTreeSpeciesAt(col, row) : 'pine';
-    const tree =
-      species === 'pine'
-        ? scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME)
-        : scene.add.image(x, y, OAK_TREE_KEY, species === 'pink-oak' ? PINK_OAK_MATURE_FRAME : OAK_TREE_FRAMES.mature);
+    // A copa da estação (`systems/seasonalTrees.ts`).
+    const seasonal = seasonalMatureTree(scene, species);
+    const tree = scene.add.image(x, y, seasonal.textureKey, seasonal.frameName);
     tree.setOrigin(0.5, 1);
     tree.setScale(DISPLAY_SCALE);
     // Profundidade fixa baseada no Y da base da árvore, para ordenar contra
@@ -608,7 +671,9 @@ export function buildPlayerHouse(scene: Phaser.Scene, map: FarmMapData): Phaser.
   }
   // Quadro SEMPRE explícito: sem nome, o Phaser usa o "primeiro quadro" da textura — que vira o 1º recorte acrescentado a ela (os
   // remendos logo abaixo). Na 2ª vez que a Fazenda abria, a casa saía como a faixa de parede de um remendo e "sumia".
-  const house = scene.add.image(col0 * tile + level.offset.x, row0 * tile + level.offset.y, level.textureKey, level.frame?.name ?? '__BASE');
+  // No Inverno, com o telhado nevado (`systems/snowRoofs.ts`).
+  const art = seasonalBuildingTexture(scene, level.textureKey, level.frame?.name ?? '__BASE');
+  const house = scene.add.image(col0 * tile + level.offset.x, row0 * tile + level.offset.y, art.textureKey, art.frameName);
   house.setOrigin(0, 0);
   house.setScale(DISPLAY_SCALE);
   // Profundidade na última fileira sólida da arte (o jogador passa atrás do telhado e na frente da porta).

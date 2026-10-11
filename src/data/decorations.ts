@@ -1,4 +1,5 @@
 import { COPPER_BAR, GOLD_BAR, IRON, STONE } from './resources';
+import { PET_BED_PLACE_SOUND, type SoundEffectDef } from './audio';
 
 /**
  * Definições de objetos decorativos/construções posicionáveis (Fase 6).
@@ -8,6 +9,8 @@ import { COPPER_BAR, GOLD_BAR, IRON, STONE } from './resources';
  */
 export interface DecorationDefinition {
   id: string;
+  /** Som ao posicionar (padrão: `PLACE_SOUND`, "posicionar objeto"). */
+  placeSound?: SoundEffectDef;
   name: string;
   textureKey: string;
   texturePath: string;
@@ -21,6 +24,11 @@ export interface DecorationDefinition {
   materials?: Array<{ resourceId: string; amount: number }>;
   /** Texto curto da Loja (painel de detalhe do item selecionado). */
   description: string;
+  /**
+   * A sombra oval ao pé da construção posicionada (`systems/decorationPlacement.ts`): largura/altura em múltiplos do padrão (1,1 x 0,5 da escala de
+   * exibição) e quanto ela sobe (px de mundo). Ausente = a de sempre. A Fornalha, estreita e alta, escondia a padrão inteira atrás de si.
+   */
+  shadow?: { scaleX: number; scaleY: number; offsetY: number };
   /**
    * Quantas células do `WalkableGrid` a construção ocupa (Fase 9 —
    * Construções Multi-tile), a partir da célula onde foi colocada (canto
@@ -106,6 +114,7 @@ export const WELL: DecorationDefinition = {
   frameRect: { x: 0, y: 10, width: 28, height: 38 },
   price: 40,
   description: 'Encha o regador aqui. Interaja com o poço pra reabastecer a água.',
+  materials: [{ resourceId: STONE.id, amount: 15 }],
   footprint: { width: 2, height: 1 },
   carpenterBuilt: true,
   buildHours: 2,
@@ -114,8 +123,8 @@ export const WELL: DecorationDefinition = {
 /**
  * Fornalha (Ferreiro/mineração — substitui a antiga Bancada de Trabalho): `Objects/Work Benches/Furnace.png` (160x32) traz 5 quadros de 32x32 da mesma fornalha de tijolos —
  * o 1º apagada (o de repouso) e os 4 seguintes com o fogo aceso. O conteúdo de cada quadro (varredura pixel a pixel) é 18x28 em (6 + 32*n, 2): cabe numa célula. O jogador a encomenda
- * ao Marceneiro (`carpenterBuilt`) e, ao interagir, abre a tela de fundição (`ui/furnaceMenu.ts`, `data/smelting.ts`): 5 minérios brutos + 3 Carvões = 1 barra. A cada fundição
- * o fogo acende por alguns segundos (`animatesWhenUsed`).
+ * ao Marceneiro (`carpenterBuilt`, com Pedra) e, clicando nela com o minério bruto na mão, ela assa (`data/smelting.ts`): 5 minérios brutos + 3 Carvões = 1 barra
+ * em 4 horas, com o fogo aceso enquanto assa (`animatesWhenUsed`).
  */
 const FURNACE_FRAME_COUNT = 5;
 const furnaceFrame = (index: number) => ({ name: `decor-furnace-${index}`, rect: { x: 6 + 32 * index, y: 2, width: 18, height: 28 } });
@@ -128,7 +137,9 @@ export const FURNACE: DecorationDefinition = {
   frameName: 'decor-furnace-icon',
   frameRect: { x: 6, y: 2, width: 18, height: 28 },
   price: 250,
-  description: 'Funde minério em barras: 5 minérios brutos + 3 Carvões = 1 barra. Interaja com ela pra fundir.',
+  description: 'Funde minério em barras: com o minério bruto na mão, clique nela — 5 minérios + 3 Carvões = 1 barra em 4 horas.',
+  materials: [{ resourceId: STONE.id, amount: 20 }],
+  shadow: { scaleX: 1.5, scaleY: 1.1, offsetY: -3 },
   footprint: { width: 1, height: 1 },
   carpenterBuilt: true,
   buildHours: 3,
@@ -297,6 +308,7 @@ export const PET_BED: DecorationDefinition = {
   footprint: { width: 2, height: 1 },
   placement: 'house',
   notForSale: true,
+  placeSound: PET_BED_PLACE_SOUND,
 };
 
 /**

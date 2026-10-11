@@ -316,6 +316,16 @@ export const BRIDGE_VERTICAL_WALL_TILE_FRAME = { name: 'bridge-vertical-wall-til
 export const BRIDGE_VERTICAL_POST_FRAME = { name: 'bridge-vertical-post', rect: { x: 44, y: 65, width: 4, height: 59 } };
 
 /**
+ * O VÃO da ponte sobre a água (`systems/islandEdges.ts`): trechos da própria arte que se emendam sem costura quando repetidos — achados
+ * comparando colunas/linhas pixel a pixel. Na ponte de pedra (leste/oeste) a coluna 63 é idêntica à 31, então as colunas 31-62 (dois postes
+ * do corrimão) se repetem pra fora; na de madeira (norte/sul) a linha 104 é idêntica à 88, então as linhas 88-103 da ripa e do poste se
+ * repetem pra cima/baixo.
+ */
+export const BRIDGE_HORIZONTAL_SPAN_FRAME = { name: 'bridge-horizontal-span', rect: { x: 31, y: 0, width: 32, height: 50 } };
+export const BRIDGE_VERTICAL_SPAN_FRAME = { name: 'bridge-vertical-span', rect: { x: 24, y: 88, width: 4, height: 16 } };
+export const BRIDGE_VERTICAL_POST_SPAN_FRAME = { name: 'bridge-vertical-post-span', rect: { x: 44, y: 88, width: 4, height: 16 } };
+
+/**
  * Bétula (variedade extra de árvore pra Floresta, ao lado do Pinheiro já
  * usado na Fazenda): `Tree/Common/No Shadow/Birch Tree.png` tem estágios
  * de crescimento + 3 variações de cor (verde/outono/neve) lado a lado — só
@@ -600,6 +610,7 @@ export const WATER_AUTOTILE_PHASE_MS = 520;
 export const WATER_AUTOTILE_INTERIOR_MASK = N | E | S | W;
 /** Índices de `Beach animations tiles.png` que são AREIA lisa (não água) — o chão de areia da Praia é pintado com eles no editor. */
 export const WATER_SAND_FILL_INDICES: readonly number[] = [waterFrame(12, 12), waterFrame(13, 12), waterFrame(14, 12)];
+
 
 /**
  * Folha de props de decoração ambiente (pedras/cogumelos/flores/moitas/

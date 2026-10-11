@@ -1,9 +1,12 @@
 import Phaser from 'phaser';
-import { RAIN_KEY, RAIN_DROP_FRAMES, SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES } from '../data/effects';
+import { RAIN_KEY, RAIN_DROP_FRAMES, SPLASH_KEY, SPLASH_ANIM_KEY, SPLASH_FRAMES, SNOW_KEY, SNOW_FLAKE_FRAMES } from '../data/effects';
 
 /** Escurecimento cinza da tela quando chove (0 = nenhum, 1 = opaco). */
 const RAIN_VEIL_ALPHA = 0.3;
 const RAIN_VEIL_COLOR = 0x59606b;
+/** Na neve, o véu é mais leve e claro (o céu de inverno, não o de tempestade). */
+const SNOW_VEIL_ALPHA = 0.18;
+const SNOW_VEIL_COLOR = 0xc8d4e6;
 const FADE_MS = 1500;
 /** Acima do mundo e do véu de dia/noite, abaixo de qualquer HUD (Hotbar/corações começam em depth 1000). */
 const VEIL_DEPTH = 3;
@@ -46,8 +49,11 @@ const INDOOR_SCENE_KEYS = ['CaveScene', 'CaveFloorScene', 'HouseScene', 'ShopInt
 export class WeatherOverlay {
   private readonly veil: Phaser.GameObjects.Rectangle;
   private readonly rain: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** No Inverno, no lugar da chuva: flocos caindo devagar e balançando de lado (`SNOW_FLAKE_FRAMES`), sem respingos no chão. */
+  private readonly snow: Phaser.GameObjects.Particles.ParticleEmitter | null;
   private readonly splashTimer: Phaser.Time.TimerEvent;
   private raining = false;
+  private snowing = false;
 
   constructor(private readonly scene: Phaser.Scene) {
     const { width, height } = scene.scale;
@@ -93,20 +99,54 @@ export class WeatherOverlay {
     });
     this.rain.setScrollFactor(0);
     this.rain.setDepth(RAIN_DEPTH);
+
+    this.snow = null;
+    if (scene.textures.exists(SNOW_KEY)) {
+      const snowTexture = scene.textures.get(SNOW_KEY);
+      for (const { name, rect } of SNOW_FLAKE_FRAMES) {
+        if (!snowTexture.has(name)) snowTexture.add(name, 0, rect.x, rect.y, rect.width, rect.height);
+      }
+      this.snow = scene.add.particles(0, 0, SNOW_KEY, {
+        frame: SNOW_FLAKE_FRAMES.map((flake) => flake.name),
+        x: { min: -80, max: width + 80 },
+        y: -20,
+        lifespan: 9000,
+        speedX: { min: -30, max: 20 },
+        speedY: { min: 60, max: 110 },
+        // Balança de lado enquanto cai (o vento): uma aceleração lateral sorteada por floco.
+        accelerationX: { min: -12, max: 12 },
+        scale: { min: 2, max: 3 },
+        alpha: { start: 0.95, end: 0.6 },
+        frequency: 45,
+        quantity: 2,
+        emitting: false,
+      });
+      this.snow.setScrollFactor(0);
+      this.snow.setDepth(RAIN_DEPTH);
+    }
   }
 
-  /** Chamado a cada frame pela `UIScene`; só age quando o estado "chovendo" (ou estar num mapa coberto) muda. */
-  refresh(isRaining: boolean): void {
-    const shouldRain = isRaining && !INDOOR_SCENE_KEYS.some((key) => this.scene.scene.isActive(key));
-    if (shouldRain === this.raining) return;
+  /**
+   * Chamado a cada frame pela `UIScene`; só age quando o estado muda (chovendo/nevando, ou estar num mapa coberto). `asSnow` = é Inverno: o
+   * dia de "chuva" é de neve (`precipitationIn`).
+   */
+  refresh(isRaining: boolean, asSnow = false): void {
+    const falling = isRaining && !INDOOR_SCENE_KEYS.some((key) => this.scene.scene.isActive(key));
+    const snowing = falling && asSnow && this.snow !== null;
+    const shouldRain = falling && !snowing;
+    if (shouldRain === this.raining && snowing === this.snowing) return;
     this.raining = shouldRain;
+    this.snowing = snowing;
 
+    this.veil.setFillStyle(snowing ? SNOW_VEIL_COLOR : RAIN_VEIL_COLOR, 1);
     this.scene.tweens.killTweensOf(this.veil);
-    this.scene.tweens.add({ targets: this.veil, alpha: shouldRain ? RAIN_VEIL_ALPHA : 0, duration: FADE_MS, ease: 'Sine.easeInOut' });
+    this.scene.tweens.add({ targets: this.veil, alpha: shouldRain ? RAIN_VEIL_ALPHA : snowing ? SNOW_VEIL_ALPHA : 0, duration: FADE_MS, ease: 'Sine.easeInOut' });
 
     if (shouldRain) this.rain.start();
     else this.rain.stop();
-    this.splashTimer.paused = !shouldRain;
+    if (snowing) this.snow?.start();
+    else this.snow?.stop();
+    this.splashTimer.paused = !shouldRain; // Neve não respinga.
   }
 
   /** A cena de mapa a céu aberto que está rodando agora (a chuva cai nela), se houver. */
@@ -135,6 +175,7 @@ export class WeatherOverlay {
   /** Um menu de cena de mapa aberto (`WORLD_MENU_OPEN_KEY`): a chuva (riscas e véu) some por cima dele e volta ao fechar. */
   setHiddenForMenu(hidden: boolean): void {
     this.rain.setVisible(!hidden);
+    this.snow?.setVisible(!hidden);
     this.veil.setVisible(!hidden);
   }
 

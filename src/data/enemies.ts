@@ -53,3 +53,6 @@ export const FOREST_SLIME = {
   contactDamage: 4,
   coins: { min: 3, max: 7 },
 };
+
+/** Quantos slimes esperam o jogador na Pedreira na 1ª ida (`QuarryScene`): cada um derrotado sai de vez — não renascem (`gameState.quarrySlimesLeft`). */
+export const QUARRY_FIRST_VISIT_SLIMES = 4;

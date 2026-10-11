@@ -87,16 +87,17 @@ export const PICKAXE: ToolDefinition = {
 
 /**
  * Martelo: conserta cercas destruídas (ver `systems/farmFences.ts`). Comprado na Loja (aba Ferramentas, `HAMMER_PRICE`), diferente
- * das ferramentas de progressão. O pacote de ícones NÃO tem um martelo: o ícone é PROVISÓRIO — a Pá de madeira (`Shovel.png`,
- * folha 32x16, só o frame 0; a Pá não é usada em nenhum outro lugar). Trocar pela arte de martelo quando existir = só mudar
- * `texturePath` aqui, nenhuma lógica depende dele. Bate com a mesma animação da Picareta (`Player.performAction('pickaxe')`).
+ * das ferramentas de progressão. Ícone: o martelo de madeira do pacote (`hammer.png`, folha 32x16 como as outras ferramentas, só o frame 0).
+ * Bate com a mesma animação da Picareta (`Player.performAction('pickaxe')`).
  */
 export const HAMMER_PRICE = 80;
+/** Madeiras gastas por cerca consertada (além de ter o Martelo na mão). */
+export const FENCE_REPAIR_WOOD = 10;
 export const HAMMER: ToolDefinition = {
   id: 'hammer',
   name: 'Martelo',
   textureKey: 'tool-hammer',
-  texturePath: `${TOOLS_BASE_PATH}/Shovel.png`,
+  texturePath: `${TOOLS_BASE_PATH}/hammer.png`,
   iconFrame: 0,
 };
 

@@ -20,13 +20,23 @@ import { isWorldAtPeace } from './story';
 /** Quantos Slimes existem na Floresta por dia (pedido explícito do usuário: só lá, nenhuma outra cena). */
 const SLIME_COUNT = 8;
 
-function randomWalkableCell(cols: number, rows: number, grid: WalkableGrid): { col: number; row: number } | null {
+function randomWalkableCell(cols: number, rows: number, grid: WalkableGrid, avoid: (col: number, row: number) => boolean = () => false): { col: number; row: number } | null {
   for (let attempt = 0; attempt < 40; attempt++) {
     const col = Phaser.Math.Between(1, cols - 2);
     const row = Phaser.Math.Between(1, rows - 2);
-    if (grid.isWalkable(col, row)) return { col, row };
+    if (grid.isWalkable(col, row) && !avoid(col, row)) return { col, row };
   }
   return null;
+}
+
+/**
+ * Slimes de contagem PRÓPRIA (a 1ª ida à Pedreira): `count` nascem e cada um derrotado avisa `onKilled` — sem o renascimento diário da
+ * Floresta. `minDistanceCells`: não nascem tão perto do jogador (ele chega pela ponte).
+ */
+export interface SlimeSpawnOptions {
+  count: number;
+  onKilled: () => void;
+  minDistanceCells?: number;
 }
 
 /**
@@ -47,21 +57,39 @@ function randomWalkableCell(cols: number, rows: number, grid: WalkableGrid): { c
 export class SlimeSpawner {
   private readonly slimes: Slime[] = [];
 
-  constructor(private readonly scene: Phaser.Scene, tileSize: number, cols: number, rows: number, grid: WalkableGrid, private readonly player: Player) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    tileSize: number,
+    cols: number,
+    rows: number,
+    grid: WalkableGrid,
+    private readonly player: Player,
+    private readonly options?: SlimeSpawnOptions,
+  ) {
     const tile = tileSize * DISPLAY_SCALE;
 
-    const record = gameState.slimeRespawn;
-    const today = gameState.gameClock.getDay();
-    if (record.day !== today) {
-      // Passou pelo menos um dia desde a última contagem: todos renascem.
-      record.day = today;
-      record.killed = 0;
+    let aliveCount: number;
+    if (options) {
+      aliveCount = Math.max(0, options.count);
+    } else {
+      const record = gameState.slimeRespawn;
+      const today = gameState.gameClock.getDay();
+      if (record.day !== today) {
+        // Passou pelo menos um dia desde a última contagem: todos renascem.
+        record.day = today;
+        record.killed = 0;
+      }
+      aliveCount = Math.max(0, SLIME_COUNT - record.killed);
     }
     // Depois do fim da história (`isWorldAtPeace`) os monstros não voltam.
-    const aliveCount = isWorldAtPeace() ? 0 : Math.max(0, SLIME_COUNT - record.killed);
+    if (isWorldAtPeace()) aliveCount = 0;
 
+    const playerCol = Math.floor(player.sprite.x / tile);
+    const playerRow = Math.floor((player.sprite.y - 1) / tile);
+    const minDistance = options?.minDistanceCells ?? 0;
+    const tooClose = (col: number, row: number): boolean => Math.max(Math.abs(col - playerCol), Math.abs(row - playerRow)) < minDistance;
     for (let i = 0; i < aliveCount; i++) {
-      const cell = randomWalkableCell(cols, rows, grid);
+      const cell = randomWalkableCell(cols, rows, grid, tooClose);
       if (!cell) continue;
       const x = cell.col * tile + tile / 2;
       const y = (cell.row + 1) * tile; // Agora a âncora (pés) fica no FUNDO do bloco, igual ao player!
@@ -72,7 +100,8 @@ export class SlimeSpawner {
   }
 
   private dropLoot(x: number, y: number): void {
-    gameState.slimeRespawn.killed += 1;
+    if (this.options) this.options.onKilled();
+    else gameState.slimeRespawn.killed += 1;
     const amount = Phaser.Math.Between(1, 3);
     // A gosma cai no chão onde o Slime morreu; o jogador pega ao chegar perto (ver `systems/lootDrops.ts`).
     spawnLoot(this.scene, this.player, x, y, { category: 'resource', id: SLIME_GOO.id, amount });

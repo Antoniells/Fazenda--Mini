@@ -29,6 +29,7 @@ export class BeachScene extends ExternalMapScene {
       // O retângulo do oceano entra no próprio chão como água (ver `groundWithWaterRect`) — antes era uma textura plana por cima, em outra cor.
       ground: groundWithWaterRect(beachMap.ground, oceanArea),
       backgroundColor: beachMap.backgroundColor,
+      islandShore: true, // Ilha de areia no mar, não de grama com paredão (`systems/islandEdges.ts`).
       // Continuidade espacial: a ponte da Fazenda que traz o jogador aqui
       // fica ao SUL, então a ponte de volta fica ao NORTE (lado oposto).
       returnDirection: 'north',

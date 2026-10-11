@@ -349,8 +349,7 @@ export const HUNGER_FILL_OFFSET = { x: 3, y: 3 };
 /**
  * Menu Principal (`MainMenuScene`): fundo estático da fazenda + UMA folha de peças (`menu_parts.webp`, 1536x1024, com
  * canal alfa) com o logo, a coroa de folhas (semicírculo que fica ATRÁS do logo), as 3 placas de madeira dos botões
- * (vazias — o texto "Iniciar"/"Configurações"/"Sair" é escrito pela cena) e uma placa dourada vazia, que é o destaque do
- * hover (só a moldura: o interior é transparente, então vai por cima da placa sem esconder o texto). Em vez de fatiar a
+ * (vazias — o texto "Iniciar"/"Configurações"/"Sair" é escrito pela cena); o destaque do hover vem de outra folha (`MENU_SELECTOR_*`). Em vez de fatiar a
  * imagem num editor, a cena adiciona FRAMES nomeados por retângulo (mesma técnica dos corações/painéis acima) e monta
  * objetos independentes — trocar a arte = trocar o arquivo e (se o layout mudar) estes retângulos, nunca a lógica da cena.
  * Retângulos medidos pelo alfa, em coordenadas da imagem original.
@@ -362,10 +361,24 @@ export const MENU_UI_PATH = 'UI/Menu/menu_parts.webp';
 export const MENU_PART_FRAMES = {
   logo: { name: 'menu-logo', rect: { x: 27, y: 80, width: 851, height: 448 } },
   wreath: { name: 'menu-wreath', rect: { x: 56, y: 632, width: 755, height: 340 } },
-  goldPlate: { name: 'menu-gold-plate', rect: { x: 876, y: 735, width: 604, height: 147 } },
 };
+/**
+ * O SELETOR dos botões (o destaque do hover): a moldura dourada da folha nova `UI/Menu/Menu part.png` (mesmo layout de 1536x1024; a moldura
+ * em (877, 736), 602x145, medida pelo alfa — o miolo é transparente, então vai por cima da placa sem esconder o texto).
+ */
+export const MENU_SELECTOR_KEY = 'menu_selector';
+export const MENU_SELECTOR_PATH = 'UI/Menu/Menu part.png';
+export const MENU_SELECTOR_FRAME = { name: 'menu-selector-frame', rect: { x: 877, y: 736, width: 602, height: 145 } };
 export const MENU_BUTTON_FRAMES = {
   start: { name: 'menu-btn-start', rect: { x: 911, y: 119, width: 557, height: 142 } },
   settings: { name: 'menu-btn-settings', rect: { x: 913, y: 301, width: 560, height: 145 } },
   quit: { name: 'menu-btn-quit', rect: { x: 913, y: 481, width: 558, height: 145 } },
 };
+
+/**
+ * A LIXEIRA do caderno (`ui/inventoryScreen.ts`): a lata de lixo da praia do pacote (`Objects/Exterior/Beach/Trash Can.png`, 32x32 com duas
+ * latas de 15x20 — recorte pelo alfa; usa a 1ª). Cresce um pouco enquanto um item arrastado está sobre ela.
+ */
+export const TRASH_CAN_KEY = 'ui-trash-can';
+export const TRASH_CAN_PATH = 'Objects/Exterior/Beach/Trash Can.png';
+export const TRASH_CAN_FRAME = { name: 'ui-trash-can-idle', rect: { x: 0, y: 11, width: 15, height: 20 } };

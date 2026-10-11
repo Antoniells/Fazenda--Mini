@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { farmMap } from '../data/maps/farmMap';
+import { farmMap, type ExpansionDirection } from '../data/maps/farmMap';
 import { attachFootstepSounds, playEffect } from '../systems/soundEffects';
 import { groundSurfaceOfGid } from '../systems/groundSurface';
 import { DOOR_SOUND } from '../data/audio';
@@ -108,12 +108,16 @@ import {
 } from '../data/ui';
 import { SHADOW_KEY, SHADOW_PATH, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE, SPRINKLER_WATER_KEY, SPRINKLER_WATER_PATH, SPRINKLER_WATER_FRAME_SIZE, LEAF_FALL_KEY, LEAF_FALL_PATH, LEAF_FALL_FRAME_SIZE } from '../data/effects';
 import { GRASS_DETAILS_KEY, GRASS_DETAILS_PATH } from '../data/grassDetails';
-import { buildFarmGround, buildFenceCorners, buildFenceSide, buildShippingBin, buildPlayerHouse, buildFarmlandFence, bridgeWalkwayCells, DISPLAY_SCALE } from '../systems/mapBuilder';
+import { buildFarmGround, buildFenceCorners, buildFenceSide, buildShippingBin, buildPlayerHouse, buildFarmlandFence, bridgeWalkwayCells, BIOME_TINTS, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { buildMapProps } from '../systems/mapProps';
 import { GROUND_TILESETS } from '../systems/groundTilesets';
 import { buildDirtZone } from '../systems/dirtPaths';
 import { buildGrassDetails, getGrassDetailImages, removeGrassDetailsAt, rustleGrassTuft, GrassTuftMap } from '../systems/grassDetails';
 import { buildBerryBushes, preloadBerryBushes } from '../systems/berryBushes';
+import { preloadBeehives } from '../systems/beehives';
+import { applySeasonalGround, preloadSeasonalGround } from '../systems/seasonalGround';
+import { preloadSnowRoofs } from '../systems/snowRoofs';
+import { seasonIdForDay } from '../data/seasons';
 import { attachGrassDetailForage, attachMapPropForage } from '../systems/forage';
 import { buildWalkableGrid } from '../systems/grid';
 import { PropertyExpansionSystem } from '../systems/propertyExpansion';
@@ -137,7 +141,7 @@ import { FarmlandRenderer } from '../systems/farmlandRenderer';
 import { Inventory } from '../systems/inventory';
 import { InteractionRegistry } from '../systems/interaction';
 import { registerFarmlandInteractables } from '../systems/farmlandInteraction';
-import { registerShippingBinInteractable } from '../systems/shippingBinInteraction';
+import { registerShippingBinInteractable, type ShippingBinMenuHandle } from '../systems/shippingBinInteraction';
 import { registerEnterHouseInteractable } from '../systems/enterHouseInteraction';
 import { startNextDay, DayTurn } from '../systems/dayCycle';
 import { describeCropsLost, shouldStartHorde } from '../systems/horde';
@@ -191,13 +195,14 @@ import { consumeRecallNotice } from '../systems/hordeRecall';
 import { preloadFishingAssets } from '../systems/fishingAssets';
 import { MAP_ICON_FRAME, STORY_ITEMS_KEY, STORY_ITEMS_PATH } from '../data/caveLandmarks';
 import { setupWorldCamera, applyWorldCameraBounds } from '../systems/cameraSetup';
+import { buildGroundUnderlay, buildIslandEdges, islandCameraBounds, preloadIslandEdges } from '../systems/islandEdges';
+import { farmBridgeCell, farmIslandRegion, IslandRegion } from '../systems/islandLayout';
 import { ANIMAL_ICONS, EGG_ICON } from '../data/animals';
 import { registerQualityIcons } from '../systems/qualityIcons';
 import { SEASON_CLOCK_KEY, SEASON_CLOCK_PATH, SEASON_CLOCK_FRAME_SIZE } from '../data/seasons';
 import { TAB_FRAME_ANIMALS, TAB_FRAME_ANIMALS_LIGHT } from '../data/ui';
 import { preloadChickens } from '../entities/Chicken';
 import { ChickenFlock } from '../systems/chickenFlock';
-import { ShippingBinMenu } from '../ui/shippingBinMenu';
 import { registerMapEditorShortcut } from '../systems/mapEditorLauncher';
 import { checkProphecyMail } from '../systems/mail';
 import { WORLD_MENU_OPEN_KEY } from '../ui/weatherOverlay';
@@ -240,9 +245,9 @@ export class MainScene extends Phaser.Scene {
   private farmland!: Farmland;
   private farmlandRenderer!: FarmlandRenderer;
   private inventory!: Inventory;
-  private shippingBinMenu!: ShippingBinMenu;
+  private shippingBinMenu!: ShippingBinMenuHandle;
   /** A encomenda de sementes pela Caixa de Correio (aberta ao clicar nela sem carta nova). */
-  private seedOrderShop!: ShopMenu;
+  private seedOrderShop: ShopMenu | null = null;
   private mailbox!: Mailbox;
   private eventManager!: EventManager;
   /** Último instante em que a conversa estava aberta (`update`) — ver o ESC em `create`. */
@@ -253,6 +258,10 @@ export class MainScene extends Phaser.Scene {
   private dayNightOverlay!: DayNightOverlay;
   private worldBlur!: WorldBlur;
   private lockedMessage!: LockedMessage;
+  /** As pontes da Fazenda (`systems/bridgeSystem.ts`) — mudam de lugar quando um trecho é comprado (`expandIsland`). */
+  private bridgeSystem!: BridgeSystem;
+  /** A beirada da ilha (`systems/islandEdges.ts`), refeita quando a ilha cresce. */
+  private islandEdges?: Phaser.Tilemaps.TilemapLayer;
   private chickenFlock!: ChickenFlock;
   private constructionSites!: ConstructionSiteSystem;
   private builderCrew!: BuilderCrew;
@@ -331,11 +340,12 @@ export class MainScene extends Phaser.Scene {
     this.load.spritesheet(SLIME_KEY, encodeURI(`/${SLIME_PATH}`), { frameWidth: SLIME_FRAME_SIZE, frameHeight: SLIME_FRAME_SIZE });
     preloadButterflies(this);
     preloadBerryBushes(this); // Os arbustos frutíferos e o ícone da Frutinha Silvestre.
+    preloadBeehives(this); // As abelhas das colmeias nas árvores e o ícone do Mel.
 
     for (const crop of Object.values(CROPS)) {
       this.load.spritesheet(crop.textureKey, encodeURI(`/${crop.texturePath}`), {
         frameWidth: TILE_SIZE,
-        frameHeight: TILE_SIZE,
+        frameHeight: crop.frameHeight ?? TILE_SIZE, // As plantas altas têm quadros de 16x32.
       });
     }
 
@@ -420,6 +430,9 @@ export class MainScene extends Phaser.Scene {
       if (skin.textureKey !== FENCE_TILESET_KEY) this.load.spritesheet(skin.textureKey, encodeURI(`/${skin.texturePath}`), { frameWidth: TILE_SIZE, frameHeight: TILE_SIZE });
     }
     this.load.image(BRIDGE_KEY, encodeURI(`/${BRIDGE_PATH}`));
+    preloadIslandEdges(this);
+    preloadSeasonalGround(this); // A grama e a beirada das ilhas de cada estação.
+    preloadSnowRoofs(this); // Os gabaritos nevados e o kit (telhados no Inverno).
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
 
     this.load.spritesheet(SPLASH_KEY, encodeURI(`/${SPLASH_PATH}`), {
@@ -612,10 +625,14 @@ export class MainScene extends Phaser.Scene {
       );
     }
 
+    // O chão da estação do dia (`systems/seasonalGround.ts`): grama, manchas e beirada da ilha.
+    applySeasonalGround(this, seasonIdForDay(gameState.gameClock.getDay()));
     buildFarmGround(this, farmMap);
-    // Cor de fundo autorada no MapEditorScene (Sidebar → Cor de Fundo) —
-    // opcional, sem ela mantém a cor padrão do Phaser (preto).
-    if (farmMap.backgroundColor) this.cameras.main.setBackgroundColor(farmMap.backgroundColor);
+    // A elevação de terra do norte (a "mureta" de barranco) é pintada com peças de miolo transparente: a grama lisa por baixo é o alto dela.
+    buildGroundUnderlay(this, farmMap.tileSize, { col0: 0, row0: 0, cols: farmMap.cols, rows: farmMap.rows });
+    // A Fazenda é uma ILHA (`systems/islandEdges.ts`): a beirada do penhasco em volta do que já está liberado e a água lá embaixo (no lugar
+    // da cor de fundo autorada no editor). Cresce quando um trecho é comprado (`expandIsland`).
+    this.buildIsland();
     buildFenceCorners(this, farmMap);
 
     this.grassTufts = buildGrassDetails(this, farmMap, buildDirtZone(farmMap), occupiedFootprintCells());
@@ -687,14 +704,14 @@ export class MainScene extends Phaser.Scene {
       interactions,
     );
 
-    new PropertyExpansionSystem(this, farmMap, grid, this.inventory, interactions, () => this.applyFarmCameraBounds());
+    new PropertyExpansionSystem(this, farmMap, grid, this.inventory, interactions, (direction) => this.expandIsland(direction));
     // Lado LESTE: não é um trecho de expansão (o Vilarejo virou uma cena, alcançada pela ponte leste de `farmMap.bridges`), então a
     // cerca da propriedade desse lado é desenhada aqui, de forma permanente.
     buildFenceSide(this, farmMap, 'east');
 
     const lockedMessage = new LockedMessage(this);
     this.lockedMessage = lockedMessage;
-    new BridgeSystem(this, farmMap, grid, this.inventory, interactions, lockedMessage);
+    this.bridgeSystem = new BridgeSystem(this, farmMap, grid, this.inventory, interactions, lockedMessage);
 
     // Quem já tinha o pet antes da caminha existir a recebe agora (uma vez): posicione dentro de casa.
     if (grantPetBed()) lockedMessage.show('CAMINHA DO BICHINHO', 'Um presente pro seu bichinho: está na Bolsa. Posicione-a dentro de casa.');
@@ -711,12 +728,14 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Caixa de Correio: cartas agendadas (`data/mail.ts`) chegam nos dias delas; um papel flutua em cima enquanto há carta não lida.
-    // Sem carta nova, a caixa abre a encomenda de sementes da Lia (`systems/seedOrders.ts`): chegam amanhã, sem ir ao Vilarejo.
-    this.seedOrderShop = createSeedOrderShop(this, this.inventory, this.player);
+    // Sem carta nova, a caixa abre a encomenda de sementes da Lia (`systems/seedOrders.ts`): chegam amanhã, sem ir ao Vilarejo. A loja (dezenas
+    // de textos) só é montada na 1ª abertura — montá-la junto com a Fazenda atrasava cada entrada nela.
+    this.seedOrderShop = null;
     // Saindo da Fazenda com um menu aberto, a chuva não pode ficar escondida nas outras cenas.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.registry.set(WORLD_MENU_OPEN_KEY, false));
     this.mailbox = new Mailbox(this, tilePx, grid, interactions, this.player, () => {
       if (!tutorial.allows({ kind: 'menu' })) return;
+      this.seedOrderShop ??= createSeedOrderShop(this, this.inventory, this.player);
       this.seedOrderShop.open();
       this.seedOrderShop.refresh(this.inventory.getCoins());
     });
@@ -829,7 +848,7 @@ export class MainScene extends Phaser.Scene {
 
     // Menu da Caixa de Remessas (ou a encomenda de sementes) aberto: o clique é só dele (mesma ideia do Inventário/Fornalha).
     this.controller.addInputInterceptor({
-      isActive: () => this.shippingBinMenu.isOpen() || this.seedOrderShop.isOpen(),
+      isActive: () => this.shippingBinMenu.isOpen() || !!this.seedOrderShop?.isOpen(),
       handleClick: () => {},
     });
 
@@ -873,7 +892,7 @@ export class MainScene extends Phaser.Scene {
         this.shippingBinMenu.close();
         return;
       }
-      if (this.seedOrderShop.isOpen()) {
+      if (this.seedOrderShop?.isOpen()) {
         this.seedOrderShop.close();
         return;
       }
@@ -885,30 +904,34 @@ export class MainScene extends Phaser.Scene {
       if (!tutorial.allows({ kind: 'menu' })) return; // Tutorial: nada de Inventário até terminar.
       if (isChestMenuOpen()) return; // O baú já mostra a bolsa; E não abre outra tela por cima.
       if (this.shippingBinMenu.isOpen()) this.shippingBinMenu.close();
-      if (this.seedOrderShop.isOpen()) this.seedOrderShop.close();
+      if (this.seedOrderShop?.isOpen()) this.seedOrderShop.close();
       if (isFurnaceMenuOpen()) closeFurnaceMenu();
       this.decorationPlacement.cancel();
       toggleInventoryScreen();
     });
 
     // Passos pelo chão (`systems/groundSurface.ts`): as pontes (de pedra) soam como pedra, a lavoura arada como terra, o resto pela arte do chão.
-    const bridgeCells = new Set(farmMap.bridges.flatMap((bridge) => [[bridge.col, bridge.row], ...bridgeWalkwayCells(bridge)]).map(([col, row]) => `${col},${row}`));
+    // As pontes ficam na borda da ilha, que muda quando um trecho é comprado: a célula de cada uma é calculada na hora.
+    const isBridgeCell = (col: number, row: number): boolean =>
+      farmMap.bridges.some((bridge) =>
+        bridgeWalkwayCells({ ...bridge, ...farmBridgeCell(bridge, farmMap.expansions, gameState.unlockedExpansions) }).some(([c, r]) => c === col && r === row),
+      );
     attachFootstepSounds(this, (col, row) => {
-      if (bridgeCells.has(`${col},${row}`)) return 'stone';
+      if (isBridgeCell(col, row)) return 'stone';
       if (this.farmland.isTilled(col, row)) return 'dirt';
       return groundSurfaceOfGid(this, farmMap.ground?.[row]?.[col]);
     });
 
     // "Grama" pro nascimento das borboletas: o GID autorado da célula é grama plana, e não é ponte nem lavoura já arada/plantada.
     const isGrassCell = (col: number, row: number): boolean => {
-      if (bridgeCells.has(`${col},${row}`)) return false;
+      if (isBridgeCell(col, row)) return false;
       if (!isGrassGround(farmMap.ground, col, row)) return false;
       const plot = this.farmland.getPlot(col, row);
       return !plot || plot.state === 'untilled';
     };
     // "Terra" pra poeira dos pés: o caminho de terra da Fazenda (GID autorado que não é grama nem água) e os canteiros já arados/plantados — nunca a grama nem a ponte.
     const isDirtCell = (col: number, row: number): boolean => {
-      if (bridgeCells.has(`${col},${row}`)) return false;
+      if (isBridgeCell(col, row)) return false;
       const plot = this.farmland.getPlot(col, row);
       if (plot && plot.state !== 'untilled') return true;
       return isDirtGround(farmMap.ground, col, row);
@@ -961,21 +984,38 @@ export class MainScene extends Phaser.Scene {
     playEffect(this, ROOSTER_SOUND);
   }
 
-  /** Retângulo (em px) que a câmera pode mostrar: o núcleo da Fazenda mais os trechos de expansão já liberados. */
+  /** A ilha da Fazenda (em células): o núcleo mais os trechos de expansão já liberados. */
+  private farmIsland(): IslandRegion {
+    return farmIslandRegion(farmMap, gameState.unlockedExpansions);
+  }
+
+  /** Retângulo (em px) que a câmera pode mostrar: a ilha mais a margem de água em volta (`islandCameraBounds`). */
   private computeFarmCameraBounds(): { x: number; y: number; width: number; height: number } {
-    const tilePx = farmMap.tileSize * DISPLAY_SCALE;
-    let minCol = 0;
-    let minRow = 0;
-    let maxCol = farmMap.cols - 1;
-    let maxRow = farmMap.rows - 1;
-    for (const chunk of farmMap.expansions) {
-      if (!chunk.startsUnlocked && !gameState.unlockedExpansions.has(chunk.direction)) continue;
-      minCol = Math.min(minCol, chunk.col0);
-      minRow = Math.min(minRow, chunk.row0);
-      maxCol = Math.max(maxCol, chunk.col0 + chunk.cols - 1);
-      maxRow = Math.max(maxRow, chunk.row0 + chunk.rows - 1);
-    }
-    return { x: minCol * tilePx, y: minRow * tilePx, width: (maxCol - minCol + 1) * tilePx, height: (maxRow - minRow + 1) * tilePx };
+    return islandCameraBounds(this.farmIsland(), farmMap.tileSize * DISPLAY_SCALE);
+  }
+
+  /** A beirada da ilha em volta do que já está liberado; a do trecho de Mineração ganha o mesmo tint escuro do chão dele (`BIOME_TINTS`). */
+  private buildIsland(): void {
+    const region = this.farmIsland();
+    const clamp = (value: number, min: number, size: number): number => Math.min(Math.max(value, min), min + size - 1);
+    this.islandEdges?.destroy();
+    this.islandEdges = buildIslandEdges(this, farmMap.tileSize, region, {
+      tintAt: (col, row) => {
+        const insideCol = clamp(col, region.col0, region.cols);
+        const insideRow = clamp(row, region.row0, region.rows);
+        const chunk = farmMap.expansions.find(
+          (entry) => insideCol >= entry.col0 && insideCol < entry.col0 + entry.cols && insideRow >= entry.row0 && insideRow < entry.row0 + entry.rows,
+        );
+        return chunk ? BIOME_TINTS[chunk.biome] : undefined;
+      },
+    });
+  }
+
+  /** Um trecho foi comprado: a ilha cresce (câmera e beirada) e as pontes daquele lado vão pra nova borda. */
+  private expandIsland(direction: ExpansionDirection): void {
+    this.applyFarmCameraBounds();
+    this.buildIsland();
+    this.bridgeSystem.relocate(direction);
   }
 
   /** Enquadra a propriedade inteira (o que já está liberado) — a escolha de local da encomenda ao Marceneiro mostra a Fazenda toda. */
@@ -1079,7 +1119,7 @@ export class MainScene extends Phaser.Scene {
       this.isEnteringHouse ||
       isPauseMenuOpen() ||
       this.shippingBinMenu.isOpen() ||
-      this.seedOrderShop.isOpen()
+      !!this.seedOrderShop?.isOpen()
     );
   }
 
@@ -1125,7 +1165,7 @@ export class MainScene extends Phaser.Scene {
     this.farmlandRenderer.renderAll(this.farmland);
     if (!isPauseMenuOpen()) this.readyGlints.update(delta);
     // A chuva (na `UIScene`) não pode cobrir os menus desta cena (`WORLD_MENU_OPEN_KEY`).
-    this.registry.set(WORLD_MENU_OPEN_KEY, this.shippingBinMenu.isOpen() || this.seedOrderShop.isOpen());
+    this.registry.set(WORLD_MENU_OPEN_KEY, this.shippingBinMenu.isOpen() || !!this.seedOrderShop?.isOpen());
 
     if (!this.isEnteringHouse && !isPauseMenuOpen()) {
       const { dayTurn } = advanceWorldTime(delta, true);

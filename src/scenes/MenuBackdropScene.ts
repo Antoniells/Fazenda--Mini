@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applySeasonalGround } from '../systems/seasonalGround';
 import {
   CORN,
   FarmerStep,
@@ -107,7 +108,7 @@ export class MenuBackdropScene extends Phaser.Scene {
     this.load.spritesheet(SOIL_TILESET_KEY, encodeURI(`/${SOIL_TILESET_PATH}`), sheet16);
     const water = WATER_STYLES.waterGround;
     this.load.spritesheet(water.textureKey, encodeURI(`/${water.path}`), sheet16);
-    for (const crop of Object.values(CROPS)) this.load.spritesheet(crop.textureKey, encodeURI(`/${crop.texturePath}`), sheet16);
+    for (const crop of Object.values(CROPS)) this.load.spritesheet(crop.textureKey, encodeURI(`/${crop.texturePath}`), { ...sheet16, frameHeight: crop.frameHeight ?? sheet16.frameHeight });
     const wood = FENCE_SKINS[1];
     this.load.spritesheet(wood.textureKey, encodeURI(`/${wood.texturePath}`), sheet16);
     this.load.image(PINE_TREE_KEY, encodeURI(`/${PINE_TREE_PATH}`));
@@ -126,6 +127,7 @@ export class MenuBackdropScene extends Phaser.Scene {
   }
 
   create(): void {
+    applySeasonalGround(this, 'summer'); // O fundo do menu é sempre a fazendinha de Verão (o jogo pode ter deixado o chão em outra estação).
     this.chickens = [];
     this.orphanSince = null;
     this.cameras.main.setBackgroundColor('#7ec433');

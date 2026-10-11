@@ -4,6 +4,9 @@
  *
  * Arte: `UI/Clock/Others/clock.png` (192x96, quadros de 32x32): 3 LINHAS de cenário — verde, outono, inverno — e 6 COLUNAS, as fases do dia (`dayPhase`). O pacote não tem
  * um cenário próprio de Verão: ele reusa o verde da Primavera (a diferença fica no nome, no dia da estação e na dica do relógio).
+ *
+ * Regras que dependem da estação: o plantio (`systems/cropSeasons.ts` — cada cultivo tem as suas; no inverno nada cresce; na virada, o que
+ * ficou fora de época morre) e o chão (`systems/seasonalGround.ts` — a grama e a beirada das ilhas trocam pela folha da estação).
  */
 export const SEASON_CLOCK_KEY = 'ui-season-clock';
 export const SEASON_CLOCK_PATH = 'UI/Clock/Others/clock.png';
@@ -13,8 +16,10 @@ const SEASON_CLOCK_COLUMNS = 6;
 /** Dias que cada estação dura (ajustável aqui; o ano inteiro = 4x isto). */
 export const SEASON_LENGTH_DAYS = 10;
 
+export type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
+
 export interface SeasonDefinition {
-  id: 'spring' | 'summer' | 'autumn' | 'winter';
+  id: SeasonId;
   name: string;
   /** Linha do cenário em `SEASON_CLOCK_KEY` (0 verde, 1 outono, 2 inverno). */
   row: number;
@@ -59,4 +64,47 @@ export function dayPhase(hours: number): number {
 /** O quadro do medalhão pra uma estação e uma hora. */
 export function seasonClockFrame(day: number, hours: number): number {
   return seasonForDay(day).season.row * SEASON_CLOCK_COLUMNS + dayPhase(hours);
+}
+
+/** O id da estação do dia `day`. */
+export function seasonIdForDay(day: number): SeasonId {
+  return seasonForDay(day).season.id;
+}
+
+/** O nome mostrado de uma estação ("Primavera"). */
+export function seasonName(id: SeasonId): string {
+  return SEASONS.find((season) => season.id === id)?.name ?? id;
+}
+
+/**
+ * O CHÃO DE CADA ESTAÇÃO (`systems/seasonalGround.ts`): as folhas de grama e de penhasco do pacote existem nas 4 estações, com o MESMO
+ * layout (só muda a cor — verde clara, verde, laranja de folhas, branca de neve), então trocar a folha muda o chão inteiro sem mexer em
+ * nenhum índice de tile. O Verão é a folha de sempre do jogo.
+ */
+export const SEASON_GRASS_TILESETS: Record<SeasonId, { key: string; path: string }> = {
+  spring: { key: 'ground-grass-spring', path: 'Tileset/Tileset Grass Spring.png' },
+  summer: { key: 'ground-grass-summer', path: 'Tileset/Tileset Grass Summer.png' },
+  autumn: { key: 'ground-grass-autumn', path: 'Tileset/Tileset Grass Fall.png' },
+  winter: { key: 'ground-grass-winter', path: 'Tileset/Tileset Grass Winter.png' },
+};
+export const SEASON_CLIFF_TILESETS: Record<SeasonId, { key: string; path: string }> = {
+  spring: { key: 'island-cliff-spring', path: 'Tileset/Tileset Grass Cliff Tileset Spring.png' },
+  summer: { key: 'island-cliff-summer', path: 'Tileset/Tileset Grass Cliff Tileset Summer.png' },
+  autumn: { key: 'island-cliff-autumn', path: 'Tileset/Tileset Grass Cliff Tileset Fall.png' },
+  winter: { key: 'island-cliff-winter', path: 'Tileset/Tileset Grass Cliff Tileset Winter.png' },
+};
+
+/**
+ * O MATO colhível da Fazenda (`systems/wildGrass.ts`, o Capim) não aparece no Outono (pedido do usuário: as moitas verdes destoavam do chão
+ * de folhas): na virada do dia o mato que havia some e nenhum nasce (`advanceFarmResourcesDay`); e a Fazenda não o desenha nessa estação.
+ */
+export const WEEDLESS_SEASONS: readonly SeasonId[] = ['autumn'];
+
+export function weedsGrowIn(season: SeasonId): boolean {
+  return !WEEDLESS_SEASONS.includes(season);
+}
+
+/** O que cai do céu num dia de "chuva" (o sorteio de `systems/weather.ts`): no Inverno é NEVE (`ui/weatherOverlay.ts`, o aviso do dia). */
+export function precipitationIn(season: SeasonId): 'rain' | 'snow' {
+  return season === 'winter' ? 'snow' : 'rain';
 }

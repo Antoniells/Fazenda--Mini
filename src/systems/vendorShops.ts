@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { cropsOnSale, seasonsLabel } from './cropSeasons';
+import { gameState } from './gameState';
 import { ShopMenu, ShopItem, ShopItemActions, ShopRequirements, ShopTabDefinition } from '../ui/shopMenu';
 import { Inventory } from './inventory';
 import { Player } from '../entities/Player';
@@ -7,7 +9,7 @@ import { CHAIR, DECORATIONS, DecorationDefinition, SPRINKLER_WOOD, WELL } from '
 import type { BuildRequest } from '../data/construction';
 import { availableActions, buildHoursOf, cancelOrder, destroyBuilt, targetsFor } from './construction';
 import { RESOURCES, STONE, WOOD } from '../data/resources';
-import { FISHING_ROD, HAMMER, HAMMER_PRICE, HOE, TOOLS } from '../data/tools';
+import { FENCE_REPAIR_WOOD, FISHING_ROD, HAMMER, HAMMER_PRICE, HOE, TOOLS } from '../data/tools';
 import { FISHING_ROD_PRICE } from '../data/fishing';
 import { TOOL_OFFERS, getToolOffer } from '../data/toolShop';
 import { ANIMAL_ICONS, CHICKEN_PRICE, CHICKEN_SHOP_ID, COOP_CAPACITY } from '../data/animals';
@@ -79,12 +81,13 @@ const constructionItem = (decoration: DecorationDefinition): ShopItem => ({
   description: `${decoration.description} O Tomás constrói no dia seguinte (leva ${buildHoursOf(decoration.id)}h).`,
 });
 
-const seedItems = (): ShopItem[] =>
-  Object.values(CROPS).map((crop) => ({
+/** As sementes à venda no dia `day`: só as da estação (`cropsOnSale`). */
+const seedItems = (day: number): ShopItem[] =>
+  cropsOnSale(day).map((crop) => ({
     id: crop.id,
     category: 'agriculture' as const,
     name: `Semente de ${crop.name}`,
-    description: `Cresce em ${crop.growthFrames.length - 1} dias (regue todo dia). Rende de 1 a ${HARVEST_MAX_YIELD} por colheita (com sorte!), vendida a ${crop.sellPrice} moedas cada.`,
+    description: `Estação: ${seasonsLabel(crop.seasons)}. Cresce em ${crop.growthFrames.length - 1} dias (regue todo dia). Rende de 1 a ${HARVEST_MAX_YIELD} por colheita (com sorte!), vendida a ${crop.sellPrice} moedas cada.`,
     textureKey: ALL_CROPS_ICONS_KEY,
     iconFrame: crop.seedFrameName,
     price: crop.seedPrice,
@@ -96,7 +99,7 @@ const toolItems = (): ShopItem[] => [
     id: HAMMER.id,
     category: 'tools' as const,
     name: HAMMER.name,
-    description: 'Conserta cercas destruídas pelos ataques. Com o Martelo na mão, clique na cerca quebrada.',
+    description: `Conserta cercas destruídas pelos ataques (${FENCE_REPAIR_WOOD} Madeiras por cerca). Com o Martelo na mão, clique na cerca quebrada.`,
     textureKey: HAMMER.textureKey,
     iconFrame: HAMMER.iconFrame,
     price: HAMMER_PRICE,
@@ -217,7 +220,7 @@ function catalogFor(id: VendorId): VendorCatalog {
           tab('animals', ANIMAL_ICONS.key, ANIMAL_ICONS.chicken.name, TAB_FRAME_ANIMALS, TAB_FRAME_ANIMALS_LIGHT),
         ],
         items: [
-          ...seedItems(),
+          ...seedItems(gameState.gameClock.getDay()), // A loja é montada a cada entrada: o catálogo acompanha a estação.
           ...Object.values(DECORATIONS)
             .filter((decoration) => !decoration.notForSale && isFurniture(decoration))
             .map((decoration) => decorationItem(decoration, 'construction')),
@@ -281,9 +284,10 @@ function purchase(scene: Phaser.Scene, inventory: Inventory, player: Player, ite
     if (inventory.spendCoins(crop.seedPrice)) inventory.addSeeds(itemId, 1);
     else console.log(`Moedas insuficientes para comprar semente de ${crop.name} (precisa de ${crop.seedPrice}).`);
   } else if (DECORATIONS[itemId]?.carpenterBuilt) {
-    // Nada é cobrado agora: a Fazenda mostra os locais livres e o dinheiro sai ao confirmar o local (`systems/buildFlow.ts`).
+    // Nada é cobrado agora: a Fazenda mostra os locais livres e o dinheiro (e a Pedra do Poço/Fornalha) sai ao confirmar o local (`systems/buildFlow.ts`).
     const decoration = DECORATIONS[itemId];
-    if (inventory.getCoins() >= decoration.price) hooks.startBuild({ mode: 'order', decorationId: itemId });
+    if ((decoration.materials ?? []).some(({ resourceId, amount }) => inventory.getResourceCount(resourceId) < amount)) warn('Faltam materiais');
+    else if (inventory.getCoins() >= decoration.price) hooks.startBuild({ mode: 'order', decorationId: itemId });
     else console.log(`Moedas insuficientes para encomendar ${decoration.name} (precisa de ${decoration.price}).`);
   } else if (DECORATIONS[itemId]) {
     const decoration = DECORATIONS[itemId];
@@ -416,7 +420,8 @@ export function createVendorShop(scene: Phaser.Scene, id: VendorId, inventory: I
  */
 export function createSeedOrderShop(scene: Phaser.Scene, inventory: Inventory, player: Player): ShopMenu {
   ensureTabRibbons(scene);
-  const items = seedItems().map((item) => ({ ...item, name: `${item.name} (encomenda)`, description: `Chega amanhã cedo, numa carta da Lia. ${item.description}` }));
+  // As sementes da estação do dia da ENTREGA (amanhã): encomendar no último dia de uma estação já traz as da próxima.
+  const items = seedItems(gameState.gameClock.getDay() + 1).map((item) => ({ ...item, name: `${item.name} (encomenda)`, description: `Chega amanhã cedo, numa carta da Lia. ${item.description}` }));
   let menu: ShopMenu;
   menu = new ShopMenu(scene, [tab('agriculture', ALL_CROPS_ICONS_KEY, CARROT.seedFrameName, TAB_FRAME_AGRICULTURE, TAB_FRAME_AGRICULTURE_LIGHT)], items, (itemId) => {
     if (orderSeed(itemId, inventory)) {

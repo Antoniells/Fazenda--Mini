@@ -180,6 +180,17 @@ export const WILD_BERRY: ResourceDefinition = {
   edible: true,
 };
 
+/** Mel (`data/beehives.ts`): sai da colmeia ao derrubar uma árvore que tem uma. Ícone: `Honey dipper.png` (32x16 — quadro 0, o 1 é o contornado). */
+export const HONEY_ICON_KEY = 'food-icon-honey-dipper';
+export const HONEY_ICON_PATH = 'Icons/Food Icons/Honey dipper.png';
+export const HONEY: ResourceDefinition = {
+  id: 'honey',
+  name: 'Mel',
+  textureKey: HONEY_ICON_KEY,
+  frameName: 0,
+  sellPrice: 10,
+};
+
 /** O nome mostrado de um id de estoque, com a qualidade se tiver ("Ovo (Prata)"). */
 export function resourceDisplayName(id: string): string {
   const { baseId, quality } = parseQualityId(id);
@@ -209,6 +220,7 @@ export const RESOURCES: Record<string, ResourceDefinition> = {
   [FLOWER.id]: FLOWER,
   [MUSHROOM.id]: MUSHROOM,
   [WILD_BERRY.id]: WILD_BERRY,
+  [HONEY.id]: HONEY,
   [EGG.id]: EGG,
   // Os peixes (`data/fishing.ts`): pescados com a Vara, vendidos na Caixa de Remessas.
   ...Object.fromEntries(FISH_RESOURCES.map((fish) => [fish.id, fish])),

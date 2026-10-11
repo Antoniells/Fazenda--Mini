@@ -11,8 +11,14 @@ import { SHADOW_KEY, SHADOW_PATH } from '../data/effects';
 import { buildGroundChunk, buildBridge, bridgeRailingCells, bridgeWalkwayCells, DISPLAY_SCALE } from '../systems/mapBuilder';
 import { getGroundPatches } from '../systems/groundPatches';
 import { setupWorldCamera } from '../systems/cameraSetup';
+import { buildGroundUnderlay, buildIslandEdges, islandCameraBounds, preloadIslandEdges } from '../systems/islandEdges';
+import { preloadBeehives } from '../systems/beehives';
+import { applySeasonalGround, preloadSeasonalGround } from '../systems/seasonalGround';
+import { seasonIdForDay } from '../data/seasons';
+import { BRIDGE_SPAN_CELLS, ISLAND_SEA_COLOR, ISLAND_SHORE_PAD_CELLS } from '../data/islandEdges';
 import { WalkableGrid } from '../systems/grid';
-import { waterCellsFromGround } from '../systems/waterCells';
+import { FLAT_WATER_GID, waterCellsFromGround } from '../systems/waterCells';
+import { groundWithSeaAround } from '../systems/islandLayout';
 import { TileCursor } from '../systems/tileCursor';
 import { Player } from '../entities/Player';
 import { PlayerController } from '../systems/playerController';
@@ -21,7 +27,7 @@ import { attachFootstepSounds } from '../systems/soundEffects';
 import { groundSurfaceOfGid } from '../systems/groundSurface';
 import { attachFootDust, isDirtGround } from '../systems/grassDust';
 import { onPlayerStepped } from '../systems/sceneEvents';
-import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause } from './UIScene';
+import { ensureUIScene, isInventoryOpen, toggleInventoryScreen, closeInventoryScreen, isFurnaceMenuOpen, closeFurnaceMenu, isDialogueOpen, isPauseMenuOpen, escapeTogglesPause, isNoticeBoardOpen, closeNoticeBoard } from './UIScene';
 import { DebugGridOverlay } from '../systems/debugGridOverlay';
 import { MapType } from './MapEditorScene';
 import type { DirtZone } from '../systems/dirtPaths';
@@ -64,7 +70,7 @@ export interface ExternalMapConfig {
    * tinha NENHUM efeito no jogo de verdade, só no preview do editor.
    */
   ground?: number[][];
-  /** Mesmo bug/campo de `ground` acima — nunca aplicado fora da Fazenda. */
+  /** Cor de fundo autorada no editor. Não aparece mais no jogo: o mapa é uma ilha e o fundo é a água em volta (`systems/islandEdges.ts`). */
   backgroundColor?: string;
   /** Ruas/praças de terra pintadas por cima da grama procedural (só vale sem `ground` autorado) — o Vilarejo. */
   dirtZone?: DirtZone;
@@ -84,6 +90,8 @@ export interface ExternalMapConfig {
   returnDirection: ExpansionDirection;
   /** Sem a arte da ponte de volta: a cena desenha a própria passagem (a área oculta da Floresta volta por um arco de árvores). A célula de volta funciona igual. */
   hideReturnBridge?: boolean;
+  /** Ilha de AREIA no mar (a Praia): em vez da beirada de grama e do paredão, o chão ganha mar em volta (com a margem de espuma do autotile) e o fundo é o mar. */
+  islandShore?: boolean;
   /** Dica sob o título (padrão: voltar pela ponte pra Fazenda). */
   returnHint?: string;
 }
@@ -226,6 +234,9 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // `ExternalMapConfig.ground`).
     preloadGroundTilesets(this);
     this.load.image(BRIDGE_KEY, encodeURI(`/${BRIDGE_PATH}`));
+    preloadIslandEdges(this);
+    preloadSeasonalGround(this); // A grama e a beirada das ilhas de cada estação.
+    preloadBeehives(this); // As abelhas das colmeias nas árvores e o ícone do Mel (que pode estar na Bolsa em qualquer mapa).
     this.load.image(SHADOW_KEY, encodeURI(`/${SHADOW_PATH}`));
     // Props de decoração ambiente (aba "Decoração" do MapEditorScene) —
     // carregado aqui uma vez só, pras 4 cenas externas, em vez de repetir em
@@ -244,17 +255,40 @@ export abstract class ExternalMapScene extends Phaser.Scene {
   create(): void {
     const { cols, rows } = this.config;
     const tilePx = TILE_SIZE * DISPLAY_SCALE;
+    // O chão da estação do dia (`systems/seasonalGround.ts`): grama, manchas e beirada da ilha.
+    applySeasonalGround(this, seasonIdForDay(gameState.gameClock.getDay()));
 
-    const groundLayer = buildGroundChunk(this, TILE_SIZE, 0, 0, cols, rows, this.config.dirtZone, this.config.groundTint, this.config.ground, this.config.waterStyle);
+    // Ilha de areia (`islandShore`): o chão é desenhado com mar em volta — a margem certa vem do autotile; a colisão segue o chão original.
+    const shorePad = this.config.islandShore && this.config.ground ? ISLAND_SHORE_PAD_CELLS : 0;
+    const drawnGround = shorePad > 0 ? groundWithSeaAround(this.config.ground!, shorePad, FLAT_WATER_GID) : this.config.ground;
+    const groundLayer = buildGroundChunk(
+      this,
+      TILE_SIZE,
+      -shorePad,
+      -shorePad,
+      cols + shorePad * 2,
+      rows + shorePad * 2,
+      this.config.dirtZone,
+      this.config.groundTint,
+      drawnGround,
+      this.config.waterStyle,
+    );
     if (this.config.groundSaturation !== undefined) {
-      // As manchas de grama (`systems/groundPatches.ts`) recebem o mesmo filtro do chão.
+      // As manchas de grama (`systems/groundPatches.ts`) recebem o mesmo filtro do chão. O filtro cobre o que a CÂMERA mostra
+      // (`filtersFocusContext`): focado na própria camada, o quadro do filtro saía menor que o mapa e cortava o chão (antes escondido
+      // pela cor de fundo cinza; com a água em volta da ilha, aparecia).
       for (const layer of [groundLayer, getGroundPatches(groundLayer)]) {
-        layer?.enableFilters().filters!.internal.addColorMatrix().colorMatrix.saturate(this.config.groundSaturation - 1);
+        if (!layer) continue;
+        layer.enableFilters().filters!.internal.addColorMatrix().colorMatrix.saturate(this.config.groundSaturation - 1);
+        layer.filtersFocusContext = true;
       }
     }
-    // Mesmo tratamento de `MainScene.create()` pro `farmMap.backgroundColor`
-    // — opcional, sem ele mantém a cor padrão do Phaser (preto).
-    if (this.config.backgroundColor) this.cameras.main.setBackgroundColor(this.config.backgroundColor);
+    // O mapa é uma ILHA (`systems/islandEdges.ts`): a beirada do penhasco em volta (com o mesmo tint/saturação do chão) e a água funda
+    // lá embaixo, que substitui a cor de fundo do mapa (`backgroundColor` só aparecia fora do chão).
+    // Peças de chão com partes transparentes mostram grama, como antes (e não a água do abismo).
+    buildGroundUnderlay(this, TILE_SIZE, { col0: 0, row0: 0, cols, rows }, this.config.groundTint);
+    if (shorePad > 0) this.cameras.main.setBackgroundColor(ISLAND_SEA_COLOR);
+    else buildIslandEdges(this, TILE_SIZE, { col0: 0, row0: 0, cols, rows }, { tint: this.config.groundTint, saturation: this.config.groundSaturation });
 
     // Continuidade espacial (pedido explícito): a ponte de volta fica no
     // lado OPOSTO da ponte da Fazenda que trouxe o jogador até aqui (ver
@@ -270,7 +304,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       destinationSceneKey: this.entryData.returnSceneKey,
       requirement: {},
     };
-    if (!this.config.hideReturnBridge) buildBridge(this, TILE_SIZE, returnBridge);
+    if (!this.config.hideReturnBridge) buildBridge(this, TILE_SIZE, returnBridge, BRIDGE_SPAN_CELLS);
     this.bridgeWalkway = bridgeWalkwayCells(returnBridge);
 
 // A água pintada no chão (lago/mar) bloqueia sozinha — não depende de `blockedArea`/`lakeArea` estarem preenchidos no mapa.
@@ -320,10 +354,11 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     });
     // Conversa com um morador aberta: o clique é só dela.
     this.controller.addInputInterceptor({
-      isActive: () => isDialogueOpen(),
+      isActive: () => isDialogueOpen() || isNoticeBoardOpen(),
       handleClick: () => {},
     });
-    setupWorldCamera(this, this.player.sprite, cols * tilePx, rows * tilePx);
+    const bounds = islandCameraBounds({ col0: 0, row0: 0, cols, rows }, tilePx);
+    setupWorldCamera(this, this.player.sprite, bounds.width, bounds.height, bounds.x, bounds.y);
     this.dayNightOverlay = new DayNightOverlay(this);
     this.worldBlur = new WorldBlur(this.cameras.main);
     this.lockedMessage = new LockedMessage(this);
@@ -336,11 +371,15 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     ensureUIScene(this);
 
     this.input.keyboard!.on('keydown-E', () => {
-      if (isDialogueOpen()) return; // Em conversa, o E não abre o Inventário por cima.
+      if (isDialogueOpen() || isNoticeBoardOpen()) return; // Em conversa (ou lendo o mural), o E não abre o Inventário por cima.
       if (isFurnaceMenuOpen()) closeFurnaceMenu();
       toggleInventoryScreen();
     });
     this.input.keyboard!.on('keydown-ESC', () => {
+      if (isNoticeBoardOpen()) {
+        closeNoticeBoard();
+        return;
+      }
       if (isInventoryOpen()) {
         closeInventoryScreen();
         return;
@@ -391,7 +430,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
     // Mesmo bloqueio de movimento da Fazenda enquanto o Inventário/Fornalha
     // está aberto (ver `MainScene.isInputLocked`) — aqui não há Menu de
     // Pausa/Dormir ainda, então esses dois são as únicas causas possíveis.
-    if (!isInventoryOpen() && !isFurnaceMenuOpen() && !isDialogueOpen()) {
+    if (!isInventoryOpen() && !isFurnaceMenuOpen() && !isDialogueOpen() && !isNoticeBoardOpen()) {
       this.controller.update(time, delta);
       this.petCompanion?.update(time, delta);
       this.fishingSpots?.update(delta);
@@ -410,7 +449,7 @@ export abstract class ExternalMapScene extends Phaser.Scene {
       recallToFarm(this);
     }
     this.dayNightOverlay.setHours(gameState.gameClock.getHours());
-    this.worldBlur.setActive(isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen());
+    this.worldBlur.setActive(isInventoryOpen() || isFurnaceMenuOpen() || isDialogueOpen() || isNoticeBoardOpen());
     this.debugGridOverlay.update(); // DEBUG TEMPORÁRIO — remover junto com `systems/debugGridOverlay.ts`.
   }
 

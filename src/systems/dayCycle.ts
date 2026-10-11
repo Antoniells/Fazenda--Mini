@@ -9,6 +9,7 @@ import { layEggs } from './animals';
 import { advanceBerryBushes } from './berryBushState';
 import { deliverSeedOrders } from './seedOrders';
 import type { FarmDayReport, Plot } from './farmland';
+import { turnSeasonOnFarm } from './cropSeasons';
 
 /** Avança só o estado do mundo (registros de árvores/pedras da Floresta, Pedreira e da Fazenda — na Fazenda, brotos novos nascem e as árvores crescem de estágio) — não depende de nenhuma cena estar aberta. */
 export function advanceWorldResourcesState(): void {
@@ -35,6 +36,12 @@ export interface DayTurn {
  */
 export function runDayTurn(): DayTurn {
   const farm = gameState.farmland.onNewDay();
+  // A estação virou: o que ficou fora de época morre (`systems/cropSeasons.ts`) — e não conta mais como pronta.
+  const seasonTurned = turnSeasonOnFarm(gameState.farmland, gameState.gameClock.getDay());
+  if (seasonTurned) {
+    farm.seasonTurned = seasonTurned;
+    farm.ready = gameState.farmland.getAllPlots().filter((plot) => gameState.farmland.isReady(plot)).length;
+  }
   const rained = rollDailyWeather(gameState.farmland);
   const sprayed = waterFromSprinklers(gameState.farmland);
   // As murchas que a chuva ou um aspersor já regou não correm mais perigo hoje: o aviso só conta as que ainda precisam de água.

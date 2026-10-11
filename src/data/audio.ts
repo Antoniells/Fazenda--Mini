@@ -102,8 +102,13 @@ export const PLANT_SOUND = sfx('plant', 'Plantar');
  * (CC0, kenney.nl), copiados da biblioteca de referência (`docs/REFERENCE_GUIDE.md`). Antes era `Colher.wav`.
  */
 export const HARVEST_SOUNDS: SoundEffectDef[] = [1, 2, 3, 4].map((n) => ({ key: `sfx-harvest-${n}`, path: `${EFFECTS_DIR}/Colher folhas ${n}.ogg`, volume: 0.8 }));
-/** Posicionar uma decoração, um móvel ou uma muda. */
+/** Posicionar uma decoração ou um móvel. */
 export const PLACE_SOUND = sfx('place', 'Posicionar objeto');
+/**
+ * Posicionar a caminha do bichinho: um pano macio assentando (`cloth1.ogg` do Kenney RPG Audio, CC0 — pedido do usuário: o som de
+ * "posicionar objeto" não combinava com uma almofada). Plantar uma bolota usa o som de plantar (`PLANT_SOUND`).
+ */
+export const PET_BED_PLACE_SOUND: SoundEffectDef = { key: 'sfx-place-pet-bed', path: `${EFFECTS_DIR}/Caminha de pano.ogg`, volume: 1 };
 /** Porta abrindo: toda vez que alguém passa por uma porta (a casa do jogador, e os moradores do Vilarejo quando entram/saem perto dele). */
 export const DOOR_SOUND: SoundEffectDef = { key: 'sfx-door-open', path: `${EFFECTS_DIR}/Porta abrindo.wav`, volume: 0.6 };
 /** Batida na porta: o aviso de que alguém chegou (a caixa do pet, na manhã depois do 3º sono). */
@@ -150,6 +155,7 @@ export const ALL_SOUND_EFFECTS: SoundEffectDef[] = [
   PLANT_SOUND,
   ...HARVEST_SOUNDS,
   PLACE_SOUND,
+  PET_BED_PLACE_SOUND,
   DOOR_SOUND,
   DOOR_KNOCK_SOUND,
   SLEEP_SOUND,

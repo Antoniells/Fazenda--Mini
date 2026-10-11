@@ -30,7 +30,7 @@ export class ShippingBinInteractable implements Interactable {
     private readonly scene: Phaser.Scene,
     private readonly bin: Phaser.GameObjects.Image,
     private readonly player: Player,
-    private readonly menu: ShippingBinMenu,
+    private readonly menu: Pick<ShippingBinMenu, 'toggle'>,
   ) {
     this.binBaseScaleX = bin.scaleX;
     this.binBaseScaleY = bin.scaleY;
@@ -94,7 +94,16 @@ export class ShippingBinInteractable implements Interactable {
   }
 }
 
-/** Registra o `ShippingBinInteractable` na célula da caixa e devolve o menu (a cena fecha com ESC e trava o movimento enquanto aberto). */
+/** O menu da caixa visto pela cena (fechar com ESC, travar o movimento enquanto aberto) — existe antes de o menu ser montado. */
+export interface ShippingBinMenuHandle {
+  isOpen(): boolean;
+  close(): void;
+}
+
+/**
+ * Registra o `ShippingBinInteractable` na célula da caixa e devolve o acesso ao menu. O menu (dezenas de textos) só é montado na 1ª vez
+ * que a caixa é aberta: montá-lo junto com a Fazenda atrasava cada entrada nela.
+ */
 export function registerShippingBinInteractable(
   scene: Phaser.Scene,
   bin: Phaser.GameObjects.Image,
@@ -103,12 +112,14 @@ export function registerShippingBinInteractable(
   inventory: Inventory,
   player: Player,
   registry: InteractionRegistry,
-): ShippingBinMenu {
-  let interactable: ShippingBinInteractable | null = null;
-  const menu = new ShippingBinMenu(scene, inventory, (totalCoins) => {
-    interactable?.celebrateSale(totalCoins);
+): ShippingBinMenuHandle {
+  let menu: ShippingBinMenu | null = null;
+  const interactable: ShippingBinInteractable = new ShippingBinInteractable(scene, bin, player, {
+    toggle: () => {
+      menu ??= new ShippingBinMenu(scene, inventory, (totalCoins) => interactable.celebrateSale(totalCoins));
+      menu.toggle();
+    },
   });
-  interactable = new ShippingBinInteractable(scene, bin, player, menu);
   registry.set(col, row, interactable);
-  return menu;
+  return { isOpen: () => menu?.isOpen() ?? false, close: () => menu?.close() };
 }

@@ -88,6 +88,22 @@ export const RAIN_DROP_FRAMES: ReadonlyArray<{ name: string; rect: { x: number; 
 }));
 
 /**
+ * A NEVE (`ui/weatherOverlay.ts`, no Inverno no lugar da chuva): os flocos de `Objects/Tree/Common/Effects/FX Effects Snow Leafs Winter 2.png`
+ * (96x48), recortados um a um (varredura pixel a pixel): os 3 brancos de 3x3 e os 6 azul-claros de 2x3/3x2 — as folhinhas vermelhas da folha ficam de fora.
+ */
+export const SNOW_KEY = 'fx-snow';
+export const SNOW_PATH = 'Objects/Tree/Common/Effects/FX Effects Snow Leafs Winter 2.png';
+const SNOW_FLAKE_RECTS: ReadonlyArray<[number, number, number, number]> = [
+  [37, 9, 3, 3], [69, 9, 3, 3], [7, 11, 3, 3],
+  [91, 7, 2, 3], [57, 9, 2, 3], [23, 11, 2, 3],
+  [64, 17, 3, 2], [33, 18, 3, 2], [3, 20, 3, 2],
+];
+export const SNOW_FLAKE_FRAMES: ReadonlyArray<{ name: string; rect: { x: number; y: number; width: number; height: number } }> = SNOW_FLAKE_RECTS.map(([x, y, width, height], index) => ({
+  name: `fx-snow-flake-${index}`,
+  rect: { x, y, width, height },
+}));
+
+/**
  * `Animals/Forest/Bugs/Butterfly/*.png` (112x16): uma espécie por arquivo, 7 frames de 16x16 lado a lado — o ciclo
  * de bater as asas (aberta, de lado, aberta...). Usadas as espécies de uma linha só (as de duas linhas, como a
  * "Common Butterfly", têm uma segunda cor na linha de baixo). As borboletinhas da Fazenda (`systems/butterflies.ts`)

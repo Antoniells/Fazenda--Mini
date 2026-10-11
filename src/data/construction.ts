@@ -24,6 +24,8 @@ export interface ConstructionOrder {
   startHour: number;
   /** Quanto o jogador pagou (devolvido no cancelamento). 0 numa MUDANÇA de construção pronta (o Tomás só a refaz noutro lugar: não dá pra cancelar). */
   paid: number;
+  /** Os materiais gastos na encomenda (devolvidos no cancelamento). Ausente em saves antigos e nas mudanças de lugar. */
+  paidMaterials?: Array<{ resourceId: string; amount: number }>;
 }
 
 /** Vai pro save: as encomendas e o próximo id. */

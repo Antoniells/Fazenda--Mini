@@ -15,7 +15,10 @@ export function describeFarmReport(report: FarmDayReport): string | null {
   if (report.grew > 0) parts.push(`${plural(report.grew, 'cresceu', 'cresceram')}`);
   if (report.wilted > 0) parts.push(`${plural(report.wilted, 'murcha', 'murchas')} sem água: regue hoje ou ${report.wilted === 1 ? 'ela morre' : 'elas morrem'}`);
   if (report.died > 0) parts.push(`${plural(report.died, 'morreu', 'morreram')} sem água (limpe com a Foice)`);
-  return parts.length > 0 ? `Na lavoura: ${parts.join(' · ')}.` : null;
+  const turned = report.seasonTurned;
+  const seasonLine = turned ? `Chegou o ${turned.name}!${turned.died > 0 ? ` ${plural(turned.died, 'plantação fora de época morreu', 'plantações fora de época morreram')} (limpe com a Foice).` : ''}` : '';
+  if (parts.length === 0) return seasonLine || null;
+  return `${seasonLine ? `${seasonLine} ` : ''}Na lavoura: ${parts.join(' · ')}.`;
 }
 
 /** Dias SEGUIDOS sem água até uma plantação germinada morrer: no 1º ela só murcha (não cresce), no 2º morre. */
@@ -31,6 +34,8 @@ export interface FarmDayReport {
   died: number;
   /** Prontas pra colher agora. */
   ready: number;
+  /** A estação virou hoje: o nome dela e quantas plantações morreram por ficar fora de época (`systems/cropSeasons.ts`). */
+  seasonTurned?: { name: string; died: number };
 }
 
 export interface Plot {
@@ -240,6 +245,19 @@ export class Farmland {
     }
     plot.wateredToday = false;
     return true;
+  }
+
+  /**
+   * A estação virou: toda plantação que não é desta estação morre (`inSeason(cropId)` diz quais podem ficar) — a germinada fica `dead`
+   * (limpa com a Foice), a semente ainda dormente some. Devolve quantas morreram.
+   */
+  killOutOfSeason(inSeason: (cropId: string) => boolean): number {
+    let died = 0;
+    for (const plot of this.plots.values()) {
+      if (plot.state !== 'growing' || !plot.cropId || inSeason(plot.cropId)) continue;
+      if (this.destroyCrop(plot.col, plot.row)) died++;
+    }
+    return died;
   }
 
   /** Remove uma plantação morta, liberando o terreno (arado) para novo plantio. */

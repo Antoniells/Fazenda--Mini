@@ -10,7 +10,7 @@ import { FarmResources, FARM_RESOURCES_KEY } from './farmResources';
 import { BIRCH_ACORN, OAK_ACORN, RESOURCES } from '../data/resources';
 import { speciesFromAcorn } from './treeVariety';
 import { playEffect } from './soundEffects';
-import { PLACE_SOUND } from '../data/audio';
+import { PLANT_SOUND } from '../data/audio';
 import {
   PINE_TREE_KEY,
   PINE_SPROUT_FRAME_NAME,
@@ -148,7 +148,7 @@ export class TreePlantingSystem implements PointerInputInterceptor {
     if (!this.inventory.useResource(this.acornId)) return;
 
     this.farmResources.plant(col, row, speciesFromAcorn(this.acornId));
-    playEffect(this.scene, PLACE_SOUND);
+    playEffect(this.scene, PLANT_SOUND); // Plantar uma bolota soa como plantar uma semente.
     console.log(`${RESOURCES[this.acornId]?.name ?? 'Bolota'} plantada — vai crescer com o passar dos dias.`);
 
     if (this.inventory.getResourceCount(this.acornId) <= 0) this.cancel();

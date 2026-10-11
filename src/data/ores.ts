@@ -48,7 +48,7 @@ const EXTRA_VEINS: Record<OreKind, Array<[number, number]>> = {
   copper: [[9, 7], [14, 10], [24, 7], [30, 11], [9, 19], [20, 20], [26, 13], [33, 16], [4, 17], [36, 23]],
   coal: [[10, 12], [23, 21], [31, 25], [14, 26]],
   iron: [[16, 20], [27, 19], [7, 25]],
-  gold: [[13, 4], [25, 11], [34, 21], [3, 27], [30, 27]],
+  gold: [[25, 11], [3, 27]], // Só 2 (eram 5): o ouro é raro.
   azurite: [], // Não existe na Pedreira.
 };
 

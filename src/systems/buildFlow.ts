@@ -14,6 +14,7 @@ import {
   moveBuilt,
   moveOrder,
   placeOrder,
+  hasMaterials,
   targetsFor,
 } from './construction';
 import { popText } from './floatingText';
@@ -154,7 +155,7 @@ export class BuildFlow implements PointerInputInterceptor {
     if (mode === 'order') {
       const order = placeOrder(this.decoration, col, row);
       if (!order) {
-        popText(this.scene, col * this.tilePx, row * this.tilePx, 'Moedas insuficientes', { color: '#ff8a8a', fontSize: 15 });
+        popText(this.scene, col * this.tilePx, row * this.tilePx, hasMaterials(this.decoration) ? 'Moedas insuficientes' : 'Faltam materiais', { color: '#ff8a8a', fontSize: 15 });
         this.finish(EXIT_DELAY_MS);
         return;
       }

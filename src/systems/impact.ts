@@ -22,8 +22,11 @@ import { LIGHT_GLOW_DEPTH } from './lightSources';
 
 /** Quanto o trauma se esvai por segundo. */
 const TRAUMA_DECAY_PER_SECOND = 1.6;
-/** Intensidade do tremor do Phaser (fração do tamanho da câmera) com trauma 1 — calibrada pra a espadada ficar perto do tremor de antes. */
-const MAX_SHAKE_INTENSITY = 0.035;
+/** Intensidade do tremor do Phaser (fração do tamanho da câmera) com trauma 1 — suave: a espadada só treme de leve. */
+const MAX_SHAKE_INTENSITY = 0.012;
+/** Empurrão da câmera (px de arte): o mínimo e o quanto cresce com a força do golpe. */
+const KICK_BASE_PX = 0.5;
+const KICK_PER_STRENGTH_PX = 1.5;
 
 interface SceneTime {
   /** Até quando (relógio real, `performance.now`) a cena fica congelada. */
@@ -150,6 +153,6 @@ export function impact(scene: Phaser.Scene, options: ImpactOptions): void {
   if (!options.noShake) addTrauma(scene, state, traumaFor(strength));
   const dx = options.dirX ?? 0;
   const dy = options.dirY ?? 0;
-  if (dx !== 0 || dy !== 0) kickCamera(scene, state, dx, dy, (1 + strength * 4) * DISPLAY_SCALE);
+  if (dx !== 0 || dy !== 0) kickCamera(scene, state, dx, dy, (KICK_BASE_PX + strength * KICK_PER_STRENGTH_PX) * DISPLAY_SCALE);
   if (strength >= 0.9 && options.x !== undefined && options.y !== undefined) sparkBurst(scene, options.x, options.y, dx, dy);
 }

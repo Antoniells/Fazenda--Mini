@@ -1,4 +1,5 @@
 import { gameState } from './gameState';
+import { precipitationIn, seasonIdForDay } from '../data/seasons';
 import { debugFlags } from '../debug/debugFlags';
 import { runDayTurn, DayTurn } from './dayCycle';
 import { isDawn, finishHordeDefeat } from './horde';
@@ -36,5 +37,5 @@ export function advanceWorldTime(deltaMs: number, onFarm: boolean): WorldTimeRes
 
 /** Faixa de novo dia (título + subtítulo), igual em todas as cenas. */
 export function describeNewDay(): { title: string; subtitle: string } {
-  return { title: `DIA ${gameState.gameClock.getDay()}`, subtitle: gameState.weather.raining ? 'Está chovendo hoje.' : 'Um novo dia começa.' };
+  return { title: `DIA ${gameState.gameClock.getDay()}`, subtitle: gameState.weather.raining ? (precipitationIn(seasonIdForDay(gameState.gameClock.getDay())) === 'snow' ? 'Está nevando hoje.' : 'Está chovendo hoje.') : 'Um novo dia começa.' };
 }

@@ -1,4 +1,5 @@
 import { isCharacterId, type CharacterId } from '../data/player';
+import { QUARRY_FIRST_VISIT_SLIMES } from '../data/enemies';
 import { sanitizeAppearance, type PlayerAppearance } from '../data/playerAppearance';
 import { isPetId } from '../data/pets';
 import { gameState, PlacedDecorationRecord, PlayerProfile, SlimeRespawnRecord, WeatherState, DEFAULT_PROFILE } from './gameState';
@@ -143,6 +144,8 @@ export interface SaveData {
   waterHintSeen?: boolean;
   /** Já visitou o Vilarejo? Ausente em saves antigos = já (não recebem o objetivo de conhecê-lo). */
   villageVisited?: boolean;
+  /** Slimes da 1ª ida à Pedreira ainda vivos. Ausente em saves antigos = todos (encontram os slimes uma vez). */
+  quarrySlimesLeft?: number;
 }
 
 /** O que o Menu Principal precisa pra desenhar um slot — sem ler/parsear o `SaveData` inteiro fora deste módulo. */
@@ -286,6 +289,7 @@ export function save(slot?: number): void {
     tutorialCompleted: gameState.tutorialCompleted,
     waterHintSeen: gameState.waterHintSeen,
     villageVisited: gameState.villageVisited,
+    quarrySlimesLeft: gameState.quarrySlimesLeft,
   };
   storage.write(saveKey(targetSlot), JSON.stringify(data));
 }
@@ -416,6 +420,7 @@ export function load(slot: number): boolean {
     gameState.tutorialCompleted = data.tutorialCompleted ?? true;
     gameState.waterHintSeen = data.waterHintSeen ?? true;
     gameState.villageVisited = data.villageVisited ?? true;
+    gameState.quarrySlimesLeft = data.quarrySlimesLeft ?? QUARRY_FIRST_VISIT_SLIMES;
     gameState.waterObjective = false;
     gameState.tutorialStep = 0;
     gameState.tutorialProgress = 0;
@@ -483,6 +488,7 @@ export function startNewGame(slot: number, profile: PlayerProfile = DEFAULT_PROF
   gameState.waterHintSeen = false; // ...e a dica do primeiro regador vazio também.
   gameState.waterObjective = false;
   gameState.villageVisited = false; // ...e o objetivo de conhecer o Vilarejo, até o primeiro passo nele.
+  gameState.quarrySlimesLeft = QUARRY_FIRST_VISIT_SLIMES; // ...e os slimes da 1ª ida à Pedreira.
   gameState.tutorialStep = 0;
   gameState.tutorialProgress = 0;
   activeSlot = slot;

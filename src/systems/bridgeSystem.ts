@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BridgeDefinition, FarmMapData } from '../data/maps/farmMap';
+import { BridgeDefinition, ExpansionDirection, FarmMapData } from '../data/maps/farmMap';
 import { Inventory } from './inventory';
 import { InteractionRegistry, Interactable } from './interaction';
 import { WalkableGrid } from './grid';
@@ -12,6 +12,8 @@ import { SPEND_MONEY_SOUND } from '../data/audio';
 import { OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialoguePanel';
 import { isDialogueOpen } from '../scenes/UIScene';
 import { shouldRecallToFarm } from './hordeRecall';
+import { cellInsideBridge, farmBridgeCell } from './islandLayout';
+import { BRIDGE_SPAN_CELLS } from '../data/islandEdges';
 
 /**
  * DEBUG (Sistema de Cenas): `false` — pedido explícito do usuário pra
@@ -57,6 +59,13 @@ class BridgeInteractable implements Interactable {
  * `returnSpawn`: a célula andável logo DENTRO do núcleo, ao lado da ponte,
  * pra onde o jogador deve reaparecer se um dia voltar da cena de destino
  * (ver `MainScene.init`).
+ *
+ * Ilhas (`systems/islandEdges.ts`): a ponte fica sempre na BORDA da ilha — na
+ * parede do núcleo enquanto o trecho daquele lado está fechado, na parede de
+ * fora dele depois de comprado (`islandLayout.farmBridgeCell`, `relocate`) —
+ * e o vão dela atravessa a água até sumir da tela. O estado de cada ponte
+ * (destravada ou não, `gameState.unlockedBridges`) continua guardado pela
+ * célula ORIGINAL dela (`key`), não importa onde ela esteja agora.
  */
 export class BridgeSystem {
   private readonly lockSigns = new Map<string, Phaser.GameObjects.Image>();
@@ -64,6 +73,8 @@ export class BridgeSystem {
   private isTransitioning = false;
   /** Pontes bloqueadas cujo card de compra já foi oferecido nesta aproximação (`handlePlayerStep`). */
   private readonly offered = new Set<string>();
+  /** O que cada ponte desenhou (cabeceira e vão) e onde ela está agora — pra mudá-la de lugar quando um trecho é comprado. */
+  private readonly placed = new Map<string, { cell: { col: number; row: number }; objects: Phaser.GameObjects.GameObject[] }>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -73,25 +84,7 @@ export class BridgeSystem {
     private readonly interactions: InteractionRegistry,
     private readonly lockedMessage: LockedMessage,
   ) {
-    for (const bridge of map.bridges) {
-      buildBridge(scene, map.tileSize, bridge);
-
-      // Colisão dos corrimões laterais (pedido explícito do usuário): a
-      // arte da ponte é sempre desenhada aqui em cima, destravada ou não
-      // (só a placa de bloqueio muda) — então essas 2 células ficam
-      // bloqueadas incondicionalmente, pra sempre, criando o "túnel"
-      // invisível por cima do qual o corrimão nunca é pisável.
-      for (const [col, row] of bridgeRailingCells(bridge)) this.grid.block(col, row);
-
-      // NOVA LÓGICA: Verifica se a ponte já está no gameState global!
-      if (DEBUG_BRIDGES_START_UNLOCKED || gameState.unlockedBridges.has(this.key(bridge)) || this.isFree(bridge)) {
-        this.unlockBridge(bridge);
-      } else {
-        this.lockSigns.set(this.key(bridge), buildConstructionSign(scene, map.tileSize, bridge.col, bridge.row));
-        interactions.set(bridge.col, bridge.row, new BridgeInteractable(this, bridge));
-      }
-    }
-    // ... resto do construtor
+    for (const bridge of map.bridges) this.place(bridge);
 
     // Mesmo evento que `FarmlandRenderer.rustleCrop`/fechar a Loja já usam
     // (emitido por `PlayerController.update` a cada célula nova) — é o
@@ -102,6 +95,51 @@ export class BridgeSystem {
 
   private key(bridge: BridgeDefinition): string {
     return `${bridge.col},${bridge.row}`;
+  }
+
+  /** Onde a ponte está agora (na borda da ilha). */
+  private cellOf(bridge: BridgeDefinition): { col: number; row: number } {
+    return farmBridgeCell(bridge, this.map.expansions, gameState.unlockedExpansions);
+  }
+
+  /**
+   * Desenha a ponte onde ela está agora: a cabeceira e o vão sobre a água. Colisão dos corrimões laterais (pedido explícito do usuário):
+   * a arte é sempre desenhada, destravada ou não (só a placa de bloqueio muda) — então essas células ficam bloqueadas incondicionalmente,
+   * criando o "túnel" invisível por cima do qual o corrimão nunca é pisável.
+   */
+  private place(bridge: BridgeDefinition): void {
+    const cell = this.cellOf(bridge);
+    const at: BridgeDefinition = { ...bridge, ...cell };
+    this.placed.set(this.key(bridge), { cell, objects: buildBridge(this.scene, this.map.tileSize, at, BRIDGE_SPAN_CELLS) });
+    for (const [col, row] of bridgeRailingCells(at)) this.grid.block(col, row);
+
+    if (DEBUG_BRIDGES_START_UNLOCKED || gameState.unlockedBridges.has(this.key(bridge)) || this.isFree(bridge)) {
+      this.unlockBridge(bridge);
+    } else {
+      this.grid.block(cell.col, cell.row);
+      this.lockSigns.set(this.key(bridge), buildConstructionSign(this.scene, this.map.tileSize, cell.col, cell.row));
+      this.interactions.set(cell.col, cell.row, new BridgeInteractable(this, bridge));
+    }
+  }
+
+  /**
+   * Um trecho foi comprado: as pontes daquele lado vão pra parede de fora dele (a nova borda da ilha). Sai a arte, a placa, a interação
+   * e os corrimões de onde estavam (a parede do núcleo já foi aberta pela expansão) e tudo é refeito no lugar novo.
+   */
+  relocate(direction: ExpansionDirection): void {
+    for (const bridge of this.map.bridges) {
+      if (bridge.direction !== direction) continue;
+      const key = this.key(bridge);
+      const old = this.placed.get(key);
+      if (!old) continue;
+      for (const object of old.objects) object.destroy();
+      this.lockSigns.get(key)?.destroy();
+      this.lockSigns.delete(key);
+      this.interactions.remove(old.cell.col, old.cell.row);
+      for (const [col, row] of bridgeRailingCells({ ...bridge, ...old.cell })) this.grid.unblock(col, row);
+      this.grid.unblock(old.cell.col, old.cell.row);
+      this.place(bridge);
+    }
   }
 
   /** Ponte SEM requisito (moedas/itens): é uma estrada, não uma obra — nasce aberta, sem placa nem interação (o Vilarejo). */
@@ -159,13 +197,17 @@ export class BridgeSystem {
     gameState.unlockedBridges.add(this.key(bridge));
     this.lockSigns.get(this.key(bridge))?.destroy();
     this.lockSigns.delete(this.key(bridge));
-    this.grid.unblock(bridge.col, bridge.row);
-    this.interactions.remove(bridge.col, bridge.row);
+    const cell = this.cellOf(bridge);
+    this.grid.unblock(cell.col, cell.row);
+    this.interactions.remove(cell.col, cell.row);
   }
 
   /** Pedido explícito do usuário: a troca de cena só dispara quando o jogador pisa de fato na célula de uma ponte já destravada. */
   private handlePlayerStep(col: number, row: number): void {
-    const bridge = this.map.bridges.find((b) => b.col === col && b.row === row);
+    const bridge = this.map.bridges.find((b) => {
+      const cell = this.cellOf(b);
+      return cell.col === col && cell.row === row;
+    });
     if (bridge && this.isUnlocked(bridge) && !this.isTransitioning) {
       // Noite de horda: ninguém sai da Fazenda (de fora, o jogador seria trazido de volta — `systems/hordeRecall.ts`).
       if (shouldRecallToFarm()) {
@@ -180,7 +222,8 @@ export class BridgeSystem {
     for (const locked of this.map.bridges) {
       if (this.isUnlocked(locked)) continue;
       const key = this.key(locked);
-      const distance = Math.max(Math.abs(col - locked.col), Math.abs(row - locked.row));
+      const cell = this.cellOf(locked);
+      const distance = Math.max(Math.abs(col - cell.col), Math.abs(row - cell.row));
       if (distance <= OFFER_RANGE_CELLS) {
         if (!this.offered.has(key)) {
           this.offered.add(key);
@@ -199,13 +242,9 @@ export class BridgeSystem {
     return true;
   }
 
-  /** Célula andável logo dentro do núcleo, ao lado da parede desta ponte — ver doc da classe. */
+  /** Célula andável logo dentro da ilha, em frente à ponte (onde ela está agora) — ver doc da classe. */
   private computeReturnSpawn(bridge: BridgeDefinition): { col: number; row: number } {
-    const { cols, rows } = this.map;
-    if (bridge.direction === 'north') return { col: bridge.col, row: 1 };
-    if (bridge.direction === 'south') return { col: bridge.col, row: rows - 2 };
-    if (bridge.direction === 'west') return { col: 1, row: bridge.row };
-    return { col: cols - 2, row: bridge.row };
+    return cellInsideBridge(bridge.direction, this.cellOf(bridge));
   }
 
 private crossInto(bridge: BridgeDefinition): void {

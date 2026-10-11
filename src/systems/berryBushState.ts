@@ -1,4 +1,5 @@
-import { FARM_BERRY_BUSHES, BERRY_DAYS_TO_FRUIT, berryBushKey } from '../data/berryBushes';
+import { FARM_BERRY_BUSHES, BERRY_DAYS_TO_FRUIT, berryBushKey, berryBushFruitsIn } from '../data/berryBushes';
+import { seasonIdForDay } from '../data/seasons';
 import { gameState } from './gameState';
 
 /** O ESTADO dos arbustos frutíferos (sem Phaser — o save e a virada do dia usam): dias desde a última colheita de cada arbusto. */
@@ -13,9 +14,13 @@ export function markBerryBushHarvested(col: number, row: number): void {
   gameState.berryBushes[berryBushKey(col, row)] = 0;
 }
 
-/** Virada do dia: cada arbusto anda um dia no ciclo (parando quando já tem frutas — elas esperam a colheita). */
-export function advanceBerryBushes(): void {
+/**
+ * Virada do dia: cada arbusto anda um dia no ciclo (parando quando já tem frutas — elas esperam a colheita). No Outono e no Inverno ele não
+ * dá frutas: o ciclo fica parado no começo, e na Primavera ele recomeça liso.
+ */
+export function advanceBerryBushes(day: number = gameState.gameClock.getDay()): void {
+  const fruiting = berryBushFruitsIn(seasonIdForDay(day));
   for (const [col, row] of FARM_BERRY_BUSHES) {
-    gameState.berryBushes[berryBushKey(col, row)] = Math.min(BERRY_DAYS_TO_FRUIT, berryBushDays(col, row) + 1);
+    gameState.berryBushes[berryBushKey(col, row)] = fruiting ? Math.min(BERRY_DAYS_TO_FRUIT, berryBushDays(col, row) + 1) : 0;
   }
 }

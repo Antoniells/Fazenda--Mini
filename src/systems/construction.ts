@@ -67,9 +67,17 @@ export function describeSchedule(order: ConstructionOrder): string {
 /** Só as estruturas do Marceneiro têm encomenda (e ícones de mover/cancelar/destruir). */
 export const isCarpenterBuilt = (decorationId: string): boolean => !!DECORATIONS[decorationId]?.carpenterBuilt;
 
-/** Encomenda nova: cobra o preço (recusa sem moedas) e a deixa pendente pro dia seguinte. */
+/** O jogador tem os materiais da construção (ex.: a Pedra do Poço e da Fornalha)? */
+export function hasMaterials(decoration: DecorationDefinition): boolean {
+  return (decoration.materials ?? []).every(({ resourceId, amount }) => gameState.inventory.getResourceCount(resourceId) >= amount);
+}
+
+/** Encomenda nova: cobra o preço e os materiais (recusa, sem gastar nada, se faltar algo) e a deixa pendente pro dia seguinte. */
 export function placeOrder(decoration: DecorationDefinition, col: number, row: number): ConstructionOrder | null {
+  if (!hasMaterials(decoration)) return null;
   if (!gameState.inventory.spendCoins(decoration.price)) return null;
+  const materials = decoration.materials ?? [];
+  for (const { resourceId, amount } of materials) gameState.inventory.useResource(resourceId, amount);
   const order: ConstructionOrder = {
     id: gameState.construction.nextId++,
     decorationId: decoration.id,
@@ -78,6 +86,7 @@ export function placeOrder(decoration: DecorationDefinition, col: number, row: n
     orderedDay: gameState.gameClock.getDay(),
     startHour: nextStartHour(gameState.gameClock.getDay()),
     paid: decoration.price,
+    ...(materials.length > 0 ? { paidMaterials: materials.map((material) => ({ ...material })) } : {}),
   };
   gameState.construction.orders.push(order);
   return order;
@@ -93,6 +102,7 @@ export function cancelOrder(id: number): number {
   if (!order) return 0;
   gameState.construction.orders = gameState.construction.orders.filter((candidate) => candidate.id !== id);
   gameState.inventory.addCoins(order.paid);
+  for (const { resourceId, amount } of order.paidMaterials ?? []) gameState.inventory.addResources(resourceId, amount);
   return order.paid;
 }
 

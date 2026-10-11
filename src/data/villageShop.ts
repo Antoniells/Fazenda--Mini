@@ -1,5 +1,5 @@
 import type { ShopItem } from '../ui/shopMenu';
-import { IRON_SWORD, GOLD_SWORD, WeaponDefinition } from './weapons';
+import { COPPER_SWORD, IRON_SWORD, GOLD_SWORD, WeaponDefinition } from './weapons';
 import { WOOD_ARMOR, IRON_ARMOR, ArmorDefinition } from './armors';
 import { COPPER_BAR, GOLD_BAR, IRON, RESOURCES } from './resources';
 import { TOOL_BARS_REQUIRED } from './toolShop';
@@ -22,6 +22,7 @@ export interface VillageShopGood {
 }
 
 export const VILLAGE_SHOP_GOODS: VillageShopGood[] = [
+  { kind: 'weapon', definition: COPPER_SWORD, price: 350, materials: [{ resourceId: COPPER_BAR.id, amount: TOOL_BARS_REQUIRED }] },
   { kind: 'weapon', definition: IRON_SWORD, price: 750, materials: [{ resourceId: IRON.id, amount: TOOL_BARS_REQUIRED }] },
   { kind: 'weapon', definition: GOLD_SWORD, price: 1800, materials: [{ resourceId: GOLD_BAR.id, amount: TOOL_BARS_REQUIRED }] },
   { kind: 'armor', definition: WOOD_ARMOR, price: 300, materials: [{ resourceId: COPPER_BAR.id, amount: TOOL_BARS_REQUIRED }] },

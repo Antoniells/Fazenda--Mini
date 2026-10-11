@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { preloadSnowRoofs, seasonalBuildingTexture } from './snowRoofs';
 import {
   VILLAGE_ASSETS,
   VILLAGE_FOUNTAIN_FRAMES,
@@ -20,6 +21,7 @@ import { addBuildingShadows, createGroundShadow } from './shadow';
 export function preloadVillage(scene: Phaser.Scene): void {
   for (const asset of Object.values(VILLAGE_ASSETS)) scene.load.image(asset.key, encodeURI(`/${asset.path}`));
   scene.load.image(PINE_TREE_KEY, encodeURI(`/${PINE_TREE_PATH}`));
+  preloadSnowRoofs(scene); // Os gabaritos nevados e o kit (telhados no Inverno).
   scene.load.image(WELL.textureKey, encodeURI(`/${WELL.texturePath}`));
 }
 
@@ -37,7 +39,9 @@ export function buildVillage(scene: Phaser.Scene): { trees: Phaser.GameObjects.I
     const frameName = 'frame' in asset ? `${asset.key}-frame` : undefined;
     if ('frame' in asset) registerFrame(scene, asset.key, { name: `${asset.key}-frame`, rect: asset.frame });
 
-    const image = scene.add.image(structure.col * tile, structure.row * tile, asset.key, frameName);
+    // No Inverno, as casas com o telhado nevado (`systems/snowRoofs.ts`).
+    const art = seasonalBuildingTexture(scene, asset.key, frameName);
+    const image = scene.add.image(structure.col * tile, structure.row * tile, art.textureKey, art.frameName);
     image.setOrigin(0, 0);
     image.setScale(DISPLAY_SCALE);
     image.setDepth((structureBaseRow(structure) + 1) * tile);

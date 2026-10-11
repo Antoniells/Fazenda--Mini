@@ -1,3 +1,5 @@
+import type { SeasonId } from './seasons';
+
 /**
  * ARBUSTOS FRUTÍFEROS da Fazenda (`systems/berryBushes.ts`): a folha `Objects/Tree/Deep Forest/bushes.png` (144 x 288 = 3 colunas x 9 fileiras de
  * 48 x 32) — a coluna do meio é o arbusto verde e as fileiras 5-8 dela, o tom MAIS CLARO, trazem o ciclo inteiro: liso, com flores brancas (duas
@@ -23,6 +25,22 @@ export function berryBushFrame(daysSinceHarvest: number): number {
   if (daysSinceHarvest >= Math.ceil(BERRY_DAYS_TO_FRUIT / 2)) return BERRY_BUSH_FRAMES.flowering;
   if (daysSinceHarvest >= 1) return BERRY_BUSH_FRAMES.budding;
   return BERRY_BUSH_FRAMES.bare;
+}
+
+/**
+ * O ARBUSTO NAS ESTAÇÕES: só dá frutas na Primavera e no Verão. No Outono ele fica com as folhas laranja (coluna 2, fileira 0 da folha) e no
+ * Inverno verde-escuro (coluna 0, fileira 0) — sem frutas, e o ciclo fica parado (recomeça liso na Primavera, `systems/berryBushState.ts`).
+ */
+export const BERRY_BUSH_SEASON_FRAMES: Partial<Record<SeasonId, number>> = { autumn: 2, winter: 0 };
+
+/** Dá frutas nesta estação? */
+export function berryBushFruitsIn(season: SeasonId): boolean {
+  return BERRY_BUSH_SEASON_FRAMES[season] === undefined;
+}
+
+/** O quadro do arbusto na estação: o laranja/verde-escuro do Outono e do Inverno, ou o do ciclo (`berryBushFrame`). */
+export function berryBushSeasonFrame(daysSinceHarvest: number, season: SeasonId): number {
+  return BERRY_BUSH_SEASON_FRAMES[season] ?? berryBushFrame(daysSinceHarvest);
 }
 
 /** Quantos dias faltam pras frutas (0 = já tem). */

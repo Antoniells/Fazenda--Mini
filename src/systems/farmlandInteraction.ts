@@ -16,6 +16,7 @@ import { tutorial } from './tutorial';
 import { popText } from './floatingText';
 import { hotbarTopCenter } from '../ui/hotbar';
 import { cutWeedAt } from './wildGrass';
+import { plantBlockedReason } from './cropSeasons';
 
 /**
  * Uma célula cultivável, quando interagida, decide a ação a partir do
@@ -121,6 +122,13 @@ class PlotInteractable implements Interactable {
       // ação não teria efeito nenhum (mesmo espírito de "clique sem
       // efeito" usado em qualquer obstáculo/célula sem interação).
       console.log(`Sem sementes de ${CROPS[seedId]?.name ?? seedId} — compre na loja.`);
+      return;
+    }
+
+    // Fora de época (ou Inverno): a semente não entra no canteiro (`systems/cropSeasons.ts`).
+    const blocked = plantBlockedReason(seedId, gameState.gameClock.getDay());
+    if (blocked) {
+      popText(this.player.sprite.scene, this.player.sprite.x, this.player.sprite.y - 44, blocked, { fontSize: 13 });
       return;
     }
 

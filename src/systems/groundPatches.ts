@@ -10,6 +10,13 @@ import {
   PATCH_TEXTURE_KEY,
 } from '../data/groundPatches';
 import { isPatchCell, pickPatchTile } from './groundVariation';
+import { currentGroundSeason } from './seasonalGround';
+import { SEASON_GRASS_TILESETS } from '../data/seasons';
+
+/** A textura das manchas da estação do chão atual (uma por estação: a cor da grama muda). */
+function patchTextureKey(): string {
+  return `${PATCH_TEXTURE_KEY}:${currentGroundSeason()}`;
+}
 
 /**
  * MANCHAS ORGÂNICAS DE GRAMA (variação do chão): uma camada de tilemap por cima do chão-base (grama clara) com manchas da grama
@@ -22,24 +29,32 @@ import { isPatchCell, pickPatchTile } from './groundVariation';
 const PATCH_DEPTH = -0.9;
 
 /**
- * Cria (uma vez por jogo) a textura das peças da mancha: o recorte do grupo da grama escura do tileset, com o contorno trocado por
- * `PATCH_RECOLOR` (pixel a pixel, sobre a arte do pacote — nada é desenhado). Devolve `false` se o tileset ainda não carregou.
+ * Cria (uma vez por estação) a textura das peças da mancha: o recorte do grupo da grama escura do tileset, com o contorno trocado por
+ * `PATCH_RECOLOR` (pixel a pixel, sobre a arte do pacote — nada é desenhado). As cores do contorno são as da folha de VERÃO; nas outras
+ * estações (`systems/seasonalGround.ts`, mesma folha em outra cor) vale a MESMA posição: o pixel que é contorno no Verão sai na estação
+ * atual também. Devolve `false` se o tileset ainda não carregou.
  */
 function ensurePatchTexture(scene: Phaser.Scene, tileSize: number): boolean {
-  if (scene.textures.exists(PATCH_TEXTURE_KEY)) return true;
+  const key = patchTextureKey();
+  if (scene.textures.exists(key)) return true;
   if (!scene.textures.exists(GRASS_TILESET_KEY)) return false;
   const source = scene.textures.get(GRASS_TILESET_KEY).getSourceImage() as CanvasImageSource;
+  const summerKey = SEASON_GRASS_TILESETS.summer.key;
+  const summer = (scene.textures.exists(summerKey) ? scene.textures.get(summerKey) : scene.textures.get(GRASS_TILESET_KEY)).getSourceImage() as CanvasImageSource;
   const width = PATCH_GROUP_COLS * tileSize;
   const height = PATCH_GROUP_ROWS * tileSize;
-  const canvas = scene.textures.createCanvas(PATCH_TEXTURE_KEY, width, height);
+  const canvas = scene.textures.createCanvas(key, width, height);
   if (!canvas) return false;
   const context = canvas.getContext();
+  context.drawImage(summer, PATCH_GROUP_COL * tileSize, PATCH_GROUP_ROW * tileSize, width, height, 0, 0, width, height);
+  const reference = context.getImageData(0, 0, width, height).data;
+  context.clearRect(0, 0, width, height);
   context.drawImage(source, PATCH_GROUP_COL * tileSize, PATCH_GROUP_ROW * tileSize, width, height, 0, 0, width, height);
   const image = context.getImageData(0, 0, width, height);
   const pixels = image.data;
   for (let index = 0; index < pixels.length; index += 4) {
     if (pixels[index + 3] === 0) continue;
-    const color = (pixels[index] << 16) | (pixels[index + 1] << 8) | pixels[index + 2];
+    const color = (reference[index] << 16) | (reference[index + 1] << 8) | reference[index + 2];
     if (!(color in PATCH_RECOLOR)) continue;
     const swapped = PATCH_RECOLOR[color];
     if (swapped === null) {
@@ -111,7 +126,7 @@ export function buildGroundPatches(
   if (!any) return null;
 
   const tilemap = scene.make.tilemap({ data, tileWidth: tileSize, tileHeight: tileSize });
-  const tileset = tilemap.addTilesetImage(PATCH_TEXTURE_KEY, PATCH_TEXTURE_KEY, tileSize, tileSize);
+  const tileset = tilemap.addTilesetImage(patchTextureKey(), patchTextureKey(), tileSize, tileSize);
   if (!tileset) return null;
   const tile = tileSize * displayScale;
   const layer = tilemap.createLayer(0, tileset, originCol * tile, originRow * tile) as Phaser.Tilemaps.TilemapLayer | null;

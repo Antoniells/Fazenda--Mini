@@ -35,6 +35,8 @@ import { WalkableGrid } from './grid';
 import { registerSway } from './foliageSway';
 import { hash2D } from './groundVariation';
 import { resolveTreeSpecies } from './treeVariety';
+import { beehiveTreeTexture, spawnBees } from './beehives';
+import { seasonalMatureTree } from './seasonalTrees';
 import { GRASS_DETAILS } from '../data/grassDetails';
 import { registerGrassDetailFrames, placeGrassDetail, GrassTuftMap } from './grassDetails';
 
@@ -42,6 +44,8 @@ import { registerGrassDetailFrames, placeGrassDetail, GrassTuftMap } from './gra
 export interface WorldResourceVisual {
   sprite: Phaser.GameObjects.Image;
   shadow?: Phaser.GameObjects.Image;
+  /** O que mais vai junto com o recurso (as abelhas de uma colmeia) — destruído com ele. */
+  extras?: Phaser.GameObjects.GameObject[];
 }
 
 /**
@@ -76,13 +80,9 @@ export function buildExternalTree(scene: Phaser.Scene, tileSize: number, col: nu
   const shadow = createGroundShadow(scene, x, y - 6, DISPLAY_SCALE * 1.5, DISPLAY_SCALE * 0.6);
   shadow.setDepth(STATIC_SHADOW_DEPTH);
 
-let tree: Phaser.GameObjects.Image;
-  if (species === 'birch') {
-    registerFrame(scene, BIRCH_TREE_KEY, { name: BIRCH_TREE_FRAME_NAME, rect: BIRCH_TREE_FRAME });
-    tree = scene.add.image(x, y, BIRCH_TREE_KEY, BIRCH_TREE_FRAME_NAME);
-  } else {
-    tree = scene.add.image(x, y, PINE_TREE_KEY, PINE_TREE_FRAME_NAME);
-  }
+  // A copa da estação (`systems/seasonalTrees.ts`).
+  const { textureKey, frameName } = seasonalMatureTree(scene, species === 'birch' ? 'birch' : 'pine');
+  const tree = scene.add.image(x, y, textureKey, frameName);
   tree.setOrigin(0.5, 1);
   tree.setScale(DISPLAY_SCALE);
   tree.setDepth(tree.y);
@@ -100,9 +100,9 @@ let tree: Phaser.GameObjects.Image;
  * baixa). Usada tanto pelo respawn selvagem (`ForestScene`) quanto por
  * bolotas plantadas na Fazenda (`systems/treePlanting.ts`). A espécie (`data/trees.ts`) escolhe a folha: Pinheiro e Bétula as
  * deles (cada uma com o seu broto e a sua muda), Carvalho e Carvalho Rosa a do carvalho (mesmo broto e muda; a adulta verde ou rosa).
- * Sem espécie guardada, a célula decide (`resolveTreeSpecies`).
+ * Sem espécie guardada, a célula decide (`resolveTreeSpecies`). `beehive`: a adulta com colmeia e abelhas (`systems/beehives.ts`).
  */
-export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, stage: TreeStage, species?: TreeSpecies): WorldResourceVisual {
+export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: number, row: number, stage: TreeStage, species?: TreeSpecies, beehive = false): WorldResourceVisual {
   registerFrame(scene, PINE_TREE_KEY, { name: PINE_SPROUT_FRAME_NAME, rect: PINE_SPROUT_FRAME });
   registerFrame(scene, PINE_TREE_KEY, { name: PINE_YOUNG_FRAME_NAME, rect: PINE_YOUNG_FRAME });
 
@@ -119,6 +119,12 @@ export function buildGrowingTree(scene: Phaser.Scene, tileSize: number, col: num
     textureKey = OAK_TREE_KEY;
     frameName = stage === 'mature' && resolved === 'pink-oak' ? PINK_OAK_MATURE_FRAME : OAK_TREE_FRAMES[stage];
   }
+  // Adulta: a copa da estação (`systems/seasonalTrees.ts`) — o Pinheiro nevado, a Bétula e os carvalhos vermelhos ou brancos.
+  if (stage === 'mature' && (resolved !== 'oak' && resolved !== 'pink-oak' || scene.textures.exists(OAK_TREE_KEY))) {
+    ({ textureKey, frameName } = seasonalMatureTree(scene, resolved));
+  }
+  const withHive = beehive && stage === 'mature';
+  if (withHive) ({ textureKey, frameName } = beehiveTreeTexture(scene, textureKey, frameName));
 
   const tile = tileSize * DISPLAY_SCALE;
   const x = col * tile + tile / 2;
@@ -136,7 +142,7 @@ if (stage === 'mature') {
   sprite.setDepth(sprite.y);
   registerSway(sprite, stage === 'mature' ? 'tree' : 'crop'); // Broto e muda balançam como planta baixa.
 
-  return { sprite, shadow };
+  return { sprite, shadow, extras: withHive ? spawnBees(scene, sprite) : undefined };
 }
 
 /**

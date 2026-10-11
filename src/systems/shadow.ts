@@ -41,10 +41,46 @@ const BASE_STEP_PX = 2;
 /** Trechos mais estreitos que isto (px nativos) — um pilar, a ponta de um beiral — não ganham sombra própria. */
 const MIN_SEGMENT_PX = 12;
 
+/** A base lida de cada arte (`textura|quadro`): a mesma casa é lida uma vez só, não a cada vez que a cena abre. */
+const baseRowsCache = new Map<string, number[]>();
+
+/**
+ * A última linha opaca de cada coluna da arte (-1 = coluna vazia). Lida de UMA vez (um `getImageData` do quadro inteiro): o
+ * `textures.getPixelAlpha` de antes desenhava e lia um canvas por pixel, e as milhares de leituras por casa atrasavam a abertura da Fazenda
+ * e do Vilarejo (a tela preta ao voltar de outra ilha).
+ */
+function baseRowsOf(frame: Phaser.Textures.Frame): number[] {
+  const cacheKey = `${frame.texture.key}|${frame.name}`;
+  const cached = baseRowsCache.get(cacheKey);
+  if (cached) return cached;
+
+  const { cutX, cutY, cutWidth: width, cutHeight: height } = frame;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true })!;
+  context.drawImage(frame.source.image as CanvasImageSource, cutX, cutY, width, height, 0, 0, width, height);
+  const { data } = context.getImageData(0, 0, width, height);
+
+  const base: number[] = [];
+  for (let x = 0; x < width; x++) {
+    let last = -1;
+    for (let y = height - 1; y >= 0; y--) {
+      if (data[(y * width + x) * 4 + 3] > WALL_ALPHA_MIN) {
+        last = y;
+        break;
+      }
+    }
+    base.push(last);
+  }
+  baseRowsCache.set(cacheKey, base);
+  return base;
+}
+
 /**
  * Sombras ao pé de uma casa (pedido explícito): faixas RETAS, de bordas retas, COLADAS na base da parede — a borda de cima de cada faixa é exatamente
  * a última linha opaca da arte. Casas não têm a base toda na mesma linha (a ala do fundo, o alpendre), então a arte da imagem é LIDA coluna a coluna
- * (a última linha opaca de cada uma, `textures.getPixelAlpha`) e cada trecho de base contínua ganha a sua faixa: uma casa reta tem uma só, uma em L tem duas,
+ * (a última linha opaca de cada uma, `baseRowsOf`) e cada trecho de base contínua ganha a sua faixa: uma casa reta tem uma só, uma em L tem duas,
  * cada qual rente à própria base. É o quadro liso de `Tileset/Shadow.png` (`SHADOW_FLAT_FRAME`) esticado: sem cantos arredondados nem ondulação.
  * `image` tem que estar ancorada no canto superior esquerdo (origem 0,0) e sem rotação; as faixas ficam abaixo de tudo o que é ordenado por Y.
  */
@@ -54,23 +90,8 @@ export function addBuildingShadows(scene: Phaser.Scene, image: Phaser.GameObject
     texture.add(SHADOW_FLAT_FRAME_NAME, 0, SHADOW_FLAT_FRAME.x, SHADOW_FLAT_FRAME.y, SHADOW_FLAT_FRAME.width, SHADOW_FLAT_FRAME.height);
   }
 
-  const { key } = image.texture;
-  const frameName = image.frame.name;
-  const width = image.frame.width;
-  const height = image.frame.height;
-
-  // Última linha opaca de cada coluna (-1 = coluna vazia).
-  const base: number[] = [];
-  for (let x = 0; x < width; x++) {
-    let last = -1;
-    for (let y = height - 1; y >= 0; y--) {
-      if (scene.textures.getPixelAlpha(x, y, key, frameName) > WALL_ALPHA_MIN) {
-        last = y;
-        break;
-      }
-    }
-    base.push(last);
-  }
+  const base = baseRowsOf(image.frame);
+  const width = base.length;
 
   // Trechos de base contínua (colunas vizinhas com a mesma linha, ± `BASE_STEP_PX`).
   const shadows: Phaser.GameObjects.Image[] = [];

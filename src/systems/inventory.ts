@@ -353,6 +353,19 @@ export class Inventory {
   }
 
   /** Tira até `amount` unidades da Bolsa e devolve quantas saíram (nunca mais que o estoque). Zerou: o slot some. Armadura tirada da Bolsa deixa de estar vestida. */
+  /**
+   * A LIXEIRA do caderno (`ui/inventoryScreen.ts`): joga fora o item inteiro do slot `slotIndex` (todas as unidades). Ferramentas e armaduras não
+   * vão pro lixo (sem elas o jogo trava: não dá pra comprar a Enxada de novo, e a progressão das ferramentas é linear). Devolve o que aconteceu.
+   */
+  trashSlot(slotIndex: number): { kind: 'trashed'; ref: SlotRef; amount: number } | { kind: 'refused' } | { kind: 'empty' } {
+    const ref = this.getSlot(slotIndex);
+    if (!ref) return { kind: 'empty' };
+    if (ref.category === 'tool' || ref.category === 'armor') return { kind: 'refused' };
+    const amount = this.removeStack(ref, this.getStackCount(ref));
+    this.clearSlotsOf(ref.category, ref.id);
+    return { kind: 'trashed', ref, amount };
+  }
+
   removeStack(ref: SlotRef, amount: number): number {
     const taken = Math.min(this.getStackCount(ref), Math.max(0, Math.floor(amount)));
     if (taken <= 0) return 0;

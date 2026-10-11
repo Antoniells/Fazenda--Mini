@@ -232,7 +232,7 @@ export class FurniturePlacementSystem implements PointerInputInterceptor {
     if (!this.inventory.useDecoration(furniture.id)) return;
 
     this.placeAt(furniture, col, row);
-    playEffect(this.scene, PLACE_SOUND);
+    playEffect(this.scene, furniture.placeSound ?? PLACE_SOUND);
     if (this.inventory.getDecorationCount(furniture.id) <= 0) this.cancel();
   }
 

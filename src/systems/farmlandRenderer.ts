@@ -172,11 +172,8 @@ private renderCrop(plot: Plot): void {
     if (plot.stage > 0) {
       y -= 8; // Sobe as plantas que já cresceram
     } else {
-      // É uma semente (stage === 0)
-      // Ajuste fino exclusivo para as sementes que desenham muito para baixo
-      if (plot.cropId === 'potato' || plot.cropId === 'onion') {
-        y -= 5; // Tente 4 ou 6 para centralizar certinho com a da cenoura
-      }
+      // É uma semente (stage === 0): cada folha desenha o saquinho numa altura — o ajuste vem da cultura (`CropDefinition.seedOffsetY`).
+      y += crop.seedOffsetY ?? 0;
     }
 
     if (!image) {

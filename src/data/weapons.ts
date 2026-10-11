@@ -42,6 +42,17 @@ export const WOODEN_SWORD: WeaponDefinition = {
   price: 0,
 };
 
+/** A espada de cobre (`2. Cooper/Sword.png`): o degrau entre a de madeira e a de ferro, vendida no Ferreiro com Barras de Cobre. */
+export const COPPER_SWORD: WeaponDefinition = {
+  id: 'sword-copper',
+  name: 'Espada de Cobre',
+  textureKey: 'weapon-sword-copper',
+  texturePath: `${SWORD_BASE_PATH}/2. Cooper/Sword.png`,
+  iconFrame: 0,
+  damage: 10,
+  price: 250,
+};
+
 export const IRON_SWORD: WeaponDefinition = {
   id: 'sword-iron',
   name: 'Espada de Ferro',
@@ -66,9 +77,10 @@ export const GOLD_SWORD: WeaponDefinition = {
 
 export const WEAPONS: Record<string, WeaponDefinition> = {
   [WOODEN_SWORD.id]: WOODEN_SWORD,
+  [COPPER_SWORD.id]: COPPER_SWORD,
   [IRON_SWORD.id]: IRON_SWORD,
   [GOLD_SWORD.id]: GOLD_SWORD,
 };
 
 /** Só as compráveis (preço > 0) — usada para montar a lista de itens da Loja. */
-export const PURCHASABLE_WEAPONS: WeaponDefinition[] = [IRON_SWORD, GOLD_SWORD];
+export const PURCHASABLE_WEAPONS: WeaponDefinition[] = [COPPER_SWORD, IRON_SWORD, GOLD_SWORD];

@@ -23,7 +23,7 @@ const WINDUP_TINT = 0xff9a9a;
  * (movimento livre em pixels, com colisão com as paredes do andar) e ataca. Os que têm `attack` usam o ciclo `windup` (avisa: fica avermelhado e parado) → `strike`
  * (o golpe; o dano cai no meio dele, e só se o jogador ainda está ao alcance) → `recover` (parado, vulnerável) — quem se afasta durante o aviso desvia. O corpo a corpo acerta
  * quem está à frente dentro de `hitRange`; o à distância (Arqueiro) acerta quem está NA LINHA do tiro, sem parede no meio — por isso ele tenta se alinhar com o jogador.
- * Quem só encosta (`contact`, o Broto) machuca por contato, com recarga.
+ * O Broto (`lunge`, sem folha de ataque) dá um BOTE: no aviso se encolhe avermelhado, no golpe se lança na direção do jogador e machuca se encostar nele no caminho.
  */
 export class CaveWalker extends Enemy {
   private state: WalkerState = 'wander';
@@ -32,9 +32,15 @@ export class CaveWalker extends Enemy {
   private nextWanderDecisionAt = 0;
   private stateEndsAt = 0;
   private impactDone = false;
-  private nextContactAt = 0;
   private moving = false;
   private windupDirection: Direction = 'down';
+  /** O bote do `lunge`: direção (normalizada) travada no fim do aviso. */
+  private lungeX = 0;
+  private lungeY = 0;
+  private lungeTravelled = 0;
+  private squash: Phaser.Tweens.Tween | null = null;
+  private baseScaleX = 1;
+  private baseScaleY = 1;
 
   constructor(
     scene: Phaser.Scene,
@@ -50,6 +56,8 @@ export class CaveWalker extends Enemy {
   ) {
     super(scene, x, y, config.sheets.idle.key, 0, stats, config.shadowOffsetY);
     this.sprite.setScale(this.sprite.scaleX * (config.scale ?? 1));
+    this.baseScaleX = this.sprite.scaleX;
+    this.baseScaleY = this.sprite.scaleY;
     ensureWalkerAnims(scene, config.sheets, config.attack);
     this.playLoop('idle');
   }
@@ -62,7 +70,7 @@ export class CaveWalker extends Enemy {
     const distance = Math.hypot(dx, dy);
 
     if (this.state === 'windup' || this.state === 'strike' || this.state === 'recover') {
-      this.updateAttack(time, dx, dy, distance, playerX, playerY);
+      this.updateAttack(time, delta, dx, dy, distance, playerX, playerY);
       return;
     }
 
@@ -105,10 +113,6 @@ export class CaveWalker extends Enemy {
       this.beginWindup(time);
       return;
     }
-    if (this.config.contact && distance <= this.config.contact.range && time >= this.nextContactAt) {
-      this.nextContactAt = time + this.config.contact.cooldownMs;
-      this.onAttackHit(this.stats.contactDamage, time, this);
-    }
     if (distance > STOP_DISTANCE_PX) this.moveToward(playerX, playerY, delta);
   }
 
@@ -120,12 +124,34 @@ export class CaveWalker extends Enemy {
     this.impactDone = false;
     this.stateEndsAt = time + attack.windupMs;
     this.windupDirection = this.facing;
-    this.sprite.play(dirAnimKey(this.config.sheets.attack!, 'windup', this.facing));
     this.sprite.setTint(WINDUP_TINT);
+    if (attack.kind === 'lunge') {
+      // Sem folha de ataque: o próprio sprite se encolhe (achata e alarga), tomando impulso.
+      this.playLoop('idle');
+      this.setSquash(1.2, 0.78, attack.windupMs * 0.8);
+      return;
+    }
+    this.sprite.play(dirAnimKey(this.config.sheets.attack!, 'windup', this.facing));
   }
 
-  private updateAttack(time: number, dx: number, dy: number, distance: number, playerX: number, playerY: number): void {
+  /** Estica/achata o sprite (o bote do Broto) em `duration` ms; 1, 1 = o tamanho normal. */
+  private setSquash(scaleX: number, scaleY: number, duration: number): void {
+    this.squash?.stop();
+    this.squash = this.scene.tweens.add({
+      targets: this.sprite,
+      scaleX: this.baseScaleX * scaleX,
+      scaleY: this.baseScaleY * scaleY,
+      duration,
+      ease: 'Sine.easeOut',
+    });
+  }
+
+  private updateAttack(time: number, delta: number, dx: number, dy: number, distance: number, playerX: number, playerY: number): void {
     const attack = this.config.attack!;
+    if (attack.kind === 'lunge') {
+      this.updateLunge(time, delta, attack, dx, dy, distance);
+      return;
+    }
     if (this.state === 'windup') {
       if (time < this.stateEndsAt) return;
       this.sprite.clearTint();
@@ -152,6 +178,46 @@ export class CaveWalker extends Enemy {
     this.wanderTarget = null;
   }
 
+  /** O bote: aviso (encolhido) → se lança na direção travada (machuca na primeira vez que encosta no jogador, e para ali) → recupera parado. */
+  private updateLunge(time: number, delta: number, attack: WalkerAttack, dx: number, dy: number, distance: number): void {
+    if (this.state === 'windup') {
+      if (time < this.stateEndsAt) return;
+      this.sprite.clearTint();
+      const length = Math.hypot(dx, dy) || 1;
+      this.lungeX = dx / length;
+      this.lungeY = dy / length;
+      this.lungeTravelled = 0;
+      this.facing = directionOf(dx, dy);
+      this.setSquash(0.82, 1.22, 90);
+      this.playLoop('walk');
+      this.state = 'strike';
+      this.stateEndsAt = time + attack.strikeMs;
+      return;
+    }
+    if (this.state === 'strike') {
+      if (!this.impactDone && distance <= attack.hitRange) {
+        this.impactDone = true;
+        this.onAttackHit(this.stats.contactDamage, time, this);
+      }
+      // Avança até cobrir `lungeDistance` (pela distância, não pelo relógio: igual em qualquer taxa de quadros); `strikeMs` é o limite.
+      if (!this.impactDone && this.lungeTravelled < (attack.lungeDistance ?? 0) && time < this.stateEndsAt) {
+        const speed = attack.lungeSpeed ?? this.stats.moveSpeed;
+        this.moveBy(this.lungeX, this.lungeY, delta, speed);
+        this.lungeTravelled += speed * (delta / 1000);
+        return;
+      }
+      this.state = 'recover';
+      this.stateEndsAt = time + attack.recoverMs;
+      this.setSquash(1, 1, 160);
+      this.playLoop('idle');
+      return;
+    }
+    // recover
+    if (time < this.stateEndsAt) return;
+    this.state = distance > this.config.deaggro ? 'wander' : 'chase';
+    this.wanderTarget = null;
+  }
+
   private playerIsHit(attack: WalkerAttack, dx: number, dy: number, distance: number, playerX: number, playerY: number): boolean {
     const forward = DIRECTION_VECTOR[this.windupDirection];
     if (attack.kind === 'melee') {
@@ -168,6 +234,7 @@ export class CaveWalker extends Enemy {
   protected override onDamaged(): void {
     if (this.state !== 'windup') return;
     this.sprite.clearTint();
+    if (this.squash) this.setSquash(1, 1, 120);
     this.state = 'recover';
     this.stateEndsAt = this.scene.time.now + STAGGER_MS;
     this.playLoop('idle');
@@ -222,9 +289,9 @@ export class CaveWalker extends Enemy {
     this.moveBy(dx / distance, dy / distance, delta);
   }
 
-  /** Anda na direção (já normalizada) `ux,uy`, eixo por eixo (desliza na parede). */
-  private moveBy(ux: number, uy: number, delta: number): void {
-    const step = this.stats.moveSpeed * (delta / 1000);
+  /** Anda na direção (já normalizada) `ux,uy`, eixo por eixo (desliza na parede) — na velocidade do bicho, ou em `speed` (o bote). */
+  private moveBy(ux: number, uy: number, delta: number, speed = this.stats.moveSpeed): void {
+    const step = speed * (delta / 1000);
     const nextX = this.x + ux * step;
     const nextY = this.y + uy * step;
     let moved = false;
@@ -248,6 +315,7 @@ export class CaveWalker extends Enemy {
   // --- Morte ---------------------------------------------------------------------------------------------------------
 
   protected onDeath(): void {
+    this.squash?.stop();
     this.shadow.destroy();
     this.sprite.clearTint();
     this.onDeathCallback(this.x, this.y);

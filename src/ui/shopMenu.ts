@@ -25,6 +25,7 @@ import {
   GLOBAL_CURSOR_CORNER_RECTS,
 } from '../data/ui';
 import { computeFitScale } from './slotIcon';
+import { shopPageCount, shopPageItems, turnShopPage } from './shopPaging';
 
 const BOOK_SCALE = 2.2;
 const SLOT_SCALE = 1.7;
@@ -34,6 +35,10 @@ const ROW_GAP = 16;
 const GRID_COLS = 6;
 const GRID_ROWS = 4;
 const ITEMS_PER_PAGE = GRID_COLS * GRID_ROWS;
+/** Setas de página embaixo do grid (aba com mais itens que o grid — `ui/shopPaging.ts`): o mesmo painel das setas da conversa. */
+const PAGE_ARROW_WIDTH = 34;
+const PAGE_ARROW_HEIGHT = 26;
+const PAGE_ARROW_GAP = 56;
 /** Fração da célula (16px nativos) que um ícone "normal" (16x16) preenche. */
 const ICON_FILL_RATIO = 0.8;
 const ICON_TARGET_PX = 16 * SLOT_SCALE * ICON_FILL_RATIO;
@@ -272,6 +277,13 @@ export class ShopMenu {
   private readonly itemsByCategory: Map<ShopCategory, ShopItem[]>;
   private activeCategory: ShopCategory;
   private selectedItemId: string | null = null;
+  /** Página do grid na aba ativa (0 = a primeira). */
+  private page = 0;
+  private pageControls!: {
+    prev: { box: Phaser.GameObjects.NineSlice; label: Phaser.GameObjects.Text };
+    next: { box: Phaser.GameObjects.NineSlice; label: Phaser.GameObjects.Text };
+    counter: Phaser.GameObjects.Text;
+  };
   private isOpen_ = false;
   private lastCoins = 0;
 
@@ -506,6 +518,27 @@ export class ShopMenu {
       this.slots.push({ itemId: '', price: 0, frame, icon, priceText });
     }
 
+    // Setas de página (`<` `>`) e o contador, embaixo do grid — só numa aba com mais de uma página.
+    const pageControlsY = startY + (GRID_ROWS - 1) * (slotHeight + ROW_GAP) + slotHeight / 2 + 16 + PAGE_ARROW_HEIGHT / 2;
+    const pageCenterX = bookLeft + PAGE_RECT.left.x * BOOK_SCALE + leftPageWidth / 2;
+    const makePageArrow = (x: number, text: string, delta: number): { box: Phaser.GameObjects.NineSlice; label: Phaser.GameObjects.Text } => {
+      const box = scene.add.nineslice(x, pageControlsY, INVENTORY_PANEL_KEY, INVENTORY_PANEL_FRAME_NAME, PAGE_ARROW_WIDTH, PAGE_ARROW_HEIGHT, INVENTORY_PANEL_BORDER, INVENTORY_PANEL_BORDER, INVENTORY_PANEL_BORDER, INVENTORY_PANEL_BORDER);
+      box.setScrollFactor(0).setDepth(3001);
+      box.setInteractive({ useHandCursor: true });
+      box.on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        if (!this.isOpen_) return;
+        event.stopPropagation();
+        playClick(scene);
+        this.turnPage(delta);
+      });
+      const label = scene.add.text(x, pageControlsY, text, { fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', color: TEXT_INK });
+      label.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(3002);
+      return { box, label };
+    };
+    const counter = scene.add.text(pageCenterX, pageControlsY, '', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: TEXT_INK });
+    counter.setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(3002);
+    this.pageControls = { prev: makePageArrow(pageCenterX - PAGE_ARROW_GAP, '<', -1), next: makePageArrow(pageCenterX + PAGE_ARROW_GAP, '>', 1), counter };
+
     // Página DIREITA: painel do ícone grande + painel de texto + botão Comprar
     // (mesmo esquema do detalhe da aba Agricultura, ver `InventoryScreen`).
     const rightPageWidth = PAGE_RECT.right.width * BOOK_SCALE;
@@ -736,6 +769,37 @@ export class ShopMenu {
     return this.itemsByCategory.get(this.activeCategory) ?? [];
   }
 
+  /** Os itens da página atual da aba ativa (o que o grid mostra). */
+  private pageItems(): ShopItem[] {
+    return shopPageItems(this.currentItems(), this.page, ITEMS_PER_PAGE);
+  }
+
+  /** Vira a página do grid (presa na primeira/última) e seleciona o 1º item da nova página. */
+  private turnPage(delta: number): void {
+    const next = turnShopPage(this.page, delta, this.currentItems().length, ITEMS_PER_PAGE);
+    if (next === this.page) return;
+    this.page = next;
+    this.selectedItemId = this.pageItems()[0]?.id ?? null;
+    this.renderActiveCategory();
+    this.refresh(this.lastCoins);
+  }
+
+  /** Setas e contador: só com mais de uma página; a seta da ponta em que não dá pra ir fica apagada. */
+  private renderPageControls(): void {
+    const pages = shopPageCount(this.currentItems().length, ITEMS_PER_PAGE);
+    const visible = this.isOpen_ && pages > 1;
+    for (const [arrow, enabled] of [
+      [this.pageControls.prev, this.page > 0],
+      [this.pageControls.next, this.page < pages - 1],
+    ] as const) {
+      arrow.box.setVisible(visible).setAlpha(enabled ? 1 : 0.45);
+      arrow.label.setVisible(visible).setAlpha(enabled ? 1 : 0.45);
+      if (visible && enabled) arrow.box.setInteractive();
+      else arrow.box.disableInteractive();
+    }
+    this.pageControls.counter.setVisible(visible).setText(`${this.page + 1}/${pages}`);
+  }
+
   private selectedItem(): ShopItem | undefined {
     return this.currentItems().find((item) => item.id === this.selectedItemId);
   }
@@ -757,6 +821,7 @@ export class ShopMenu {
   private selectCategory(category: ShopCategory): void {
     if (category === this.activeCategory) return;
     this.activeCategory = category;
+    this.page = 0;
     this.selectFirstOfCategory();
     this.renderActiveCategory();
     this.refresh(this.lastCoins);
@@ -774,7 +839,8 @@ export class ShopMenu {
 
   /** Redesenha o pool de slots com os itens da categoria ativa — sobra fica vazia/invisível; sem itens, mostra "Em breve". */
   private renderActiveCategory(): void {
-    const items = this.currentItems();
+    const items = this.pageItems();
+    this.renderPageControls();
 
     for (const tab of this.tabs) {
       tab.background.setPosition(tab.baseX, tab.y);
@@ -950,6 +1016,7 @@ export class ShopMenu {
       else slot.frame.disableInteractive();
     }
     this.emptyText.setVisible(visible && this.currentItems().length === 0);
+    this.renderPageControls();
 
     this.positionGridSelector();
     this.renderDetail();

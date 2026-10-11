@@ -3,9 +3,10 @@ import { WalkerSheets, archerSheets, myconidSheets, spearSheets, sproutSheets } 
 /**
  * Como cada bicho de 4 direções da Caverna ataca (`entities/cave/CaveWalker.ts`). Distâncias em px de mundo (uma célula = 32px), tempos em ms; os índices de quadro
  * são colunas da folha de ataque (cada direção é uma linha): `windupTo` = último quadro do aviso (o bicho congela nele até o golpe), `strikeFrom..strikeTo` = o golpe.
+ * O `lunge` (o bote do Broto, que não tem folha de ataque) não usa quadros: no aviso ele se encolhe avermelhado e no golpe se LANÇA no jogador.
  */
 export interface WalkerAttack {
-  kind: 'melee' | 'ranged';
+  kind: 'melee' | 'ranged' | 'lunge';
   /** Distância em que começa a preparar o golpe (no `ranged`, é o alcance de onde ele mira). */
   startRange: number;
   /** Alcance do golpe no impacto (corpo a corpo). */
@@ -13,19 +14,21 @@ export interface WalkerAttack {
   windupMs: number;
   strikeMs: number;
   recoverMs: number;
-  windupTo: number;
-  strikeFrom: number;
-  strikeTo: number;
+  /** Quadros da folha de ataque (o `lunge` não tem folha e não usa). */
+  windupTo?: number;
+  strikeFrom?: number;
+  strikeTo?: number;
   /** Só `ranged`: meia-largura do corredor do tiro e alcance máximo. */
   lineWidth?: number;
   maxRange?: number;
+  /** Só `lunge`: velocidade do bote (px/s) na direção em que o jogador estava no fim do aviso, e quanto ele avança (px) — `strikeMs` é só o limite. */
+  lungeSpeed?: number;
+  lungeDistance?: number;
 }
 
 export interface WalkerConfig {
   sheets: WalkerSheets;
   attack?: WalkerAttack;
-  /** Quem só encosta (o Broto): alcance do toque e recarga entre toques. */
-  contact?: { range: number; cooldownMs: number };
   /** Raio em que nota o jogador, e raio em que desiste (maior de propósito: sem isso ele alternaria perseguir/vagar na borda). */
   aggro: number;
   deaggro: number;
@@ -66,6 +69,13 @@ export function walkerConfig(kind: WalkerKind, color: string): WalkerConfig {
         shadowOffsetY: 14,
       };
     case 'sprout':
-      return { sheets: sproutSheets(color), contact: { range: 26, cooldownMs: 800 }, aggro: 160, deaggro: 240, shadowOffsetY: 6 };
+      // O bote: antes ele só "encostava" (alcance 26 px), mas parava de andar a 30 px do jogador e nunca o machucava.
+      return {
+        sheets: sproutSheets(color),
+        attack: { kind: 'lunge', startRange: 58, hitRange: 30, windupMs: 450, strikeMs: 400, recoverMs: 750, lungeSpeed: 240, lungeDistance: 60 },
+        aggro: 160,
+        deaggro: 240,
+        shadowOffsetY: 6,
+      };
   }
 }

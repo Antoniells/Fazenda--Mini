@@ -9,10 +9,11 @@ import { ArmorHud } from '../ui/armorHud';
 import { HungerHud } from '../ui/hungerHud';
 import { WeatherOverlay, WORLD_MENU_OPEN_KEY } from '../ui/weatherOverlay';
 import { SKILLS, SKILLS_TAB_ICON } from '../data/skills';
-import { RAIN_KEY, RAIN_PATH, RAIN_FRAME_SIZE, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE } from '../data/effects';
+import { RAIN_KEY, RAIN_PATH, RAIN_FRAME_SIZE, SPLASH_KEY, SPLASH_PATH, SPLASH_FRAME_SIZE, SNOW_KEY, SNOW_PATH } from '../data/effects';
+import { precipitationIn, seasonIdForDay } from '../data/seasons';
 import { PLAYER_ATE_EVENT } from '../systems/eating';
 import { dayMusic } from '../systems/dayMusic';
-import { HEALTH_HEARTS_KEY, HEALTH_HEARTS_PATH, ARMOR_HUD_KEY, ARMOR_HUD_PATH, INVENTORY_PANEL_KEY, INVENTORY_PANEL_PATH, INVENTORY_LARGE_PANEL_KEY, INVENTORY_LARGE_PANEL_PATH } from '../data/ui';
+import { HEALTH_HEARTS_KEY, HEALTH_HEARTS_PATH, ARMOR_HUD_KEY, ARMOR_HUD_PATH, INVENTORY_PANEL_KEY, INVENTORY_PANEL_PATH, INVENTORY_LARGE_PANEL_KEY, INVENTORY_LARGE_PANEL_PATH, TRASH_CAN_KEY, TRASH_CAN_PATH } from '../data/ui';
 import { InventoryScreen } from '../ui/inventoryScreen';
 import { FurnaceMenu } from '../ui/furnaceMenu';
 import { PauseMenu } from '../ui/pauseMenu';
@@ -20,6 +21,11 @@ import { exitToMainMenu } from '../systems/sessionExit';
 import { MAIN_MENU_SCENE_KEY } from './MainMenuScene';
 import { ChestMenu } from '../ui/chestMenu';
 import { LetterPanel } from '../ui/letterPanel';
+import { NoticeBoardPanel } from '../ui/noticeBoardPanel';
+import { OPEN_NOTICE_BOARD_EVENT } from '../systems/villageNoticeBoard';
+import { villageCalendar } from '../systems/villageCalendar';
+import { isEventCompleted } from '../systems/eventManager';
+import { VISITOR_EVENT_ID } from '../data/events';
 import { DialoguePanel, OPEN_DIALOGUE_EVENT, DialoguePayload } from '../ui/dialoguePanel';
 import { QuestTracker } from '../ui/questTracker';
 import { describeObjective } from '../systems/campaign';
@@ -28,7 +34,7 @@ import { describeHordeObjective } from '../systems/horde';
 import { VILLAGE_OBJECTIVE_TEXT, WATER_OBJECTIVE_TEXT } from '../data/tutorial';
 import { TutorialPanel } from '../ui/tutorialPanel';
 import { tutorial } from '../systems/tutorial';
-import { playEffect } from '../systems/soundEffects';
+import { playClick, playEffect } from '../systems/soundEffects';
 import { CHEST_SOUND, CRAFT_SOUND } from '../data/audio';
 import { OPEN_LETTER_EVENT, OpenLetterPayload } from '../systems/petBox';
 import { OPEN_CHEST_MENU_EVENT, OpenChestMenuPayload } from '../systems/furniturePlacement';
@@ -165,6 +171,16 @@ export function escapeTogglesPause(): void {
 
 /** Mesma ideia, para o painel da carta (evento do pet, `ui/letterPanel.ts`). */
 let sharedLetterPanel: LetterPanel | null = null;
+/** O quadro do mural do Vilarejo (`ui/noticeBoardPanel.ts`), aberto pelo `OPEN_NOTICE_BOARD_EVENT`. */
+let sharedNoticeBoard: NoticeBoardPanel | null = null;
+
+export function isNoticeBoardOpen(): boolean {
+  return sharedNoticeBoard?.isOpen() ?? false;
+}
+
+export function closeNoticeBoard(): void {
+  sharedNoticeBoard?.close();
+}
 
 /** Se a carta está aberta — a cena de mapa trava movimento/clique no mundo enquanto ela está em primeiro plano. */
 export function isLetterOpen(): boolean {
@@ -227,6 +243,7 @@ export class UIScene extends Phaser.Scene {
   private pauseMenu!: PauseMenu;
   private chestMenu!: ChestMenu;
   private letterPanel!: LetterPanel;
+  private noticeBoard!: NoticeBoardPanel;
   private dialoguePanel!: DialoguePanel;
   private questTracker!: QuestTracker;
 
@@ -242,11 +259,13 @@ export class UIScene extends Phaser.Scene {
     // Molduras de papel dos painéis de conversa/carta/aviso (a Fazenda também as carrega, mas a UIScene não depende disso).
     this.load.image(INVENTORY_PANEL_KEY, encodeURI(`/${INVENTORY_PANEL_PATH}`));
     this.load.image(INVENTORY_LARGE_PANEL_KEY, encodeURI(`/${INVENTORY_LARGE_PANEL_PATH}`));
+    this.load.image(TRASH_CAN_KEY, encodeURI(`/${TRASH_CAN_PATH}`)); // A lixeira do caderno (`ui/inventoryScreen.ts`).
     // Ícones das habilidades e da aba "Habilidades" do Inventário (recortes de `Icons/RPG icons/...`, ver `data/skills.ts`).
     for (const icon of [SKILLS_TAB_ICON, ...SKILLS.map((skill) => skill.icon)]) {
       if (!this.textures.exists(icon.key)) this.load.image(icon.key, encodeURI(`/${icon.path}`));
     }
     this.load.spritesheet(RAIN_KEY, encodeURI(`/${RAIN_PATH}`), { frameWidth: RAIN_FRAME_SIZE, frameHeight: RAIN_FRAME_SIZE });
+    this.load.image(SNOW_KEY, encodeURI(`/${SNOW_PATH}`)); // A neve do Inverno (`ui/weatherOverlay.ts`).
     // Respingo das gotas batendo (o mesmo de regar — a Fazenda já carrega, mas a UIScene não pode depender disso).
     if (!this.textures.exists(SPLASH_KEY)) {
       this.load.spritesheet(SPLASH_KEY, encodeURI(`/${SPLASH_PATH}`), { frameWidth: SPLASH_FRAME_SIZE, frameHeight: SPLASH_FRAME_SIZE });
@@ -272,7 +291,7 @@ export class UIScene extends Phaser.Scene {
 
     // Chuva: véu cinza + partículas por cima do mundo, em qualquer mapa (ver `ui/weatherOverlay.ts`).
     this.weatherOverlay = new WeatherOverlay(this);
-    this.weatherOverlay.refresh(gameState.weather.raining);
+    this.weatherOverlay.refresh(gameState.weather.raining, precipitationIn(seasonIdForDay(gameState.gameClock.getDay())) === 'snow');
 
     this.armorHud = new ArmorHud(this);
     this.armorHud.refresh(getPlayerDefense());
@@ -302,6 +321,14 @@ export class UIScene extends Phaser.Scene {
     // Carta da caixa do pet: a caixa dispara o evento GLOBAL com o texto e o que fazer depois de lida.
     this.letterPanel = new LetterPanel(this);
     sharedLetterPanel = this.letterPanel;
+    // O mural do Vilarejo: o quadro clicado dispara o evento GLOBAL; o calendário é o do dia de hoje (`systems/villageCalendar.ts`).
+    this.noticeBoard = new NoticeBoardPanel(this);
+    sharedNoticeBoard = this.noticeBoard;
+    const onOpenNoticeBoard = (): void => {
+      playClick(this);
+      this.noticeBoard.open(villageCalendar(gameState.gameClock.getDay(), { visitorDone: isEventCompleted(VISITOR_EVENT_ID) }));
+    };
+    this.game.events.on(OPEN_NOTICE_BOARD_EVENT, onOpenNoticeBoard);
     const onOpenLetter = (payload: OpenLetterPayload): void => this.letterPanel.open(payload.title, payload.body, payload.buttonLabel, payload.heart, payload.onRead);
     this.game.events.on(OPEN_LETTER_EVENT, onOpenLetter);
 
@@ -347,6 +374,8 @@ export class UIScene extends Phaser.Scene {
       this.game.events.off(OPEN_FURNACE_MENU_EVENT, onOpenFurnaceMenu);
       this.game.events.off(OPEN_CHEST_MENU_EVENT, onOpenChestMenu);
       if (sharedLetterPanel === this.letterPanel) sharedLetterPanel = null;
+      if (sharedNoticeBoard === this.noticeBoard) sharedNoticeBoard = null;
+      this.game.events.off(OPEN_NOTICE_BOARD_EVENT, onOpenNoticeBoard);
       this.game.events.off(OPEN_LETTER_EVENT, onOpenLetter);
       if (sharedDialoguePanel === this.dialoguePanel) sharedDialoguePanel = null;
       this.game.events.off(OPEN_DIALOGUE_EVENT, onOpenDialogue);
@@ -451,7 +480,7 @@ export class UIScene extends Phaser.Scene {
     this.healthHud.refresh(gameState.playerHealth.getHp(), gameState.playerHealth.getMaxHp());
     this.armorHud.refresh(getPlayerDefense());
     this.hungerHud.refresh(gameState.hunger.getSatiety());
-    this.weatherOverlay.refresh(gameState.weather.raining);
+    this.weatherOverlay.refresh(gameState.weather.raining, precipitationIn(seasonIdForDay(gameState.gameClock.getDay())) === 'snow');
     this.weatherOverlay.setHiddenForMenu(this.registry.get(WORLD_MENU_OPEN_KEY) === true); // Menu da cena do mapa aberto: a chuva não o cobre.
     if (this.inventoryScreen.isOpen()) this.inventoryScreen.refresh(gameState.inventory);
     if (this.furnaceMenu.isOpen()) this.furnaceMenu.refresh(gameState.inventory);

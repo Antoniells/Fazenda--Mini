@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { OreKind } from '../data/ores';
 import type { TreeSpecies } from '../data/trees';
+import { rollBeehive } from '../data/beehives';
 
 /** `weed` = o mato colhível com a Foice (só na Fazenda, `systems/wildGrass.ts`); `ore` = veio de minério da Pedreira (`data/ores.ts`, `systems/oreInteraction.ts`). */
 export type ResourceNodeKind = 'tree' | 'smallRock' | 'bigRock' | 'weed' | 'ore';
@@ -20,6 +21,8 @@ export interface ResourceNode {
   species?: TreeSpecies;
   /** Qual minério (só `kind: 'ore'`). */
   ore?: OreKind;
+  /** Árvore adulta com colmeia (`data/beehives.ts`) — sorteada ao crescer até adulta; derrubá-la solta Mel. Ausente = sem colmeia (saves antigos). */
+  beehive?: boolean;
   /** Dano já acumulado (em "golpes de madeira") numa árvore/pedra ainda de pé — sobrevive a trocar de cena, à virada do dia e ao save (antes voltava a zero). */
   hits?: number;
 }
@@ -185,7 +188,8 @@ class ResourceNodeRegistry {
     for (const [key, node] of nodes) {
       if (node.kind !== 'tree') continue;
       if (node.stage === 'sprout') nodes.set(key, { ...node, stage: 'young' });
-      else if (node.stage === 'young') nodes.set(key, { ...node, stage: 'mature' });
+      // Ficou adulta: às vezes nasce uma colmeia nela (`data/beehives.ts`).
+      else if (node.stage === 'young') nodes.set(key, { ...node, stage: 'mature', ...(rollBeehive() ? { beehive: true } : {}) });
     }
 
     // O teto de árvores conta só os pinheiros (as bétulas fixas do mapa não entram na conta do respawn).
