@@ -131,4 +131,4 @@ A história principal e o FIM do jogo: o mundo em desequilíbrio só volta à pa
 
 ---
 
-**Status atual (versão 0.1.14):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.
+**Status atual (versão 0.1.15):** Fases 1 a 6 e 10 concluídas. Fase 7 com árvores, pedras/minérios e tempo prontos (animais: só galinhas e ovos). Fase 8 quase completa (falta o catálogo das lojas crescer com as expansões). Fase 9 parcial (falta revisão final da interface e balanceamento). Fase 11 (a história dos Três Pilares e o fim do jogo) implementada de ponta a ponta, com testes automáticos; **a próxima etapa é a Etapa 6 da Fase 11**: jogar a história inteira, ajustar o balanceamento e o polimento de falas, sons e arte.

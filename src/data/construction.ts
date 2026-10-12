@@ -69,10 +69,11 @@ export const CARPENTER_ARRIVAL_CELL = { col: 54, row: 21 };
 export const CONSTRUCTION_SITE_SIGN_FRAME = { name: 'construction-site-sign', rect: { x: 38, y: 2, width: 39, height: 27 } };
 
 /**
- * A picareta do Tomás trabalhando: a folha `Pickaxe.png` do Josh (a mesma arte do personagem, 192x96 = 6 quadros x 3 linhas de 32x32 — baixo, cima e lado, o lado olha pra
- * direita e o outro lado é o espelho), no mesmo desenho da ação "picareta" do jogador (`data/player.ts`): a picareta encontra o chão no quadro 4 (`PICKAXE_IMPACT_FRAME`, 0-based).
+ * A picareta do Tomás trabalhando: a folha `Pickaxe.png` do Ferreiro do pacote (a arte do Tomás, `data/npcs.ts`; 192x128 = 6 quadros x 4 linhas de 32x32 —
+ * baixo, cima, lado virado pra direita e pra esquerda; usamos as 3 primeiras e o lado esquerdo é o espelho), no mesmo desenho da ação "picareta" do jogador
+ * (`data/player.ts`): a picareta encontra o chão no quadro 4 (`PICKAXE_IMPACT_FRAME`, 0-based — medido: o mesmo ritmo da folha do Josh de antes).
  */
-export const CARPENTER_PICKAXE_SHEET = { key: 'npc-carpenter-pickaxe', path: 'Character/Character/Pre-made/Josh/Pickaxe.png', frameSize: 32 };
+export const CARPENTER_PICKAXE_SHEET = { key: 'npc-blacksmith-pickaxe', path: "Character/Character/Others/NPC'S/Blacksmith/Pickaxe.png", frameSize: 32 };
 export const PICKAXE_ROWS = { down: { start: 0, end: 5 }, up: { start: 6, end: 11 }, side: { start: 12, end: 17 } };
 export const PICKAXE_FRAME_RATE = 10;
 export const PICKAXE_IMPACT_FRAME = 4;

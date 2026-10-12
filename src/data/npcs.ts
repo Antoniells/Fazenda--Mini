@@ -129,35 +129,60 @@ const layeredPortrait = (npc: string, layers: string[]): { width: number; height
   paths: layers.map((layer) => `${LAYERED_PORTRAIT_DIR}/${npc}/Portrait - PNG and Aseprite/${layer}.png`),
 });
 
+/** O personagem do Ferreiro do pacote (`NPC'S/Blacksmith`): hoje é a arte do Tomás (o Marceneiro), a pedido. O Bruno tem a dele (`BRUNO_SPRITE`). */
+const BLACKSMITH_SPRITE: NpcDefinition['sprite'] = {
+  idleKey: 'npc-blacksmith-idle',
+  idlePath: `${NPC_DIR}/Blacksmith/Idle.png`,
+  walkKey: 'npc-blacksmith-walk',
+  walkPath: `${NPC_DIR}/Blacksmith/Walk.png`,
+  frameSize: 32,
+  idleFrames: 4,
+  walkFrames: 6,
+};
+/**
+ * O Bruno (o Ferreiro): folhas próprias feitas pelo usuário a partir do Ferreiro do pacote — o mesmo corpo e as mesmas animações, com a
+ * cabeça careca de barba branca e óculos (`NPC'S/Blacksmith 2/Idle.png` 128x128 e `Walk.png` 192x128, 4 direções como a original).
+ * Ele só anda e fica parado, então essas duas bastam. O retrato (`BRUNO_PORTRAIT`) também é dele, no mesmo layout do retrato do pacote.
+ */
+const BRUNO_SPRITE: NpcDefinition['sprite'] = {
+  idleKey: 'npc-bruno-idle',
+  idlePath: `${NPC_DIR}/Blacksmith 2/Idle.png`,
+  walkKey: 'npc-bruno-walk',
+  walkPath: `${NPC_DIR}/Blacksmith 2/Walk.png`,
+  frameSize: 32,
+  idleFrames: 4,
+  walkFrames: 6,
+};
+// Folha 256x192 com 11 expressões (4 por linha).
+const BLACKSMITH_PORTRAIT: NpcDefinition['portrait'] = {
+  key: 'npc-blacksmith-portrait',
+  path: `${NPC_DIR}/Blacksmith/Portrait.png`,
+  frame: { x: 0, y: 0, width: 64, height: 64 },
+  expressions: {
+    happy: { x: 64, y: 0 },
+    surprised: { x: 128, y: 0 },
+    thoughtful: { x: 192, y: 0 },
+    sad: { x: 0, y: 64 },
+    content: { x: 64, y: 64 },
+    crying: { x: 192, y: 64 },
+    angry: { x: 128, y: 128 },
+  },
+};
+
+/** O retrato do Bruno (`NPC'S/Blacksmith 2/Portrait.png`, feito pelo usuário): a mesma folha 256x192 do Ferreiro do pacote, as 11 expressões nas mesmas casas. */
+const BRUNO_PORTRAIT: NpcDefinition['portrait'] = {
+  ...BLACKSMITH_PORTRAIT,
+  key: 'npc-bruno-portrait',
+  path: `${NPC_DIR}/Blacksmith 2/Portrait.png`,
+};
+
 export const NPCS: Record<NpcId, NpcDefinition> = {
   blacksmith: {
     id: 'blacksmith',
     name: 'Bruno',
     title: 'Ferreiro',
-    sprite: {
-      idleKey: 'npc-blacksmith-idle',
-      idlePath: `${NPC_DIR}/Blacksmith/Idle.png`,
-      walkKey: 'npc-blacksmith-walk',
-      walkPath: `${NPC_DIR}/Blacksmith/Walk.png`,
-      frameSize: 32,
-      idleFrames: 4,
-      walkFrames: 6,
-    },
-    // Folha 256x192 com 11 expressões (4 por linha).
-    portrait: {
-      key: 'npc-blacksmith-portrait',
-      path: `${NPC_DIR}/Blacksmith/Portrait.png`,
-      frame: { x: 0, y: 0, width: 64, height: 64 },
-      expressions: {
-        happy: { x: 64, y: 0 },
-        surprised: { x: 128, y: 0 },
-        thoughtful: { x: 192, y: 0 },
-        sad: { x: 0, y: 64 },
-        content: { x: 64, y: 64 },
-        crying: { x: 192, y: 64 },
-        angry: { x: 128, y: 128 },
-      },
-    },
+    sprite: BRUNO_SPRITE,
+    portrait: BRUNO_PORTRAIT,
     home: VILLAGE_SHOP_HOUSE,
     sells: true,
     schedule: [
@@ -287,18 +312,9 @@ export const NPCS: Record<NpcId, NpcDefinition> = {
     id: 'carpenter',
     name: 'Tomás',
     title: 'Marceneiro',
-    sprite: {
-      idleKey: 'npc-carpenter-idle',
-      idlePath: `${PREMADE_DIR}/Josh/Idle.png`,
-      walkKey: 'npc-carpenter-walk',
-      walkPath: `${PREMADE_DIR}/Josh/Walk.png`,
-      frameSize: 32,
-      idleFrames: 4,
-      walkFrames: 6,
-      rows: SIDE_SHEET_ROWS,
-      flipLeft: true,
-    },
-    portrait: { key: 'npc-carpenter-portrait-layered', layers: premadePortrait('Josh'), frame: { x: 0, y: 0, width: 64, height: 64 }, expressions: PREMADE_PORTRAIT_EXPRESSIONS },
+    // A arte do Ferreiro do pacote (pedido explícito; antes era o personagem pronto "Josh").
+    sprite: BLACKSMITH_SPRITE,
+    portrait: BLACKSMITH_PORTRAIT,
     home: VILLAGE_CARPENTER_HOUSE,
     sells: true,
     schedule: [

@@ -16,12 +16,21 @@ import { preloadLayerStack } from './layeredArt';
 
 /** Carrega as folhas de sprite (repouso e, se andam, caminhada) e os retratos dos moradores da cena — chamado no `preload` dela. */
 export function preloadNpcs(scene: Phaser.Scene, ids: NpcId[]): void {
+  // Moradores podem dividir a mesma arte (o Tomás usa a do Ferreiro): cada textura entra na fila uma vez só.
+  const queued = new Set<string>();
+  const once = (key: string, load: () => void): void => {
+    if (queued.has(key)) return;
+    queued.add(key);
+    load();
+  };
   for (const id of ids) {
     const { sprite, portrait } = NPCS[id];
-    scene.load.spritesheet(sprite.idleKey, encodeURI(`/${sprite.idlePath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize });
-    if (sprite.walkKey && sprite.walkPath) scene.load.spritesheet(sprite.walkKey, encodeURI(`/${sprite.walkPath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize });
-    if (portrait.layers) preloadLayerStack(scene, { key: portrait.key, width: portrait.layers.width, height: portrait.layers.height, layers: portrait.layers.paths });
-    else if (portrait.path) scene.load.image(portrait.key, encodeURI(`/${portrait.path}`));
+    once(sprite.idleKey, () => scene.load.spritesheet(sprite.idleKey, encodeURI(`/${sprite.idlePath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize }));
+    const { walkKey, walkPath } = sprite;
+    if (walkKey && walkPath) once(walkKey, () => scene.load.spritesheet(walkKey, encodeURI(`/${walkPath}`), { frameWidth: sprite.frameSize, frameHeight: sprite.frameSize }));
+    const layers = portrait.layers;
+    if (layers) once(portrait.key, () => preloadLayerStack(scene, { key: portrait.key, width: layers.width, height: layers.height, layers: layers.paths }));
+    else if (portrait.path) once(portrait.key, () => scene.load.image(portrait.key, encodeURI(`/${portrait.path}`)));
   }
 }
 

@@ -21,7 +21,7 @@ describe('arte em camadas', () => {
 
   it('toda camada dos retratos montados dos moradores existe no pacote', () => {
     const layered = Object.values(NPCS).filter((npc) => npc.portrait.layers);
-    expect(layered.map((npc) => npc.id).sort()).toEqual(['carpenter', 'mermaid', 'pirate', 'supplier']);
+    expect(layered.map((npc) => npc.id).sort()).toEqual(['mermaid', 'pirate', 'supplier']);
     for (const npc of layered) {
       for (const layer of npc.portrait.layers!.paths) expect(assetExists(layer), layer).toBe(true);
     }

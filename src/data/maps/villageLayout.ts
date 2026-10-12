@@ -75,7 +75,6 @@ export const villageLayout: VillageLayoutData = {
     { asset: 'house3', col: 6, row: 18 },
     { asset: 'house2', col: 1, row: 18 },
     { asset: 'fountain', col: 13, row: 12 },
-    { asset: 'newsstand', col: 19, row: 11 },
   ],
   well: { col: 7, row: 16 },
   trees: [
@@ -88,7 +87,6 @@ export const villageLayout: VillageLayoutData = {
     [12, 27],
     [7, 27],
     [2, 27],
-    [12, 10],
     [1, 9],
   ],
   props: [
